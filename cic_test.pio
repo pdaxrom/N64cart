@@ -1,0 +1,127 @@
+;
+; Copyright (c) 2022 Konrad Beckmann
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+
+.program cart
+
+; For debugging, `set pins, 0` up to `3` may be used
+
+cart_start:
+
+    ; Change IO dir of all pins to INPUT
+    mov osr, null
+    out pindirs, 32
+
+.wrap_target
+
+    ; state => STATE_START
+
+    ; wait for N64_ALEH
+    wait 1 gpio 17
+
+    ; wait for N64_ALEL
+    wait 1 gpio 16
+
+    ; state => STATE_WAIT_ADDR_H
+
+    ; wait for ~N64_ALEH
+    wait 0 gpio 17
+    ; Sample AD0 -> AD15, put in ISR
+    in pins, 16
+
+    ; state => STATE_WAIT_ADDR_L
+
+    ; wait for ~N64_ALEL
+    wait 0 gpio 16
+
+    ; Sample AD0 -> AD15, put in ISR
+    in pins, 16
+
+    ; push 32 bits of high and low parts
+    ; TODO: Can we use autopush?
+    push
+
+wait_for_not_read_or_aleh:
+
+    ; Pseudo-code of the loop below:
+    ; if (N64_ALEH)
+    ;   goto cart_start
+    ; else if (N64_READ):
+    ;   goto wait_for_not_read_or_aleh
+
+    jmp pin cart_start
+
+    ; Read all pins into OSR
+    mov osr, pins
+    ; Dump 18 bits of OSR contents
+    out null, 18
+    ; Effectively read gpio 18 into x, so we can branch on it
+    out x, 1
+    ; if (x): goto wait_for_not_read_or_aleh;
+    jmp x-- wait_for_not_read_or_aleh
+
+    ; Send a "give me 16 bits!" command (null address)
+    ; ISR is 0 at this moment
+    push
+
+    ; Read data from c code into OSR
+    pull
+
+    ; Write 16 bits from OSR to pins
+    out pins, 16
+
+    ; Set pindirs to 0xFFFFFFFF
+    ; Note that only the pins set up in sm_config_set_out_pins() are affected,
+    ; i.e. GPIO0-GPIO15
+    mov osr, ~null
+    out pindirs, 32
+
+    ; wait for N64_READ
+    wait 1 gpio 18
+
+    ; state => WAIT_READ_H
+
+    jmp wait_for_not_read_or_aleh
+
+
+.wrap             ; Handle PI transactions forever!
+
+
+% c-sdk {
+void cart_program_init(PIO pio, uint sm, uint offset) {
+
+    // gpio0 -> 22 input
+    for (int i = 0; i <= 22; i++) {
+        pio_gpio_init(pio, i);
+    }
+
+    // LA1, LA2
+    pio_gpio_init(pio, 26);
+    pio_gpio_init(pio, 27);
+
+    // AD0 -> AD15 input
+    // gpio 0 -> 22 are input for now
+    pio_sm_set_consecutive_pindirs(pio, sm, 0, 23, false);
+
+    // Set 26, 27 as outputs
+    pio_sm_set_consecutive_pindirs(pio, sm, 26, 2, true);
+
+    pio_sm_config c = cart_program_get_default_config(offset);
+
+    // 26, 27 = set pins
+    sm_config_set_set_pins(&c, 26, 2);
+
+    // AD0 -> AD16 as in pins
+    sm_config_set_in_pins(&c, 0);
+
+    // AD0 -> AD16 as out pins
+    sm_config_set_out_pins(&c, 0, 16);
+
+    // JMP pin = ALEH
+    sm_config_set_jmp_pin(&c, 17);
+
+    pio_sm_init(pio, sm, offset, &c);
+}
+%}
