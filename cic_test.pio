@@ -97,21 +97,11 @@ void cart_program_init(PIO pio, uint sm, uint offset) {
         pio_gpio_init(pio, i);
     }
 
-    // LA1, LA2
-    pio_gpio_init(pio, 26);
-    pio_gpio_init(pio, 27);
-
     // AD0 -> AD15 input
     // gpio 0 -> 22 are input for now
     pio_sm_set_consecutive_pindirs(pio, sm, 0, 23, false);
 
-    // Set 26, 27 as outputs
-    pio_sm_set_consecutive_pindirs(pio, sm, 26, 2, true);
-
     pio_sm_config c = cart_program_get_default_config(offset);
-
-    // 26, 27 = set pins
-    sm_config_set_set_pins(&c, 26, 2);
 
     // AD0 -> AD16 as in pins
     sm_config_set_in_pins(&c, 0);
