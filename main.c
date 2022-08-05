@@ -75,6 +75,8 @@ int main(void)
     // set_sys_clock_khz(300000, true); // Doesn't even boot
     // set_sys_clock_khz(400000, true); // Doesn't even boot
 
+    set_sys_clock_khz(200000, true);
+
     stdio_init_all();
 
     for (int i = 0; i <= 27; i++) {

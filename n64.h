@@ -18,8 +18,8 @@
 #define N64_AD15 15
 #define N64_ALEL 16
 #define N64_ALEH 17
-#define N64_READ 18
-#define N64_WRITE 19
+#define N64_WRITE 18
+#define N64_READ 19
 #define N64_CIC_DCLK    (20)
 #define N64_CIC_DIO     (21)
 #define N64_COLD_RESET  (22)
