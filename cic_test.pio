@@ -14,8 +14,6 @@ cart_start:
     mov osr, null
     out pindirs, 32
 
-.wrap_target
-
     ; state => STATE_START
 
     ; wait for N64_ALEH
@@ -43,11 +41,14 @@ cart_start:
     ; TODO: Can we use autopush?
     push
 
+.wrap_target
 wait_for_not_read_or_aleh:
 
     ; Pseudo-code of the loop below:
     ; if (N64_ALEH)
     ;   goto cart_start
+    ; else if (N64_WRITE):
+    ;   goto handle_write
     ; else if (N64_READ):
     ;   goto wait_for_not_read_or_aleh
 
@@ -55,8 +56,15 @@ wait_for_not_read_or_aleh:
 
     ; Read all pins into OSR
     mov osr, pins
-    ; Dump 19 bits of OSR contents
-    out null, 19
+    ; Dump 18 bits of OSR contents
+    out null, 18
+
+    ; Effectively read gpio 18 into y, so we can branch on it
+    out y, 1 ;; N64_WRITE
+
+    ; if (!y) goto handle_write
+    jmp !y handle_write
+
     ; Effectively read gpio 19 into x, so we can branch on it
     out x, 1
     ; if (x): goto wait_for_not_read_or_aleh;
@@ -85,6 +93,19 @@ wait_for_not_read_or_aleh:
 
     jmp wait_for_not_read_or_aleh
 
+handle_write:
+
+    ; Sample AD0 -> AD15, put in ISR
+    in pins, 16
+
+    ; encode 1 in lsb
+    mov x, ~null
+    in x, 16
+
+    ; wait for N64_WRITE
+    wait 1 gpio 18
+
+    push
 
 .wrap             ; Handle PI transactions forever!
 
@@ -92,16 +113,22 @@ wait_for_not_read_or_aleh:
 % c-sdk {
 void cart_program_init(PIO pio, uint sm, uint offset) {
 
-    // gpio0 -> 22 input
-    for (int i = 0; i <= 22; i++) {
+    // gpio0 -> 19 input
+    for (int i = 0; i <= 19; i++) {
         pio_gpio_init(pio, i);
     }
 
     // AD0 -> AD15 input
     // gpio 0 -> 22 are input for now
-    pio_sm_set_consecutive_pindirs(pio, sm, 0, 23, false);
+    pio_sm_set_consecutive_pindirs(pio, sm, 0, 19, false);
 
     pio_sm_config c = cart_program_get_default_config(offset);
+
+    // shift_right=false, autopush=false, push_threshold=32
+    sm_config_set_in_shift(&c, false, false, 32);
+
+    // shift_right=true, autopull=false, pull_threshold=32
+    sm_config_set_out_shift(&c, true, false, 32);
 
     // AD0 -> AD16 as in pins
     sm_config_set_in_pins(&c, 0);

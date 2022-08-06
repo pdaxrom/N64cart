@@ -28,3 +28,5 @@
 
 #define N64_NMI (26)
 #define N64_INT (27)
+
+#define LED_PIN (25)
