@@ -142,9 +142,11 @@ int main(void)
         static uint32_t word;
         if (get_msb) {
             if (addr & 0x01) {
-		// WRITE
-    		gpio_put(LED_PIN, led_on);
-		led_on = !led_on;
+		if (last_addr == 0x10005000) {
+		    // WRITE
+    		    gpio_put(LED_PIN, led_on);
+		    led_on = !led_on;
+		}
 	    } else {
 		// READ
         	if (last_addr == 0x10000000) {
@@ -153,6 +155,10 @@ int main(void)
             	    // But let's keep it here so it's easy to import roms easily.
             	    // 0x8037FF40 in big-endian
             	    word = 0x40FF3780;
+		} else if (last_addr == 0x1fd01000) {
+		    word = ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02000000) | ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01000000) | 0xf0000000;
+		} else if (last_addr == 0x1fd01004) {
+		    word = uart_get_hw(UART_ID)->dr << 24;
         	} else {
             	    word = rom_file_32[(last_addr & 0xFFFFFF) >> 2];
         	}
@@ -162,7 +168,9 @@ int main(void)
         } else {
 	    if (addr & 0x01) {
 		// WRITE
-
+		if (last_addr == 0x1fd01006) {
+		    uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
+		}
 	    } else {
 		// READ
         	pio_sm_put_blocking(pio, 0, ((word >> 8) & 0xFF00)  | (word >> 24));
