@@ -91,9 +91,11 @@ int main(void)
         gpio_set_pulls(i, false, false);
     }
 
+
     gpio_init(N64_CIC_DCLK);
     gpio_init(N64_CIC_DIO);
     gpio_init(N64_COLD_RESET);
+    gpio_init(N64_NMI);
 
     gpio_pull_up(N64_CIC_DIO);
 
