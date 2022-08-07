@@ -11,7 +11,7 @@
 #include "pico/stdio.h"
 #include "pico/multicore.h"
 
-#include "cic_test.pio.h"
+#include "n64_pi.pio.h"
 
 #include "cic.h"
 #include "n64.h"
@@ -97,20 +97,17 @@ int main(void)
 
     gpio_pull_up(N64_CIC_DIO);
 
-#if 1
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
-    int led_on = 0;
-#endif
 
     // Init UART on pin 28/29
     stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
-    printf("PicoCart64 Booting!\r\n");
+    printf("N64 cartridge booting!\r\n");
 
     // Init PIO before starting the second core
     PIO pio = pio0;
-    uint offset = pio_add_program(pio, &cart_program);
-    cart_program_init(pio, 0, offset);
+    uint offset = pio_add_program(pio, &pi_program);
+    pi_program_init(pio, 0, offset);
     pio_sm_set_enabled(pio, 0, true);
 
     // Launch the CIC emulator in the second core
@@ -142,11 +139,7 @@ int main(void)
         static uint32_t word;
         if (get_msb) {
             if (addr & 0x01) {
-		if (last_addr == 0x10005000) {
-		    // WRITE
-    		    gpio_put(LED_PIN, led_on);
-		    led_on = !led_on;
-		}
+		// WRITE
 	    } else {
 		// READ
         	if (last_addr == 0x10000000) {
@@ -170,6 +163,8 @@ int main(void)
 		// WRITE
 		if (last_addr == 0x1fd01006) {
 		    uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
+		} else if (last_addr == 0x1fd0100a) {
+		    gpio_put(LED_PIN, (addr >> 16) & 0x01);
 		}
 	    } else {
 		// READ

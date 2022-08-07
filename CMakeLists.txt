@@ -39,8 +39,7 @@ target_link_libraries(
 )
 
 # Build pio
-pico_generate_pio_header(n64cart ${CMAKE_CURRENT_LIST_DIR}/cic_test.pio)
-
+pico_generate_pio_header(n64cart ${CMAKE_CURRENT_LIST_DIR}/n64_pi.pio)
 
 # disable usb output (interrupt heavy)
 pico_enable_stdio_usb(n64cart 0)
