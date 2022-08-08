@@ -29,6 +29,7 @@ add_executable(
     n64cart
     main.c
     cic.c
+    usb/dev_lowlevel.c
 )
 
 # pull in common dependencies
@@ -37,10 +38,15 @@ target_link_libraries(
     pico_multicore
     pico_stdlib
     hardware_pio
+    hardware_resets
+    hardware_irq
 )
 
 # Build pio
 pico_generate_pio_header(n64cart ${CMAKE_CURRENT_LIST_DIR}/n64_pi.pio)
+
+target_include_directories(n64cart PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR})
 
 # disable usb output (interrupt heavy)
 pico_enable_stdio_usb(n64cart 0)
