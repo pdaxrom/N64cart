@@ -29,6 +29,7 @@ add_executable(
     n64cart
     main.c
     cic.c
+    flashrom.c
     usb/dev_lowlevel.c
 )
 

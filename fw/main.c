@@ -10,7 +10,7 @@
 #include "pico/stdlib.h"
 #include "pico/stdio.h"
 #include "pico/multicore.h"
-#include "hardware/flash.h"
+#include "flashrom.h"
 
 #include "n64_pi.pio.h"
 
@@ -88,9 +88,9 @@ static void setup_rom_storage(void)
 
     txbuf[0] = 0x9f;
 
-    flash_do_cmd(txbuf, rxbuf, 4);
+    xflash_do_cmd(txbuf, rxbuf, 4);
 
-    printf("Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
+//    printf("Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
 
     uint8_t mf = rxbuf[1];
     uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
@@ -247,6 +247,7 @@ int main(void)
 		int page = (addr >> 16);
 		if (page < rom_pages) {
 		    rom_file_16 = (uint16_t *) (0x10000000 + rom_start[page]);
+		    xflash_set_ea_reg(page);
 		}
 	    }
 

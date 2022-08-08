@@ -22,7 +22,7 @@
 #include "hardware/irq.h"
 // For resetting the USB controller
 #include "hardware/resets.h"
-#include "hardware/flash.h"
+#include "flashrom.h"
 
 // Device descriptors
 #include "dev_lowlevel.h"
@@ -589,7 +589,7 @@ static uint32_t flash_offset;
 
 // Device specific functions
 void ep1_out_handler(uint8_t *buf, uint16_t len) {
-//    printf("RX %d bytes from host\n", len);
+    printf("RX %d bytes from host\n", len);
 
     if (flash_stage == 0) {
 	if (len != sizeof(struct data_header)) {
@@ -610,6 +610,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 		flash_buffer_pos = 0;
 		flash_received_size = 0;
 		flash_offset = rom_start[flash_header.pages];
+		xflash_set_ea_reg(flash_header.pages);
 	    }
 	} else if (flash_header.type == DATA_INFO) {
 	    tmp->type = DATA_REPLY;
@@ -633,11 +634,11 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 //		printf("flash offset %08X\n", flash_offset);
 		if (flash_offset % 4096 == 0) {
 		    printf("Erase flash %08X\n", flash_offset);
-		    flash_range_erase(flash_offset, 4096);
+		    xflash_range_erase(flash_offset, 4096);
 		}
 
 //		printf("Write flash\n");
-		flash_range_program(flash_offset, flash_buffer, FLASH_BUFFER_SIZE);
+		xflash_range_program(flash_offset, flash_buffer, FLASH_BUFFER_SIZE);
 
 		flash_offset += FLASH_BUFFER_SIZE;
 		flash_buffer_pos = 0;
@@ -646,9 +647,11 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    if (flash_received_size == flash_header.length) {
 		printf("Total bytes received %d\n", flash_received_size);
 		flash_stage = 0;
+		xflash_set_ea_reg(0);
 	    }
 	} else {
 	    printf("Wrong packet size (%d)\n", len);
+	    xflash_set_ea_reg(0);
 	}
     }
 
