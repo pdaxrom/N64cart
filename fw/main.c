@@ -10,6 +10,7 @@
 #include "pico/stdlib.h"
 #include "pico/stdio.h"
 #include "pico/multicore.h"
+#include "hardware/flash.h"
 
 #include "n64_pi.pio.h"
 
@@ -19,11 +20,6 @@
 // The rom to load in normal .z64, big endian, format
 #include "rom.h"
 const uint16_t *rom_file_16 = (uint16_t *) rom_file;
-
-#define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
-
-#define PICO_LA1    (26)
-#define PICO_LA2    (27)
 
 #define UART_TX_PIN (28)
 #define UART_RX_PIN (29)	/* not available on the pico */
@@ -65,6 +61,67 @@ With uncached data from external flash
 
 */
 
+volatile uint32_t rom_pages;
+volatile uint32_t rom_start[4];
+volatile uint32_t rom_size[4];
+
+static const struct flash_chip {
+    uint8_t mf;
+    uint16_t id;
+    uint8_t rom_pages;
+    uint8_t rom_size;
+} flash_chip[] = {
+    { 0xef, 0x4019, 2, 16 },
+    { 0xef, 0x4018, 1, 16 },
+    { 0xef, 0x4017, 1, 8  },
+    { 0xef, 0x4016, 1, 4  },
+    { 0xef, 0x4015, 1, 2  }
+};
+
+extern char __flash_binary_end;
+
+static void setup_rom_storage(void)
+{
+    uint8_t txbuf[4];
+    uint8_t rxbuf[4];
+    uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
+
+    txbuf[0] = 0x9f;
+
+    flash_do_cmd(txbuf, rxbuf, 4);
+
+    printf("Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
+
+    uint8_t mf = rxbuf[1];
+    uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
+
+    rom_pages = 1;
+    rom_start[0] = ((fw_binary_end - 0x10000000) + 4096) & ~4095;
+    rom_size[0] = 2 * 1024 * 1024;
+
+    for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
+	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
+	    rom_pages = flash_chip[i].rom_pages;
+	    rom_size[0] = flash_chip[i].rom_size * 1024 * 1024;
+
+	    for (int p = 1; p < flash_chip[i].rom_pages; p++) {
+		rom_start[p] = 0;
+		rom_size[p] = flash_chip[i].rom_size * 1024 * 1024;
+	    }
+
+	    break;
+	}
+    }
+
+    printf("Available ROM pages:\n");
+
+    for (int i = 0; i < rom_pages; i++) {
+	printf("Page %d\n", i);
+	printf(" Address %08X\n", rom_start[i]);
+	printf(" Size    %d bytes\n", rom_size[i]);
+    }
+}
+
 int main(void)
 {
     // Overclock!
@@ -104,6 +161,8 @@ int main(void)
     // Init UART on pin 28/29
     stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
     printf("N64 cartridge booting!\r\n");
+
+    setup_rom_storage();
 
     // Init PIO before starting the second core
     PIO pio = pio0;

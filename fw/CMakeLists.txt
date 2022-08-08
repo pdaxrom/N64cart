@@ -40,6 +40,7 @@ target_link_libraries(
     hardware_pio
     hardware_resets
     hardware_irq
+    hardware_flash
 )
 
 # Build pio

@@ -580,9 +580,9 @@ static int flash_stage;
 static struct data_header flash_header;
 static int flash_received_size;
 
-extern char __flash_binary_end;
-
-static const uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
+extern volatile uint32_t rom_pages;
+extern volatile uint32_t rom_start[4];
+extern volatile uint32_t rom_size[4];
 
 // Device specific functions
 void ep1_out_handler(uint8_t *buf, uint16_t len) {
@@ -605,6 +605,11 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 		flash_buffer_pos = 0;
 		flash_received_size = 0;
 	    }
+	} else if (flash_header.type == DATA_INFO) {
+	    tmp->type = DATA_REPLY;
+	    tmp->pages = rom_pages;
+	    tmp->address = rom_start[0];
+	    tmp->length = rom_size[0];
 	} else {
 	    printf("Unsupported operation tag %08X\n", flash_header.type);
 	    tmp->type = DATA_UNKNOWN;
@@ -644,7 +649,7 @@ void ep2_in_handler(uint8_t *buf, uint16_t len) {
 
 int usbd_init(void) 
 {
-    stdio_init_all();
+//    stdio_init_all();
     printf("USB Device Low-Level hardware example\n");
     usb_device_init();
 
@@ -656,14 +661,6 @@ int usbd_init(void)
     }
 
     printf("USB Device configured\n");
-
-    printf("Firmware end %p\n", fw_binary_end);
-
-    uint32_t rom_start = ((fw_binary_end - 0x10000000) + 4096) & ~4095;
-
-    printf("ROM start %08X\n", rom_start);
-
-    printf("Available for ROM image %d bytes\n", ROM_SIZE_MAX - rom_start);
 
     // Get ready to rx from host
     usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);

@@ -40,7 +40,38 @@ int err = 1;
 
         libusb_claim_interface(dev_handle, 0);
 
-    FILE *inf = fopen(argv[1], "rb");
+    if (!strcmp(argv[1], "info")) {
+	struct data_header header;
+	header.type = DATA_INFO;
+
+	libusb_bulk_transfer(dev_handle, 0x01, (void *) &header, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "header error transfer\n");
+	    goto exit;
+	}
+
+	libusb_bulk_transfer(dev_handle, 0x82, (void *) &header, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "header reply error transfer\n");
+	    goto exit;
+	} else if (header.type != DATA_REPLY) {
+	    fprintf(stderr, "wrong header reply\n");
+	    goto exit;
+	} else {
+	    printf("Page 0\n");
+	    printf(" Address %08X\n", header.address);
+	    printf(" Size    %d\n", header.length - header.address);
+	    for (int i = 1; i < header.pages; i++) {
+		printf("Page %d\n", i);
+		printf(" Address %08X\n", 0);
+		printf(" Size    %d\n", header.length);
+	    }
+	}
+
+	err = 0;
+    } else if (!strcmp(argv[1], "write")) {
+
+    FILE *inf = fopen(argv[2], "rb");
     if (!inf) {
 	fprintf(stderr, "Cannot open file %s\n", argv[1]);
 	goto exit;
@@ -114,6 +145,10 @@ int err = 1;
 	    err = 0;
 	}
 
+    }
+
+    } else {
+	fprintf(stderr, "Unknown command\n");
     }
 
  exit:

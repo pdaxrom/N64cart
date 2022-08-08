@@ -6,11 +6,13 @@
 #define DATA_REPLY	0x43212344
 #define DATA_WRITE	0x43212345
 #define DATA_READ	0x43212346
+#define DATA_INFO	0x43212347
 
 struct __attribute__((__packed__)) data_header {
     uint32_t	type;
     uint32_t	address;
     uint32_t	length;
+    uint32_t	pages;
 };
 
 #endif
