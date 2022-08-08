@@ -19,7 +19,7 @@
 
 // The rom to load in normal .z64, big endian, format
 #include "rom.h"
-const uint16_t *rom_file_16 = (uint16_t *) rom_file;
+static uint16_t *rom_file_16 = (uint16_t *) rom_file;
 
 #define UART_TX_PIN (28)
 #define UART_RX_PIN (29)	/* not available on the pico */
@@ -230,6 +230,8 @@ int main(void)
 		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x0100) | 0xf000;
 	    } else if (last_addr == 0x1fd01006) {
 		word = uart_get_hw(UART_ID)->dr << 8;
+	    } else if (last_addr == 0x1fd0100c) {
+		word = rom_pages << 8;
 	    } else {
 		word = 0xdead;
 	    }
@@ -241,6 +243,11 @@ int main(void)
 		uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
 	    } else if (last_addr == 0x1fd0100a) {
 		gpio_put(LED_PIN, (addr >> 16) & 0x01);
+	    } else if (last_addr == 0x1fd0100e) {
+		int page = (addr >> 16);
+		if (page < rom_pages) {
+		    rom_file_16 = (uint16_t *) (0x10000000 + rom_start[page]);
+		}
 	    }
 
 	    last_addr += 2;

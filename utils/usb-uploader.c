@@ -70,8 +70,9 @@ int main(int argc, char **argv)
 
 	err = 0;
     } else if (!strcmp(argv[1], "write")) {
+	int page = atoi(argv[2]);
 
-	FILE *inf = fopen(argv[2], "rb");
+	FILE *inf = fopen(argv[3], "rb");
 	if (!inf) {
 	    fprintf(stderr, "Cannot open file %s\n", argv[1]);
 	    goto exit;
@@ -82,6 +83,7 @@ int main(int argc, char **argv)
 	fseek(inf, 0, SEEK_SET);
 
 	fprintf(stderr, "ROM size %d\n", size);
+	fprintf(stderr, "Write to page %d\n", page);
 
 	struct data_header *header = alloca(sizeof(struct data_header));
 	struct data_header *header_reply = alloca(sizeof(struct data_header));
@@ -89,6 +91,7 @@ int main(int argc, char **argv)
 	header->type = DATA_WRITE;
 	header->address = 0;
 	header->length = size;
+	header->pages = page;
 
 	libusb_bulk_transfer(dev_handle, 0x01, (void *)header, sizeof(struct data_header), &actual, 5000);
 	if (actual != sizeof(struct data_header)) {
@@ -103,6 +106,9 @@ int main(int argc, char **argv)
 	} else if (header_reply->type != DATA_REPLY) {
 	    fprintf(stderr, "Wrong header reply\n");
 	    goto exit;
+	} else if (header_reply->pages != header->pages) {
+	    fprintf(stderr, "Wrong page\n");
+	    goto exit;
 	} else if (header_reply->length != header->length) {
 	    fprintf(stderr, "Wrong ROM size\n");
 	    goto exit;
@@ -115,18 +121,18 @@ int main(int argc, char **argv)
 		if (r == 64) {
 		    libusb_bulk_transfer(dev_handle, 0x01, buf, 64, &actual, 5000);
 		    if (actual != 64) {
-			fprintf(stderr, "Data transfer error\n");
+			fprintf(stderr, "\nData transfer error\n");
 			break;
 		    }
 
 		    libusb_bulk_transfer(dev_handle, 0x82, buf_in, sizeof(buf_in), &actual, 5000);
 		    if (actual != 64) {
-			fprintf(stderr, "Data receive error\n");
+			fprintf(stderr, "\nData receive error\n");
 			break;
 		    }
 
 		    if (memcmp(buf, buf_in, 64)) {
-			fprintf(stderr, "Device received wrong data\n");
+			fprintf(stderr, "\nDevice received wrong data\n");
 			break;
 		    }
 
@@ -136,12 +142,13 @@ int main(int argc, char **argv)
 			printf("Send %d bytes of %d\r", header->length - size, header->length);
 		    }
 		} else {
-		    fprintf(stderr, "Error - unaligned ROM file (align 64)\n");
+		    fprintf(stderr, "\nError - unaligned ROM file (align 64)\n");
 		    break;
 		}
 	    }
 
 	    if (size == 0) {
+		printf("\n");
 		err = 0;
 	    }
 
