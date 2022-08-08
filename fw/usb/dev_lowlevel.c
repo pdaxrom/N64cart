@@ -26,7 +26,7 @@
 // Device descriptors
 #include "dev_lowlevel.h"
 
-#include "../utils/utils.h"
+#include "../../utils/utils.h"
 
 #define usb_hw_set hw_set_alias(usb_hw)
 #define usb_hw_clear hw_clear_alias(usb_hw)
@@ -580,6 +580,10 @@ static int flash_stage;
 static struct data_header flash_header;
 static int flash_received_size;
 
+extern char __flash_binary_end;
+
+static const uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
+
 // Device specific functions
 void ep1_out_handler(uint8_t *buf, uint16_t len) {
 //    printf("RX %d bytes from host\n", len);
@@ -652,6 +656,14 @@ int usbd_init(void)
     }
 
     printf("USB Device configured\n");
+
+    printf("Firmware end %p\n", fw_binary_end);
+
+    uint32_t rom_start = ((fw_binary_end - 0x10000000) + 4096) & ~4095;
+
+    printf("ROM start %08X\n", rom_start);
+
+    printf("Available for ROM image %d bytes\n", ROM_SIZE_MAX - rom_start);
 
     // Get ready to rx from host
     usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
