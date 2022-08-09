@@ -5,26 +5,17 @@
  */
 
 #include <stdio.h>
-
-// Pico
 #include "pico/stdlib.h"
-
-// For memcpy
 #include <string.h>
-
-// Include descriptor struct definitions
 #include "usb_common.h"
-// USB register definitions from pico-sdk
 #include "hardware/regs/usb.h"
-// USB hardware struct definitions from pico-sdk
 #include "hardware/structs/usb.h"
-// For interrupt enable and numbers
 #include "hardware/irq.h"
-// For resetting the USB controller
 #include "hardware/resets.h"
+#include "hardware/sync.h"
+#include "hardware/flash.h"
 #include "flashrom.h"
 
-// Device descriptors
 #include "dev_lowlevel.h"
 
 #include "../../utils/utils.h"
@@ -572,10 +563,11 @@ void ep0_out_handler(uint8_t *buf, uint16_t len) {
 }
 
 
-#define FLASH_BUFFER_SIZE	256
+//#define FLASH_BUFFER_SIZE	1024
+#define FLASH_BUFFER_SIZE	4096
 #define ROM_SIZE_MAX		(16 * 1024 * 1024)
 
-static uint8_t flash_buffer[256];
+static uint8_t flash_buffer[FLASH_BUFFER_SIZE];
 static int flash_buffer_pos;
 static int flash_stage;
 static struct data_header flash_header;
@@ -589,7 +581,7 @@ static uint32_t flash_offset;
 
 // Device specific functions
 void ep1_out_handler(uint8_t *buf, uint16_t len) {
-    printf("RX %d bytes from host\n", len);
+//    printf("RX %d bytes from host\n", len);
 
     if (flash_stage == 0) {
 	if (len != sizeof(struct data_header)) {
@@ -610,7 +602,8 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 		flash_buffer_pos = 0;
 		flash_received_size = 0;
 		flash_offset = rom_start[flash_header.pages];
-		xflash_set_ea_reg(flash_header.pages);
+		flash_set_ea_reg(flash_header.pages);
+		printf("Write ROM %d bytes to ROM page %d\n", flash_header.length, flash_header.pages);
 	    }
 	} else if (flash_header.type == DATA_INFO) {
 	    tmp->type = DATA_REPLY;
@@ -628,17 +621,21 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    flash_received_size += len;
 	    if (flash_buffer_pos == FLASH_BUFFER_SIZE) {
 		if (flash_received_size % 1024 == 0) {
-		    printf("Received %d of %d\n", flash_received_size, flash_header.length);
+//		    printf("Received %d of %d          \r", flash_received_size, flash_header.length);
 		}
+
+//		uint32_t ints = save_and_disable_interrupts();
 
 //		printf("flash offset %08X\n", flash_offset);
 		if (flash_offset % 4096 == 0) {
-		    printf("Erase flash %08X\n", flash_offset);
-		    xflash_range_erase(flash_offset, 4096);
+//		    printf("Erase flash %08X\r", flash_offset);
+		    flash_range_erase(flash_offset, 4096);
 		}
 
-//		printf("Write flash\n");
-		xflash_range_program(flash_offset, flash_buffer, FLASH_BUFFER_SIZE);
+//		printf("Write flash             \r");
+		flash_range_program(flash_offset, flash_buffer, FLASH_BUFFER_SIZE);
+
+//		restore_interrupts (ints);
 
 		flash_offset += FLASH_BUFFER_SIZE;
 		flash_buffer_pos = 0;
@@ -647,11 +644,11 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    if (flash_received_size == flash_header.length) {
 		printf("Total bytes received %d\n", flash_received_size);
 		flash_stage = 0;
-		xflash_set_ea_reg(0);
+		flash_set_ea_reg(0);
 	    }
 	} else {
-	    printf("Wrong packet size (%d)\n", len);
-	    xflash_set_ea_reg(0);
+	    printf("Wrong packet size %d\n", len);
+	    flash_set_ea_reg(0);
 	}
     }
 

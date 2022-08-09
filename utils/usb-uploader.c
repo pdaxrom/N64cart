@@ -4,6 +4,24 @@
 #include <libusb-1.0/libusb.h>
 #include "utils.h"
 
+#define RETRY_MAX	50 
+
+static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoint,
+		  unsigned char *data, int length, int *transferred, unsigned int timeout)
+{
+    int ret;
+    int try = 0;
+    do {
+	ret = libusb_bulk_transfer(devh, endpoint, data, length, transferred, timeout);
+	if (ret == LIBUSB_ERROR_PIPE) {
+	    //fprintf(stderr, "usb stalled, retry\n");
+	    libusb_clear_halt(devh, endpoint);
+	}
+	try++;
+    } while ((ret == LIBUSB_ERROR_PIPE) && (try < RETRY_MAX));
+    return ret;
+}
+
 int main(int argc, char **argv)
 {
     libusb_context *ctx = NULL;
@@ -44,13 +62,13 @@ int main(int argc, char **argv)
 	struct data_header header;
 	header.type = DATA_INFO;
 
-	libusb_bulk_transfer(dev_handle, 0x01, (void *)&header, sizeof(struct data_header), &actual, 5000);
+	bulk_transfer(dev_handle, 0x01, (void *)&header, sizeof(struct data_header), &actual, 5000);
 	if (actual != sizeof(struct data_header)) {
 	    fprintf(stderr, "Header error transfer\n");
 	    goto exit;
 	}
 
-	libusb_bulk_transfer(dev_handle, 0x82, (void *)&header, sizeof(struct data_header), &actual, 5000);
+	bulk_transfer(dev_handle, 0x82, (void *)&header, sizeof(struct data_header), &actual, 5000);
 	if (actual != sizeof(struct data_header)) {
 	    fprintf(stderr, "Header reply error transfer\n");
 	    goto exit;
@@ -70,6 +88,7 @@ int main(int argc, char **argv)
 
 	err = 0;
     } else if (!strcmp(argv[1], "write")) {
+	int ret;
 	int page = atoi(argv[2]);
 
 	FILE *inf = fopen(argv[3], "rb");
@@ -93,13 +112,13 @@ int main(int argc, char **argv)
 	header->length = size;
 	header->pages = page;
 
-	libusb_bulk_transfer(dev_handle, 0x01, (void *)header, sizeof(struct data_header), &actual, 5000);
+	bulk_transfer(dev_handle, 0x01, (void *)header, sizeof(struct data_header), &actual, 5000);
 	if (actual != sizeof(struct data_header)) {
 	    fprintf(stderr, "Header error transfer\n");
 	    goto exit;
 	}
 
-	libusb_bulk_transfer(dev_handle, 0x82, (void *)header_reply, sizeof(struct data_header), &actual, 5000);
+	bulk_transfer(dev_handle, 0x82, (void *)header_reply, sizeof(struct data_header), &actual, 5000);
 	if (actual != sizeof(struct data_header)) {
 	    fprintf(stderr, "Header reply error transfer\n");
 	    goto exit;
@@ -119,13 +138,17 @@ int main(int argc, char **argv)
 	    while (size) {
 		int r = fread(buf, 1, 64, inf);
 		if (r == 64) {
-		    libusb_bulk_transfer(dev_handle, 0x01, buf, 64, &actual, 5000);
+		    ret = bulk_transfer(dev_handle, 0x01, buf, 64, &actual, 5000);
+		    if (ret) {
+			fprintf(stderr, "data transfer error - libusb error %d\n", ret);
+			break;
+		    }
 		    if (actual != 64) {
-			fprintf(stderr, "\nData transfer error\n");
+			fprintf(stderr, "\nData transfer error (%d of 64)\n", actual);
 			break;
 		    }
 
-		    libusb_bulk_transfer(dev_handle, 0x82, buf_in, sizeof(buf_in), &actual, 5000);
+		    bulk_transfer(dev_handle, 0x82, buf_in, sizeof(buf_in), &actual, 5000);
 		    if (actual != 64) {
 			fprintf(stderr, "\nData receive error\n");
 			break;
