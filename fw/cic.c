@@ -31,6 +31,7 @@ Data Line, Bidir (DIO):  CIC Pin 15
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 
+#include "main.h"
 #include "cic.h"
 #include "n64.h"
 #include "usb/usbd.h"
@@ -119,7 +120,7 @@ unsigned char _6105Mem[32];
 static bool check_running(void)
 {
     if (gpio_get(N64_NMI) == 0) {
-        printf("N64 NMI\n");
+//        printf("N64 NMI\n");
     }
 
     if (gpio_get(N64_COLD_RESET) == 0) {
@@ -499,12 +500,13 @@ static void cic_run(void)
 
     printf("CIC Emulator core running!\r\n");
 
+    if (gpio_get(N64_NMI) == 0) {
+        printf("N64 NMI low\n");
+	usbd_init();
+    }
+
     // Wait for reset to be released
     while (gpio_get(N64_COLD_RESET) == 0) {
-        if (gpio_get(N64_NMI) == 0) {
-            printf("N64 NMI low\n");
-	    usbd_init();
-        }
         tight_loop_contents();
     }
 
@@ -562,6 +564,7 @@ static void cic_run(void)
         }
     }
 
+    n64_pi_restart();
     printf("CIC Emulator core finished!\r\n");
 }
 

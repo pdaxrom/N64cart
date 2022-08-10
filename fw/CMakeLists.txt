@@ -28,6 +28,7 @@ add_compile_options(
 add_executable(
     n64cart
     main.c
+    n64_pi.c
     cic.c
     flashrom.c
     usb/dev_lowlevel.c

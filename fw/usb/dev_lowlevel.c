@@ -17,7 +17,7 @@
 #include "flashrom.h"
 
 #include "dev_lowlevel.h"
-
+#include "../main.h"
 #include "../../utils/utils.h"
 
 #define usb_hw_set hw_set_alias(usb_hw)
@@ -377,6 +377,10 @@ void usb_set_device_configuration(volatile struct usb_setup_packet *pkt) {
 #endif
     usb_acknowledge_out_request();
     configured = true;
+
+    // Get ready to rx from host
+    printf("USB Device configured\n");
+    usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 }
 
 /**
@@ -573,10 +577,6 @@ static int flash_stage;
 static struct data_header flash_header;
 static int flash_received_size;
 
-extern volatile uint32_t rom_pages;
-extern volatile uint32_t rom_start[4];
-extern volatile uint32_t rom_size[4];
-
 static uint32_t flash_offset;
 
 // Device specific functions
@@ -672,19 +672,19 @@ int usbd_init(void)
     flash_stage = 0;
 
     // Wait until configured
-    while (!configured) {
-        tight_loop_contents();
-    }
+//    while (!configured) {
+//        tight_loop_contents();
+//    }
 
-    printf("USB Device configured\n");
+//    printf("USB Device configured\n");
 
     // Get ready to rx from host
-    usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
+//    usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 
     // Everything is interrupt driven so just loop here
-    while (1) {
-        tight_loop_contents();
-    }
+//    while (1) {
+//        tight_loop_contents();
+//    }
 
     return 0;
 }
