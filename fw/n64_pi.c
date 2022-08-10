@@ -113,7 +113,7 @@ void n64_pi(void)
 		do {
 		    word = sram_16[resolve_sram_address(last_addr) >> 1];
 
-		    pio_sm_put(pio, 0, swap8(word));
+		    pio_sm_put(pio, 0, word);
 		    last_addr += 2;
 		    addr = pio_sm_get_blocking(pio, 0);
 		} while (addr == 0);
