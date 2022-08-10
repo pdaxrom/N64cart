@@ -615,7 +615,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    tmp->type = DATA_UNKNOWN;
 	}
     } else if (flash_stage == 1) {
-	if (len == 64) {
+	if (len == 32) {
 	    memmove(&flash_buffer[flash_buffer_pos], buf, len);
 	    flash_buffer_pos += len;
 	    flash_received_size += len;

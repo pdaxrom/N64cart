@@ -136,30 +136,30 @@ int main(int argc, char **argv)
 	    uint8_t buf_in[64];
 
 	    while (size) {
-		int r = fread(buf, 1, 64, inf);
-		if (r == 64) {
-		    ret = bulk_transfer(dev_handle, 0x01, buf, 64, &actual, 5000);
+		int r = fread(buf, 1, 32, inf);
+		if (r == 32) {
+		    ret = bulk_transfer(dev_handle, 0x01, buf, 32, &actual, 5000);
 		    if (ret) {
 			fprintf(stderr, "data transfer error - libusb error %d\n", ret);
 			break;
 		    }
-		    if (actual != 64) {
+		    if (actual != 32) {
 			fprintf(stderr, "\nData transfer error (%d of 64)\n", actual);
 			break;
 		    }
 
 		    bulk_transfer(dev_handle, 0x82, buf_in, sizeof(buf_in), &actual, 5000);
-		    if (actual != 64) {
+		    if (actual != 32) {
 			fprintf(stderr, "\nData receive error\n");
 			break;
 		    }
 
-		    if (memcmp(buf, buf_in, 64)) {
+		    if (memcmp(buf, buf_in, 32)) {
 			fprintf(stderr, "\nDevice received wrong data\n");
 			break;
 		    }
 
-		    size -= 64;
+		    size -= 32;
 
 		    if ((header->length - size) % 1024 == 0) {
 			printf("Send %d bytes of %d\r", header->length - size, header->length);
