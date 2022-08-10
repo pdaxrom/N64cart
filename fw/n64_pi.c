@@ -10,9 +10,28 @@
 #include "n64_pi.pio.h"
 #include "n64.h"
 
-// The rom to load in normal .z64, big endian, format
 #include "rom.h"
+
 static uint16_t *rom_file_16;
+
+#if PI_SRAM
+static uint16_t *sram_16 = (uint16_t *) sram_8;
+
+static inline uint32_t resolve_sram_address(uint32_t address)
+{
+    uint32_t bank = (address >> 18) & 0x3;
+    uint32_t resolved_address;
+
+    if (bank) {
+        resolved_address = address & (SRAM_256KBIT_SIZE - 1);
+        resolved_address |= bank << 15;
+    } else {
+        resolved_address = address & (SRAM_1MBIT_SIZE - 1);
+    }
+
+    return resolved_address;
+}
+#endif
 
 static inline uint32_t swap16(uint32_t value)
 {
@@ -65,7 +84,11 @@ void n64_pi(void)
 		last_addr += 2;
 
 		//word = 0x40FF;
+#if PI_SRAM
+		word = 0x4020;
+#else
 		word = 0x401c;
+#endif
 		//word = 0x4012;
 		addr = pio_sm_get_blocking(pio, 0);
 		if (addr == 0) {
@@ -85,6 +108,18 @@ void n64_pi(void)
 		} while (addr == 0);
 
 		continue;
+#if PI_SRAM
+	    } else if (last_addr >= 0x08000000 && last_addr <= 0x0FFFFFFF) {
+		do {
+		    word = sram_16[resolve_sram_address(last_addr) >> 1];
+
+		    pio_sm_put(pio, 0, swap8(word));
+		    last_addr += 2;
+		    addr = pio_sm_get_blocking(pio, 0);
+		} while (addr == 0);
+
+		continue;
+#endif
 	    } else if (last_addr == 0x1fd01002) {
 		word =
 		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x0200) |
@@ -100,6 +135,18 @@ void n64_pi(void)
 	    last_addr += 2;
 	} else if (addr & 0x1) {
 	    // WRITE
+#if PI_SRAM
+	    if (last_addr >= 0x08000000 && last_addr <= 0x0FFFFFFF) {
+		do {
+		    sram_16[resolve_sram_address(last_addr) >> 1] = addr >> 16;
+
+		    last_addr += 2;
+		    addr = pio_sm_get_blocking(pio, 0);
+		} while (addr & 0x01);
+
+		continue;
+	    } else 
+#endif
 	    if (last_addr == 0x1fd01006) {
 		uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
 	    } else if (last_addr == 0x1fd0100a) {

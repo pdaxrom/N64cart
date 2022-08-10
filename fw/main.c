@@ -76,7 +76,7 @@ static void setup_rom_storage(void)
     uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
 
     rom_pages = 1;
-    rom_start[0] = ((fw_binary_end - 0x10000000) + 4096) & ~4095;
+    rom_start[0] = ((fw_binary_end - XIP_BASE) + 4096) & ~4095;
     rom_size[0] = 2 * 1024 * 1024;
 
     for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
@@ -98,7 +98,7 @@ static void setup_rom_storage(void)
     for (int i = 0; i < rom_pages; i++) {
 	printf("Page %d\n", i);
 	printf(" Address %08X\n", rom_start[i]);
-	printf(" Size    %d bytes\n", rom_size[i]);
+	printf(" Size    %d bytes\n", rom_size[i] - rom_start[i]);
     }
 }
 
@@ -107,6 +107,21 @@ void n64_pi_restart(void)
     multicore_reset_core1();
     multicore_launch_core1(n64_pi);
 }
+
+#if PI_SRAM
+const uint8_t __aligned(4096) __in_flash("n64_sram") n64_sram[SRAM_1MBIT_SIZE];
+
+uint8_t sram_8[SRAM_1MBIT_SIZE];
+
+void n64_save_sram(void)
+{
+    uint32_t offset = ((uint32_t) n64_sram) - XIP_BASE;
+    uint32_t count = sizeof(n64_sram);
+
+    flash_range_erase(offset, count);
+    flash_range_program(offset, sram_8, count);
+}
+#endif
 
 int main(void)
 {
@@ -149,6 +164,8 @@ int main(void)
     printf("N64 cartridge booting!\r\n");
 
     setup_rom_storage();
+
+    memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
 
     multicore_launch_core1(n64_pi);
 
