@@ -90,10 +90,29 @@ int main(int argc, char **argv)
     } else if (!strcmp(argv[1], "write")) {
 	int ret;
 	int page = atoi(argv[2]);
+	uint32_t type;
 
 	FILE *inf = fopen(argv[3], "rb");
 	if (!inf) {
 	    fprintf(stderr, "Cannot open file %s\n", argv[1]);
+	    goto exit;
+	}
+
+	
+	fread(&type, 1, 4, inf);
+	fprintf(stderr, ">> %08X\n", type);
+	fprintf(stderr, "ROM type ");
+	if (type == 0x40123780) {
+	    type = 0;
+	    fprintf(stderr, "Z64\n");
+	} else if (type == 0x80371240) {
+	    type = 1;
+	    fprintf(stderr, "N64\n");
+	} else if (type == 0x12408037) {
+	    type = 2;
+	    fprintf(stderr, "V64\n");
+	} else {
+	    fprintf(stderr, "Unknown\n\nError!\n");
 	    goto exit;
 	}
 
@@ -138,6 +157,27 @@ int main(int argc, char **argv)
 	    while (size) {
 		int r = fread(buf, 1, 32, inf);
 		if (r == 32) {
+		    if (type) {
+			for (int i = 0; i < 32; i += 4) {
+			    uint8_t tmp;
+			    if (type == 1) {
+				tmp = buf[i + 0];
+				buf[i + 0] = buf[i + 3];
+				buf[i + 3] = tmp;
+				tmp = buf[i + 2];
+				buf[i + 2] = buf[i + 1];
+				buf[i + 1] = tmp;
+			    } else {
+				tmp = buf[i + 0];
+				buf[i + 0] = buf[i + 1];
+				buf[i + 1] = tmp;
+				tmp = buf[i + 2];
+				buf[i + 2] = buf[i + 3];
+				buf[i + 3] = tmp;
+			    }
+			}
+		    }
+
 		    ret = bulk_transfer(dev_handle, 0x01, buf, 32, &actual, 5000);
 		    if (ret) {
 			fprintf(stderr, "data transfer error - libusb error %d\n", ret);
