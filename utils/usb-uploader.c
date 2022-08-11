@@ -87,7 +87,101 @@ int main(int argc, char **argv)
 	}
 
 	err = 0;
-    } else if (!strcmp(argv[1], "write")) {
+    } else if (!strcmp(argv[1], "picture")) {
+	int ret;
+
+	FILE *inf = fopen(argv[2], "rb");
+	if (!inf) {
+	    fprintf(stderr, "Cannot open file %s\n", argv[1]);
+	    goto exit;
+	}
+
+	fseek(inf, 0, SEEK_END);
+	int size = ftell(inf);
+	fseek(inf, 0, SEEK_SET);
+
+	fprintf(stderr, "Picture size %d\n", size);
+
+	int data_size = (size + 4095) & ~4095;
+
+	fprintf(stderr, "Picture transfer size %d\n", data_size);
+
+	struct data_header *header = alloca(sizeof(struct data_header));
+	struct data_header *header_reply = alloca(sizeof(struct data_header));
+
+	header->type = DATA_PICTURE;
+	header->address = 0;
+	header->length = size;
+
+	bulk_transfer(dev_handle, 0x01, (void *)header, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "Header error transfer\n");
+	    goto exit;
+	}
+
+	bulk_transfer(dev_handle, 0x82, (void *)header_reply, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "Header reply error transfer\n");
+	    goto exit;
+	} else if (header_reply->type != DATA_REPLY) {
+	    fprintf(stderr, "Wrong header reply\n");
+	    goto exit;
+	} else if (header_reply->length != header->length) {
+	    fprintf(stderr, "Wrong picture size\n");
+	    goto exit;
+	} else {
+	    uint8_t buf[64];
+	    uint8_t buf_in[64];
+	    int saved_size = data_size;
+
+	    while (data_size) {
+		if (size > 0) {
+		    int r = fread(buf, 1, 32, inf);
+		    if (r > 0) {
+			size -= r;
+		    } else {
+			fprintf(stderr, "Read file error!\n");
+			break;
+		    }
+		} else {
+		    memset(buf, 0xff, sizeof(buf));
+		}
+
+		ret = bulk_transfer(dev_handle, 0x01, buf, 32, &actual, 5000);
+		if (ret) {
+		    fprintf(stderr, "data transfer error - libusb error %d\n", ret);
+		    break;
+		}
+		if (actual != 32) {
+		    fprintf(stderr, "\nData transfer error (%d of 32)\n", actual);
+		    break;
+		}
+
+		bulk_transfer(dev_handle, 0x82, buf_in, sizeof(buf_in), &actual, 5000);
+		if (actual != 32) {
+		    fprintf(stderr, "\nData receive error\n");
+		    break;
+		}
+
+		if (memcmp(buf, buf_in, 32)) {
+		    fprintf(stderr, "\nDevice received wrong data\n");
+		    break;
+		}
+
+		data_size -= 32;
+
+		if ((saved_size - data_size) % 1024 == 0) {
+		    printf("Send %d bytes of %d\r", saved_size - data_size, saved_size);
+		}
+	    }
+
+	    if (size == 0) {
+		printf("\n");
+		err = 0;
+	    }
+
+	}
+    } else if (!strcmp(argv[1], "rom")) {
 	int ret;
 	int page = atoi(argv[2]);
 	uint32_t type;
@@ -100,7 +194,6 @@ int main(int argc, char **argv)
 
 	
 	fread(&type, 1, 4, inf);
-	fprintf(stderr, ">> %08X\n", type);
 	fprintf(stderr, "ROM type ");
 	if (type == 0x40123780) {
 	    type = 0;
@@ -184,7 +277,7 @@ int main(int argc, char **argv)
 			break;
 		    }
 		    if (actual != 32) {
-			fprintf(stderr, "\nData transfer error (%d of 64)\n", actual);
+			fprintf(stderr, "\nData transfer error (%d of 32)\n", actual);
 			break;
 		    }
 
@@ -216,7 +309,6 @@ int main(int argc, char **argv)
 	    }
 
 	}
-
     } else {
 	fprintf(stderr, "Unknown command\n");
     }

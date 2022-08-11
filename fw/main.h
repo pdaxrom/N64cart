@@ -12,6 +12,8 @@
 #define SRAM_768KBIT_SIZE         0x00018000
 #define SRAM_1MBIT_SIZE           0x00020000
 
+extern volatile uint32_t jpeg_start;
+
 extern volatile uint32_t rom_pages;
 extern volatile uint32_t rom_start[4];
 extern volatile uint32_t rom_size[4];

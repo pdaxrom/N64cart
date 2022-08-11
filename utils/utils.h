@@ -7,6 +7,7 @@
 #define DATA_WRITE	0x43212345
 #define DATA_READ	0x43212346
 #define DATA_INFO	0x43212347
+#define DATA_PICTURE	0x43212348
 
 struct __attribute__((__packed__)) data_header {
     uint32_t	type;

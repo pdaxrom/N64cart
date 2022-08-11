@@ -13,6 +13,7 @@
 #include "rom.h"
 
 static uint16_t *rom_file_16;
+static uint16_t *rom_jpeg_16;
 
 #if PI_SRAM
 static uint16_t *sram_16 = (uint16_t *) sram_8;
@@ -48,6 +49,7 @@ static inline uint32_t swap8(uint16_t value)
 void n64_pi(void)
 {
     rom_file_16 = (uint16_t *) rom_file;
+    rom_jpeg_16 = (uint16_t *) (XIP_BASE + jpeg_start);
 
     PIO pio = pio0;
     pio_clear_instruction_memory(pio);
@@ -120,6 +122,16 @@ void n64_pi(void)
 
 		continue;
 #endif
+	    } else if (last_addr >= 0x1fd80000) {
+		do {
+		    word = rom_jpeg_16[(last_addr & 0xFFFF) >> 1];
+
+		    pio_sm_put(pio, 0, swap8(word));
+		    last_addr += 2;
+		    addr = pio_sm_get_blocking(pio, 0);
+		} while (addr == 0);
+
+		continue;
 	    } else if (last_addr == 0x1fd01002) {
 		word =
 		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x0200) |

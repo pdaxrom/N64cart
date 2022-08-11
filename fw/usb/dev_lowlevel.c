@@ -570,6 +570,7 @@ void ep0_out_handler(uint8_t *buf, uint16_t len) {
 //#define FLASH_BUFFER_SIZE	1024
 #define FLASH_BUFFER_SIZE	4096
 #define ROM_SIZE_MAX		(16 * 1024 * 1024)
+#define PICTURE_SIZE_MAX	(64 * 1024)
 
 static uint8_t flash_buffer[FLASH_BUFFER_SIZE];
 static int flash_buffer_pos;
@@ -585,25 +586,34 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 
     if (flash_stage == 0) {
 	if (len != sizeof(struct data_header)) {
-	    printf("wrong header size\n");
+	    printf("Wrong header size\n");
 	    usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 	    return;
 	}
 	memmove(&flash_header, buf, sizeof(struct data_header));
 	struct data_header *tmp = (struct data_header *) buf;
-	if (flash_header.type == DATA_WRITE) {
+	if (flash_header.type == DATA_WRITE || flash_header.type == DATA_PICTURE) {
 	    tmp->type = DATA_REPLY;
-	    if (flash_header.pages + 1 > rom_pages) {
+	    if (flash_header.type == DATA_WRITE && flash_header.pages + 1 > rom_pages) {
 		tmp->pages = rom_pages;
-	    } else if (flash_header.length > ROM_SIZE_MAX) {
+	    } else if (flash_header.type == DATA_WRITE && flash_header.length > ROM_SIZE_MAX) {
 		tmp->length = ROM_SIZE_MAX;
+	    } else if (flash_header.type == DATA_PICTURE && flash_header.length > PICTURE_SIZE_MAX) {
+		tmp->length = PICTURE_SIZE_MAX;
 	    } else {
 		flash_stage = 1;
 		flash_buffer_pos = 0;
 		flash_received_size = 0;
-		flash_offset = rom_start[flash_header.pages];
-		flash_set_ea_reg(flash_header.pages);
-		printf("Write ROM %d bytes to ROM page %d\n", flash_header.length, flash_header.pages);
+		if (flash_header.type == DATA_WRITE) {
+		    flash_offset = rom_start[flash_header.pages];
+		    flash_set_ea_reg(flash_header.pages);
+		    printf("Write ROM %d bytes to ROM page %d\n", flash_header.length, flash_header.pages);
+		} else {
+		    flash_offset = jpeg_start;
+		    flash_set_ea_reg(0);
+		    flash_header.length = (flash_header.length + 4095) & ~4095;
+		    printf("Write picture %d bytes\n", flash_header.length);
+		}
 	    }
 	} else if (flash_header.type == DATA_INFO) {
 	    tmp->type = DATA_REPLY;

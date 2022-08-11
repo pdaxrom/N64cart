@@ -41,6 +41,8 @@ With uncached data from external flash
 
 */
 
+volatile uint32_t jpeg_start;
+
 volatile uint32_t rom_pages;
 volatile uint32_t rom_start[4];
 volatile uint32_t rom_size[4];
@@ -75,8 +77,10 @@ static void setup_rom_storage(void)
     uint8_t mf = rxbuf[1];
     uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
 
+    jpeg_start = ((fw_binary_end - XIP_BASE) + 4095) & ~4095;
+
     rom_pages = 1;
-    rom_start[0] = ((fw_binary_end - XIP_BASE) + 4096) & ~4095;
+    rom_start[0] = jpeg_start + 64 * 1024;
     rom_size[0] = 2 * 1024 * 1024;
 
     for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
