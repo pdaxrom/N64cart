@@ -12419,6 +12419,8 @@ Source: www.st.com, BAT60J.pdf</description>
 <part name="R7" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="R0402" package3d_urn="urn:adsk.eagle:package:23547/3" value="1K"/>
 <part name="GND26" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 <part name="U3" library="W25Q256JVEIQ_TR" deviceset="W25Q256JVEIQ_TR" device=""/>
+<part name="C4" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="C-EU" device="C0402" package3d_urn="urn:adsk.eagle:package:23626/2" value="100n"/>
+<part name="GND27" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -12657,6 +12659,13 @@ Source: www.st.com, BAT60J.pdf</description>
 <attribute name="NAME" x="375.9185" y="320.5495" size="2.540359375" layer="95"/>
 <attribute name="VALUE" x="375.9182" y="296.6696" size="2.540459375" layer="96"/>
 </instance>
+<instance part="C4" gate="G$1" x="469.9" y="388.62" smashed="yes">
+<attribute name="NAME" x="471.424" y="389.001" size="1.778" layer="95"/>
+<attribute name="VALUE" x="471.424" y="383.921" size="1.778" layer="96"/>
+</instance>
+<instance part="GND27" gate="1" x="469.9" y="378.46" smashed="yes">
+<attribute name="VALUE" x="467.36" y="375.92" size="1.778" layer="96"/>
+</instance>
 </instances>
 <busses>
 </busses>
@@ -12858,6 +12867,11 @@ Source: www.st.com, BAT60J.pdf</description>
 <pinref part="GND26" gate="1" pin="GND"/>
 <pinref part="R7" gate="G$1" pin="2"/>
 <wire x1="614.68" y1="302.26" x2="614.68" y2="307.34" width="0.1524" layer="91"/>
+</segment>
+<segment>
+<pinref part="GND27" gate="1" pin="GND"/>
+<pinref part="C4" gate="G$1" pin="2"/>
+<wire x1="469.9" y1="381" x2="469.9" y2="383.54" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="+3V3" class="0">
@@ -13575,8 +13589,12 @@ Source: www.st.com, BAT60J.pdf</description>
 </segment>
 <segment>
 <pinref part="U$1" gate="A" pin="VIN"/>
-<wire x1="472.44" y1="396.24" x2="464.82" y2="396.24" width="0.1524" layer="91"/>
+<wire x1="472.44" y1="396.24" x2="469.9" y2="396.24" width="0.1524" layer="91"/>
 <label x="464.82" y="396.24" size="1.27" layer="95" rot="R180" xref="yes"/>
+<pinref part="C4" gate="G$1" pin="1"/>
+<wire x1="469.9" y1="396.24" x2="464.82" y2="396.24" width="0.1524" layer="91"/>
+<wire x1="469.9" y1="391.16" x2="469.9" y2="396.24" width="0.1524" layer="91"/>
+<junction x="469.9" y="396.24"/>
 </segment>
 </net>
 <net name="SWCLK" class="0">
