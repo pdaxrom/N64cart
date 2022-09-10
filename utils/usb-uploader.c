@@ -22,6 +22,14 @@ static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoi
     return ret;
 }
 
+static void usage(char *app)
+{
+    printf("Usage:\n");
+    printf("  %s info\n", app);
+    printf("  %s rom <page> <rom file>\n", app);
+    printf("  %s picture <jpeg file>\n\n", app);
+}
+
 int main(int argc, char **argv)
 {
     libusb_context *ctx = NULL;
@@ -32,6 +40,12 @@ int main(int argc, char **argv)
     int err = 1;
 
     printf("N64cart USB utility\n\n");
+
+    if (argc < 2) {
+	usage(argv[0]);
+
+	return 0;
+    }
 
     memset(data, 0xFF, sizeof(data));
 
@@ -310,7 +324,8 @@ int main(int argc, char **argv)
 
 	}
     } else {
-	fprintf(stderr, "Unknown command\n");
+	fprintf(stderr, "Unknown command\n\n");
+	usage(argv[0]);
     }
 
  exit:
