@@ -47,6 +47,8 @@ Change background image
 
 ## Photos
 
+<img src="pics/jlpcb-order.png" width="480" />
+
 <img src="pics/IMG_20220826_213224.jpg" width="480" />
 
 <img src="pics/IMG_20220826_213239.jpg" width="480" />
