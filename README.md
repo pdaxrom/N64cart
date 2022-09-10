@@ -13,7 +13,7 @@ the extended address register (EA register).
 
 ### Features of N64cart:
 
-- The firmware supports 16, 32 and 64 MB flash drives
+- The firmware supports 16, 32 and 64 MB flash chips
 
 - One user controllable LED (accessible from N64 side)
 
