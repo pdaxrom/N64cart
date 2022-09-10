@@ -38,20 +38,20 @@ PICTURE_ROM|0x1fd80000|R-
 UART_CTRL bits:
 
 Function|Bit mask
---------+---
+--------+--------
 UART_RX_AVAIL|0x01
 UART_TX_FREE|0x02
 
 LED control bits:
 
 Function|Bit mask
---------+---
+--------+--------
 LED_ONOFF|0x01
 
 ROM page control:
 
 Function|Bit mask|Mode
---------+---+----
+--------+--------+----
 TOTAL_PAGES|0xFFFF0000|R-
 CURRENT_PAGE|0xFFFF|-W
 
