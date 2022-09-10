@@ -17,9 +17,13 @@ $(BUILD_DIR)/test-rom.dfs: $(wildcard filesystem/*)
 $(BUILD_DIR)/test-rom.elf: $(OBJS)
 
 clean:
-	rm -rf $(BUILD_DIR) *.z64
-upload:
-	../../N64-UNFLoader/UNFLoader/UNFLoader -r test-rom.z64
+	rm -rf $(BUILD_DIR) *.z64 rom.h
+
+
+rom.h: test-rom.z64
+	xxd -i test-rom.z64 > rom.h
+	sed -i 's/unsigned char test_rom_z64/const unsigned char __in_flash\("rom_file"\) rom_file/g' rom.h
+	cp -f rom.h ../fw/
 
 .PHONY: clean upload
 

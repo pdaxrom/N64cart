@@ -70,6 +70,8 @@ static void setup_rom_storage(void)
 
     txbuf[0] = 0x9f;
 
+    printf("Detect ROM\n");
+
     flash_do_cmd(txbuf, rxbuf, 4);
 
 //    printf("Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);

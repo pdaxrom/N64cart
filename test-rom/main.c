@@ -115,7 +115,6 @@ int main(void)
 	strcpy(tStr, "Press [UP]/[DOWN] to select");
 	graphics_draw_text( disp, valign(tStr), 100, tStr );
 
-{
 	if (selected_rom < (rom_pages - 1) && keys.c[0].up) {
 	    selected_rom++;
 	}
@@ -147,23 +146,6 @@ int main(void)
 	    }
 	    io_write(N64CART_LED_CTRL, led_on);
 	}
-
-#if 0
-	if (keys.c[0].Z) {
-	    if (sram_test()) {
-		strcpy(tStr, "PI SRAM test passed");
-	    } else {
-		strcpy(tStr, "PI SRAM test failed");
-	    }
-
-	    graphics_draw_text( disp, 10, 150, tStr );
-	}
-
-	if (keys.c[0].R) {
-	    picture_rom_test();
-	}
-#endif
-}
 
         /* Update Display */
         display_show(disp);
