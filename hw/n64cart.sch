@@ -12421,6 +12421,7 @@ Source: www.st.com, BAT60J.pdf</description>
 <part name="U3" library="W25Q256JVEIQ_TR" deviceset="W25Q256JVEIQ_TR" device=""/>
 <part name="C4" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="C-EU" device="C0402" package3d_urn="urn:adsk.eagle:package:23626/2" value="100n"/>
 <part name="GND27" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
+<part name="C7" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="C-EU" device="C0402" package3d_urn="urn:adsk.eagle:package:23626/2" value="100n"/>
 </parts>
 <sheets>
 <sheet>
@@ -12637,8 +12638,8 @@ Source: www.st.com, BAT60J.pdf</description>
 <attribute name="NAME" x="477.5161" y="400.0579" size="1.77938125" layer="95"/>
 <attribute name="VALUE" x="477.5186" y="386.0773" size="1.77848125" layer="96"/>
 </instance>
-<instance part="GND25" gate="1" x="505.46" y="383.54" smashed="yes">
-<attribute name="VALUE" x="502.92" y="381" size="1.778" layer="96"/>
+<instance part="GND25" gate="1" x="505.46" y="378.46" smashed="yes">
+<attribute name="VALUE" x="502.92" y="375.92" size="1.778" layer="96"/>
 </instance>
 <instance part="D1" gate="G$1" x="515.62" y="396.24" smashed="yes">
 <attribute name="NAME" x="518.16" y="393.7" size="1.778" layer="95" rot="R180"/>
@@ -12665,6 +12666,10 @@ Source: www.st.com, BAT60J.pdf</description>
 </instance>
 <instance part="GND27" gate="1" x="469.9" y="378.46" smashed="yes">
 <attribute name="VALUE" x="467.36" y="375.92" size="1.778" layer="96"/>
+</instance>
+<instance part="C7" gate="G$1" x="510.54" y="391.16" smashed="yes">
+<attribute name="NAME" x="512.064" y="391.541" size="1.778" layer="95"/>
+<attribute name="VALUE" x="512.064" y="386.461" size="1.778" layer="96"/>
 </instance>
 </instances>
 <busses>
@@ -12861,7 +12866,12 @@ Source: www.st.com, BAT60J.pdf</description>
 <pinref part="U$1" gate="A" pin="GND"/>
 <pinref part="GND25" gate="1" pin="GND"/>
 <wire x1="502.92" y1="391.16" x2="505.46" y2="391.16" width="0.1524" layer="91"/>
-<wire x1="505.46" y1="391.16" x2="505.46" y2="386.08" width="0.1524" layer="91"/>
+<wire x1="505.46" y1="391.16" x2="505.46" y2="383.54" width="0.1524" layer="91"/>
+<pinref part="C7" gate="G$1" pin="2"/>
+<wire x1="505.46" y1="383.54" x2="505.46" y2="381" width="0.1524" layer="91"/>
+<wire x1="510.54" y1="386.08" x2="510.54" y2="383.54" width="0.1524" layer="91"/>
+<wire x1="510.54" y1="383.54" x2="505.46" y2="383.54" width="0.1524" layer="91"/>
+<junction x="505.46" y="383.54"/>
 </segment>
 <segment>
 <pinref part="GND26" gate="1" pin="GND"/>
@@ -13637,7 +13647,11 @@ Source: www.st.com, BAT60J.pdf</description>
 <segment>
 <pinref part="U$1" gate="A" pin="VOUT"/>
 <pinref part="D1" gate="G$1" pin="A"/>
-<wire x1="502.92" y1="396.24" x2="513.08" y2="396.24" width="0.1524" layer="91"/>
+<wire x1="502.92" y1="396.24" x2="510.54" y2="396.24" width="0.1524" layer="91"/>
+<pinref part="C7" gate="G$1" pin="1"/>
+<wire x1="510.54" y1="396.24" x2="513.08" y2="396.24" width="0.1524" layer="91"/>
+<wire x1="510.54" y1="393.7" x2="510.54" y2="396.24" width="0.1524" layer="91"/>
+<junction x="510.54" y="396.24"/>
 </segment>
 </net>
 <net name="N$4" class="0">
