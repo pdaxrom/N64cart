@@ -3,13 +3,60 @@ Raspberry Pi Pico N64 cartridge
 
 Firmware initially is forked from Konrad Beckmann PicoCart64 https://github.com/kbeckmann/PicoCart64
 
-# Prepare a rom
-xxd -i my_rom.z64 > rom.h
-# Change declaration to:
-# const unsigned char __in_flash("rom_file") rom_file[] = {
+## Build firmware
 
+  cd test-rom
 
-mkdir build
-cd build
-cmake  -DPICO_COPY_TO_RAM=1 ..
-make
+  make rom.h
+
+  cd ../fw
+
+  mkdir build
+
+  cd build
+
+  cmake ..
+
+  make
+
+Upload firmware to the cartridge.
+
+## Cartrigde utility
+
+You can upload new roms, change the background picture with utility.
+
+### Build utility
+
+  cd utils
+
+  make
+
+### How to use the utlity
+
+Get cartridge info
+
+  ./usb-uploader info
+
+Write rom to cartrigde in ROM page 0
+
+  ./usb-uploader rom 0 dfsdemo.z64
+
+Change background image
+
+  ./usb-uploader picture mybg.jpg
+
+## Photos
+
+<img src="pics/IMG_20220826_213916.jpg" width="480" />
+
+<img src="pics/IMG_20220826_213224.jpg" width="480" />
+
+<img src="pics/IMG_20220826_213833.jpg" width="480" />
+
+<img src="pics/IMG_20220826_213239.jpg" width="480" />
+
+<img src="pics/IMG_20220826_213410.jpg" width="480" />
+
+<img src="pics/IMG_20220826_213840.jpg" width="480" />
+
+<img src="pics/IMG_20220826_213738.jpg" width="480" />
