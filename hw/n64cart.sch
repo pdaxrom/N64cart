@@ -12431,6 +12431,8 @@ Source: www.st.com, BAT60J.pdf</description>
 <wire x1="302.26" y1="248.92" x2="215.9" y2="248.92" width="0.1524" layer="97" style="longdash"/>
 <wire x1="215.9" y1="248.92" x2="215.9" y2="365.76" width="0.1524" layer="97" style="longdash"/>
 <text x="215.9" y="368.3" size="3.81" layer="97">N64 Edge Connector</text>
+<text x="220.98" y="200.66" size="2.54" layer="91">Do not solder Q1 if D2 is soldered. Use either D2 or Q1.
+Do not solder R1 and R6.</text>
 </plain>
 <instances>
 <instance part="J1" gate="&gt;NAME" x="254" y="304.8" smashed="yes">
@@ -12440,9 +12442,9 @@ Source: www.st.com, BAT60J.pdf</description>
 <instance part="GND2" gate="1" x="220.98" y="254" smashed="yes">
 <attribute name="VALUE" x="218.44" y="251.46" size="1.778" layer="96"/>
 </instance>
-<instance part="Q1" gate="G$1" x="655.32" y="431.8" smashed="yes" rot="R90">
-<attribute name="NAME" x="655.32" y="434.34" size="1.778" layer="95" rot="R90"/>
-<attribute name="VALUE" x="657.86" y="434.34" size="1.778" layer="96" rot="R90"/>
+<instance part="Q1" gate="G$1" x="576.58" y="396.24" smashed="yes" rot="R90">
+<attribute name="NAME" x="576.58" y="398.78" size="1.778" layer="95" rot="R90"/>
+<attribute name="VALUE" x="579.12" y="398.78" size="1.778" layer="96" rot="R90"/>
 </instance>
 <instance part="LED1" gate="G$1" x="601.98" y="325.12" smashed="yes" rot="MR0">
 <attribute name="NAME" x="598.424" y="320.548" size="1.778" layer="95" rot="MR90"/>
@@ -12455,16 +12457,16 @@ Source: www.st.com, BAT60J.pdf</description>
 <instance part="GND3" gate="1" x="601.98" y="299.72" smashed="yes">
 <attribute name="VALUE" x="599.44" y="297.18" size="1.778" layer="96"/>
 </instance>
-<instance part="D2" gate="G$1" x="668.02" y="424.18" smashed="yes" rot="R180">
-<attribute name="NAME" x="665.48" y="426.72" size="1.778" layer="95"/>
-<attribute name="VALUE" x="668.02" y="421.64" size="1.778" layer="96" rot="R270"/>
+<instance part="D2" gate="G$1" x="589.28" y="388.62" smashed="yes" rot="R180">
+<attribute name="NAME" x="586.74" y="391.16" size="1.778" layer="95"/>
+<attribute name="VALUE" x="589.28" y="386.08" size="1.778" layer="96" rot="R270"/>
 </instance>
-<instance part="C22" gate="G$1" x="660.4" y="416.56" smashed="yes">
-<attribute name="NAME" x="661.924" y="416.941" size="1.778" layer="95"/>
-<attribute name="VALUE" x="661.924" y="411.861" size="1.778" layer="96"/>
+<instance part="C22" gate="G$1" x="581.66" y="381" smashed="yes">
+<attribute name="NAME" x="583.184" y="381.381" size="1.778" layer="95"/>
+<attribute name="VALUE" x="583.184" y="376.301" size="1.778" layer="96"/>
 </instance>
-<instance part="GND4" gate="1" x="660.4" y="403.86" smashed="yes">
-<attribute name="VALUE" x="657.86" y="401.32" size="1.778" layer="96"/>
+<instance part="GND4" gate="1" x="581.66" y="368.3" smashed="yes">
+<attribute name="VALUE" x="579.12" y="365.76" size="1.778" layer="96"/>
 </instance>
 <instance part="IC1" gate="IC$1" x="469.9" y="246.38" smashed="yes">
 <attribute name="NAME" x="441.96" y="195.58" size="2.1844" layer="95"/>
@@ -12734,7 +12736,7 @@ Source: www.st.com, BAT60J.pdf</description>
 <segment>
 <pinref part="C22" gate="G$1" pin="2"/>
 <pinref part="GND4" gate="1" pin="GND"/>
-<wire x1="660.4" y1="411.48" x2="660.4" y2="406.4" width="0.1524" layer="91"/>
+<wire x1="581.66" y1="375.92" x2="581.66" y2="370.84" width="0.1524" layer="91"/>
 </segment>
 <segment>
 <pinref part="GND1" gate="1" pin="GND"/>
@@ -12887,17 +12889,17 @@ Source: www.st.com, BAT60J.pdf</description>
 <net name="+3V3" class="0">
 <segment>
 <pinref part="D2" gate="G$1" pin="C"/>
-<wire x1="665.48" y1="424.18" x2="660.4" y2="424.18" width="0.1524" layer="91"/>
+<wire x1="586.74" y1="388.62" x2="581.66" y2="388.62" width="0.1524" layer="91"/>
 <pinref part="C22" gate="G$1" pin="1"/>
-<wire x1="660.4" y1="419.1" x2="660.4" y2="424.18" width="0.1524" layer="91"/>
+<wire x1="581.66" y1="383.54" x2="581.66" y2="388.62" width="0.1524" layer="91"/>
 <pinref part="Q1" gate="G$1" pin="S"/>
-<wire x1="645.16" y1="424.18" x2="645.16" y2="431.8" width="0.1524" layer="91"/>
-<wire x1="645.16" y1="431.8" x2="650.24" y2="431.8" width="0.1524" layer="91"/>
-<wire x1="660.4" y1="424.18" x2="645.16" y2="424.18" width="0.1524" layer="91"/>
-<junction x="660.4" y="424.18"/>
-<wire x1="645.16" y1="431.8" x2="632.46" y2="431.8" width="0.1524" layer="91"/>
-<junction x="645.16" y="431.8"/>
-<label x="632.46" y="431.8" size="1.27" layer="95" rot="R180" xref="yes"/>
+<wire x1="566.42" y1="388.62" x2="566.42" y2="396.24" width="0.1524" layer="91"/>
+<wire x1="566.42" y1="396.24" x2="571.5" y2="396.24" width="0.1524" layer="91"/>
+<wire x1="581.66" y1="388.62" x2="566.42" y2="388.62" width="0.1524" layer="91"/>
+<junction x="581.66" y="388.62"/>
+<wire x1="566.42" y1="396.24" x2="553.72" y2="396.24" width="0.1524" layer="91"/>
+<junction x="566.42" y="396.24"/>
+<label x="553.72" y="396.24" size="1.27" layer="95" rot="R180" xref="yes"/>
 </segment>
 <segment>
 <pinref part="LED1" gate="G$1" pin="A"/>
@@ -13339,13 +13341,13 @@ Source: www.st.com, BAT60J.pdf</description>
 </segment>
 <segment>
 <pinref part="Q1" gate="G$1" pin="D"/>
-<wire x1="665.48" y1="431.8" x2="660.4" y2="431.8" width="0.1524" layer="91"/>
-<label x="665.48" y="431.8" size="1.27" layer="95" xref="yes"/>
+<wire x1="586.74" y1="396.24" x2="581.66" y2="396.24" width="0.1524" layer="91"/>
+<label x="586.74" y="396.24" size="1.27" layer="95" xref="yes"/>
 </segment>
 <segment>
 <pinref part="D2" gate="G$1" pin="A"/>
-<wire x1="670.56" y1="424.18" x2="675.64" y2="424.18" width="0.1524" layer="91"/>
-<label x="675.64" y="424.18" size="1.27" layer="95" xref="yes"/>
+<wire x1="591.82" y1="388.62" x2="596.9" y2="388.62" width="0.1524" layer="91"/>
+<label x="596.9" y="388.62" size="1.27" layer="95" xref="yes"/>
 </segment>
 </net>
 <net name="+12V_N64" class="0">
@@ -13593,9 +13595,9 @@ Source: www.st.com, BAT60J.pdf</description>
 </segment>
 <segment>
 <pinref part="Q1" gate="G$1" pin="G"/>
-<wire x1="632.46" y1="416.56" x2="652.78" y2="416.56" width="0.1524" layer="91"/>
-<wire x1="652.78" y1="416.56" x2="652.78" y2="426.72" width="0.1524" layer="91"/>
-<label x="632.46" y="416.56" size="1.27" layer="95" rot="R180" xref="yes"/>
+<wire x1="553.72" y1="381" x2="574.04" y2="381" width="0.1524" layer="91"/>
+<wire x1="574.04" y1="381" x2="574.04" y2="391.16" width="0.1524" layer="91"/>
+<label x="553.72" y="381" size="1.27" layer="95" rot="R180" xref="yes"/>
 </segment>
 <segment>
 <pinref part="U$1" gate="A" pin="VIN"/>
@@ -13693,6 +13695,10 @@ Source: www.st.com, BAT60J.pdf</description>
 </schematic>
 </drawing>
 <compatibility>
+<note version="6.3" minversion="6.2.2" severity="warning">
+Since Version 6.2.2 text objects can contain more than one line,
+which will not be processed correctly with this version.
+</note>
 <note version="8.2" severity="warning">
 Since Version 8.2, EAGLE supports online libraries. The ids
 of those online libraries will not be understood (or retained)
