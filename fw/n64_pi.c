@@ -1,3 +1,11 @@
+/**
+ * Copyright (c) 2022 Konrad Beckmann
+ *
+ * Copyright (c) 2022 sashz /pdaXrom.org/
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <stdio.h>
 #include <string.h>
 

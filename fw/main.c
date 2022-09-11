@@ -1,6 +1,8 @@
 /**
  * Copyright (c) 2022 Konrad Beckmann
  *
+ * Copyright (c) 2022 sashz /pdaXrom.org/
+ *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
@@ -18,29 +20,6 @@
 #include "n64_pi.h"
 #include "n64.h"
 
-/*
-
-Profiling results:
-
-Time between ~N64_READ and bit output on AD0
-
-With constant data fetched from C-code (no memory access)
---------------------------------------
-133 MHz: 240 ns
-150 MHz: 230 ns
-200 MHz: 230 ns
-250 MHz: 190 ns
-
-With uncached data from external flash
---------------------------------------
-133 MHz: 780 ns
-150 MHz: 640 ns
-200 MHz: 480 ns
-250 MHz: 390 ns
-
-
-*/
-
 volatile uint32_t jpeg_start;
 
 volatile uint32_t rom_pages;
@@ -53,6 +32,7 @@ static const struct flash_chip {
     uint8_t rom_pages;
     uint8_t rom_size;
 } flash_chip[] = {
+    { 0xef, 0x4020, 4, 16 },
     { 0xef, 0x4019, 2, 16 },
     { 0xef, 0x4018, 1, 16 },
     { 0xef, 0x4017, 1, 8  },
@@ -131,21 +111,7 @@ void n64_save_sram(void)
 
 int main(void)
 {
-    // Overclock!
-    // Note that the Pico's external flash is rated to 133MHz,
-    // not sure if the flash speed is based on this clock.
-
-    // set_sys_clock_khz(PLL_SYS_KHZ, true);
-    // set_sys_clock_khz(150000, true); // Does not work
-    // set_sys_clock_khz(200000, true); // Does not work
-    // set_sys_clock_khz(250000, true); // Does not work
-    // set_sys_clock_khz(300000, true); // Doesn't even boot
-    // set_sys_clock_khz(400000, true); // Doesn't even boot
-
-//    set_sys_clock_khz(200000, true);
-//    set_sys_clock_khz(250000, true);
     set_sys_clock_khz(256000, true);
-//    set_sys_clock_khz(280000, true);
 
     stdio_init_all();
 
@@ -165,7 +131,6 @@ int main(void)
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
 
-    // Init UART on pin 28/29
     stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
     printf("N64 cartridge booting!\r\n");
 

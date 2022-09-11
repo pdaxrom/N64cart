@@ -1,17 +1,10 @@
 #include <stdio.h>
 
-//#include "hardware/flash.h"
 #include "flashrom.h"
 #include "pico/bootrom.h"
 
 #include "hardware/structs/ssi.h"
 #include "hardware/structs/ioqspi.h"
-
-//#include "hardware/regs/io_qspi.h"
-//#include "hardware/regs/pads_qspi.h"
-//#include "hardware/structs/ssi.h"
-//#include "hardware/structs/xip_ctrl.h"
-//#include "hardware/resets.h"
 
 #define FLASH_BLOCK_ERASE_CMD 0xd8
 
