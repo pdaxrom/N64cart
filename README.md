@@ -1,21 +1,31 @@
-# N64cart
+# N64cart - N64 flash cartridge
 
-N64cart - Raspberry Pi Pico N64 flash cartridge
+* [Intro](#intro)
+* [Concept](#concept)
+  * [Features](#features)
+  * [Memory mapping](#memory-mapping)
+* [Build firmware](#build-firmware)
+* [Cartrigde utility](#cartrigde-utility)
+  * [Build](#build)
+  * [How to use](#how-to-use)
+* [Total cartridge cost (32MB version)](#total-cartridge-cost-32mb-version)
+* [Photos](#photos)
 
-Hardware and firmware initially is forked from Konrad Beckmann PicoCart64 https://github.com/kbeckmann/PicoCart64
+## Intro
 
-N64 cartridge connector draw for Eagle CAD from SummerCart64 https://github.com/Polprzewodnikowy/SummerCollection
+Existing N64 flash cartridges are quite expensive, but thanks to Konrad Beckmann, who first used a raspberry pi pico as a memory controller, he managed to create a cheap version that can build at home.
+
+Hardware and firmware initially is forked from Konrad Beckmann [PicoCart64](https://github.com/kbeckmann/PicoCart64)
+
+N64 cartridge connector footprint for Eagle CAD from [SummerCart64](https://github.com/Polprzewodnikowy/SummerCollection)
 
 ## Concept
 
-The main idea is to make the cartridge as simple and cheap as possible. A flash
-chip was chosen to store the ROM. Since the RP2040 does not support SPI flash
-chips larger than 16MB, it was decided to use page mode with page switching
-through the Extended Address register (EA register).
+The main idea is to make the cartridge as simple and cheap as possible. Contrary to Konrad's idea of multiplexed PSRAM chips and two RP2040, I decided to use one SPI flash memory chip and one RP2040. Modern flash chips allow to erase and flash data more than 100,000 times, which is more than enough for home use for many years. Since the RP2040 does not support SPI flash chips larger than 16MB, it was decided to use page mode with page switching through the Extended Address register (EA register).
 
-### Features of N64cart
+### Features
 
-- The firmware supports 16, 32 and 64 MB SPI flash chips
+- The PCB and firmware supports 16, 32 and 64 MB SPI flash chips
 
 - One user controllable LED (accessible from N64 side)
 
@@ -23,7 +33,7 @@ through the Extended Address register (EA register).
 
 - USB utility to flash roms and change the background image
 
-### N64 cartridge memory mapping
+### Memory mapping
 
 Registers:
 
@@ -91,7 +101,7 @@ Upload firmware to the cartridge.
 
 You can upload new roms, change the background picture with utility.
 
-### Build utility
+### Build
 
 To build, you need to install the libusb development files.
 
@@ -101,7 +111,7 @@ To build, you need to install the libusb development files.
   make
 ```
 
-### How to use the utlity
+### How to use
 
 Use the utility with the console turned off, otherwise you will still have to turn it off and on.
 
@@ -129,7 +139,7 @@ The price of components for an online order of one or two pieces may be lower
 than the cost of delivery. When ordering in several pieces, sometimes there
 may even be free shipping.
 
-Seller|Delivery cost|
+Seller|Delivery cost|Components
 ------|-------------|---
 Chicago Electronic Distributors https://chicagodist.com/|$6-$11|RP2040
 Arrow https://www.arrow.com/|Free for orders > $50|spi flash,resistors,capacitors,etc
