@@ -4,6 +4,7 @@
 * [Concept](#concept)
   * [Features](#features)
   * [Memory mapping](#memory-mapping)
+* [PCB assembly notes](#pcb-assembly-notes)
 * [Build firmware](#build-firmware)
 * [Cartrigde utility](#cartrigde-utility)
   * [Build](#build)
@@ -72,6 +73,14 @@ TOTAL_PAGES|0xFFFF0000|R-
 CURRENT_PAGE|0xFFFF|-W
 
 Picture ROM size is 64KB
+
+## PCB assembly notes
+
+Do not solder Q1 if D2 is soldered. Use either D2 or Q1.
+
+Do not solder R1 and R6.
+
+After soldering, if you used a flux when soldering a processor or a flash chip, wash it well from the board, otherwise unstable work with memory is possible or it will not work at all.
 
 ## Build firmware
 
