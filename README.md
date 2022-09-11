@@ -84,7 +84,7 @@ After soldering, if you used a flux when soldering a processor or a flash chip, 
 
 ## Build firmware
 
-To build, you will need an installed N64 toolchain with libdragon https://github.com/DragonMinded/libdragon
+To build, you will need an installed N64 toolchain with [libdragon](https://github.com/DragonMinded/libdragon)
 
 Steps to build:
 
@@ -150,9 +150,9 @@ may even be free shipping.
 
 Seller|Delivery cost|Components
 ------|-------------|---
-Chicago Electronic Distributors https://chicagodist.com/|$6-$11|RP2040
-Arrow https://www.arrow.com/|Free for orders > $50|spi flash,resistors,capacitors,etc
-jlpcb https://jlcpcb.com/|$22.4|PCB
+[Chicago Electronic Distributors](https://chicagodist.com/)|$6-$11|RP2040
+[Arrow](https://www.arrow.com/)|Free for orders > $50|spi flash,resistors,capacitors,etc
+[jlpcb](https://jlcpcb.com/)|$22.4|PCB
 
 The price for 5 PCB is $2 ($4 for non first in order position).
 
