@@ -24,6 +24,8 @@ N64 cartridge connector footprint for Eagle CAD from [SummerCart64](https://gith
 
 The main idea is to make the cartridge as simple and cheap as possible. Contrary to Konrad's idea of multiplexed PSRAM chips and two RP2040, I decided to use one SPI flash memory chip and one RP2040. Modern flash chips allow to erase and flash data more than 100,000 times, which is more than enough for home use for many years. Since the RP2040 does not support SPI flash chips larger than 16MB, it was decided to use page mode with page switching through the Extended Address register (EA register).
 
+Cartridge [schematic](hw/n64cart_2022-08-16.pdf)
+
 ### Features
 
 - The PCB and firmware supports 16, 32 and 64 MB SPI flash chips
