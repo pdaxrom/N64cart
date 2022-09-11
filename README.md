@@ -4,7 +4,9 @@
 * [Concept](#concept)
   * [Features](#features)
   * [Memory mapping](#memory-mapping)
-* [PCB assembly notes](#pcb-assembly-notes)
+* [PCB](#pcb)
+  * [Order notes](#order-notes)
+  * [Assembly notes](#assembly-notes)
 * [Build firmware](#build-firmware)
 * [Cartrigde utility](#cartrigde-utility)
   * [Build](#build)
@@ -76,7 +78,15 @@ CURRENT_PAGE|0xFFFF|-W
 
 Picture ROM size is 64KB
 
-## PCB assembly notes
+## PCB
+
+### Order notes
+
+The thickness of the PCB is 1.2 mm.
+
+Ordering a stencil will make it easier to apply solder paste, but will increase the cost of the order.
+
+### Assembly notes
 
 Do not solder Q1 if D2 is soldered. Use either D2 or Q1.
 
