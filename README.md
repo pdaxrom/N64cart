@@ -9,13 +9,13 @@ N64 cartridge connector draw for Eagle CAD from SummerCart64 https://github.com/
 ## Concept
 
 The main idea is to make the cartridge as simple and cheap as possible. A flash
-chip was chosen to store the ROM. Since the RP2040 does not support flash chips
-larger than 16MB, it was decided to use page mode with page switching through
-the extended address register (EA register).
+chip was chosen to store the ROM. Since the RP2040 does not support SPI flash
+chips larger than 16MB, it was decided to use page mode with page switching
+through the Extended Address register (EA register).
 
 ### Features of N64cart
 
-- The firmware supports 16, 32 and 64 MB flash chips
+- The firmware supports 16, 32 and 64 MB SPI flash chips
 
 - One user controllable LED (accessible from N64 side)
 
@@ -122,6 +122,35 @@ Change background image
 ```
   ./usb-uploader picture mybg.jpg
 ```
+
+## Total cartridge cost (32MB version)
+
+The price of components for an online order of one or two pieces may be lower
+than the cost of delivery. When ordering in several pieces, sometimes there
+may even be free shipping.
+
+Seller|Delivery cost|
+------|-------------|---
+Chicago Electronic Distributors https://chicagodist.com/|$6-$11|RP2040
+Arrow https://www.arrow.com/|Free for orders > $50|spi flash,resistors,capacitors,etc
+jlpcb https://jlcpcb.com/|$22.4|PCB
+
+The price for 5 PCB is $2 ($4 for non first in order position).
+
+The most expensive components:
+
+Component|qty|Price
+---------|---|-----
+RP2040|1|$1
+W25Q256JVEIQ|1|$4.24
+ABLS-12.000MHZ-B4-T|1|$0.26
+UJ2-MIBH-G-SMT-TR|1|$0.45
+LDI1117-3.3U|1|$0.34
+BAT60AE6327HTSA1|2|$0.93
+
+All other components (LEDs, resistors, capacitors) from home stock, total cost less than $1.
+
+So, the total cost of the pcb and components is approximately $9.
 
 ## Photos
 
