@@ -58,7 +58,7 @@ int main(int argc, char **argv)
 
     libusb_set_debug(ctx, 3);
 
-    dev_handle = libusb_open_device_with_vid_pid(ctx, 0x0000, 0x0001);
+    dev_handle = libusb_open_device_with_vid_pid(ctx, 0x1209, 0x6800);
 
     if (dev_handle == NULL) {
 	fprintf(stderr, "Cannot open device, ensure N64cart is attached\n");
