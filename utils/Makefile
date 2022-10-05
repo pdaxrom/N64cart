@@ -1,15 +1,29 @@
 TARGET = usb-uploader
 
+all: $(TARGET)
+
 OBJS = $(TARGET).o
 
-#CFLAGS = $(shell pkg-config --cflags hidapi-libusb) -Wall -Wpedantic
-#LIBS   = $(shell pkg-config --libs hidapi-libusb)
+ifeq (Windows,$(SYSTEM))
+CC = i686-w64-mingw32-gcc
 
-CFLAGS = $(shell pkg-config --cflags libusb-1.0) -Wall -Wpedantic
-LIBS   = $(shell pkg-config --libs libusb-1.0)
+LIBUSB_DLL := libusb-1.0.dll
 
-$(TARGET): $(OBJS)
-	$(CC) -o $@ $^ $(LIBS)
+$(LIBUSB_DLL):
+	mkdir build
+	cd build && ../libusb-1.0.26/configure --host=i686-w64-mingw32 --prefix=$$PWD/inst
+	cd build && make -j install
+	cp build/inst/bin/$(LIBUSB_DLL) .
+CFLAGS := -I$(PWD)/build/inst/include/libusb-1.0 -Wall -Wpedantic
+LIBS   := -L$(PWD)/build/inst/lib -lusb-1.0
+else
+CFLAGS := $(shell $(PKG_CONFIG_PATH) pkg-config --cflags libusb-1.0) -Wall -Wpedantic
+LIBS   := $(shell $(PKG_CONFIG_PATH) pkg-config --libs libusb-1.0)
+endif
+
+$(TARGET): $(LIBUSB_DLL) $(OBJS)
+	$(CC) -o $@ $(OBJS) $(LIBS)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -rf build
+	rm -f $(OBJS) $(TARGET) $(TARGET).exe libusb-1.0.dll

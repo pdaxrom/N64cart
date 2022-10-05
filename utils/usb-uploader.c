@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libusb-1.0/libusb.h>
+#include <libusb.h>
 #include "utils.h"
 
 #define RETRY_MAX	50 
@@ -33,13 +33,13 @@ static void usage(char *app)
 int main(int argc, char **argv)
 {
     libusb_context *ctx = NULL;
-    uint r;
+    uint32_t r;
     libusb_device_handle *dev_handle;
     uint8_t data[512];
     int actual;
     int err = 1;
 
-    printf("N64cart USB utility\n\n");
+    printf("N64cart USB utility by pdaXrom.org, 2022\n\n");
 
     if (argc < 2) {
 	usage(argv[0]);
