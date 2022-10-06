@@ -12,6 +12,7 @@
 #include "pico/stdlib.h"
 #include "pico/stdio.h"
 #include "pico/multicore.h"
+#include "hardware/clocks.h"
 #include "hardware/flash.h"
 #include "flashrom.h"
 
@@ -26,23 +27,28 @@ volatile uint32_t rom_pages;
 volatile uint32_t rom_start[4];
 volatile uint32_t rom_size[4];
 
+static const char *rom_chip_name = NULL;
+
 static const struct flash_chip {
     uint8_t mf;
     uint16_t id;
     uint8_t rom_pages;
     uint8_t rom_size;
+    uint32_t sys_freq;
+    uint16_t pi_bus_freq;
+    const char *name;
 } flash_chip[] = {
-    { 0xef, 0x4020, 4, 16 },
-    { 0xef, 0x4019, 2, 16 },
-    { 0xef, 0x4018, 1, 16 },
-    { 0xef, 0x4017, 1, 8  },
-    { 0xef, 0x4016, 1, 4  },
-    { 0xef, 0x4015, 1, 2  }
+    { 0xef, 0x4020, 4, 16, 220000, 0x4028, "W25Q512" },
+    { 0xef, 0x4019, 2, 16, 256000, 0x4022, "W25Q256" },
+    { 0xef, 0x4018, 1, 16, 256000, 0x4022, "W25Q128" },
+    { 0xef, 0x4017, 1, 8 , 256000, 0x4022, "W25Q64"  },
+    { 0xef, 0x4016, 1, 4 , 256000, 0x4022, "W25Q32"  },
+    { 0xef, 0x4015, 1, 2 , 256000, 0x4022, "W25Q16"  }
 };
 
 extern char __flash_binary_end;
 
-static void setup_rom_storage(void)
+static void setup_sysconfig(void)
 {
     uint8_t txbuf[4];
     uint8_t rxbuf[4];
@@ -50,7 +56,7 @@ static void setup_rom_storage(void)
 
     txbuf[0] = 0x9f;
 
-    printf("Detect ROM\n");
+//    printf("Detect ROM chip\n");
 
     flash_do_cmd(txbuf, rxbuf, 4);
 
@@ -75,10 +81,24 @@ static void setup_rom_storage(void)
 		rom_size[p] = flash_chip[i].rom_size * 1024 * 1024;
 	    }
 
+	    set_sys_clock_khz(flash_chip[i].sys_freq, true);
+	    set_pi_bus_freq(flash_chip[i].pi_bus_freq);
+	    rom_chip_name = flash_chip[i].name;
 	    break;
 	}
     }
+}
 
+static void show_sysinfo(void)
+{
+    if (rom_chip_name == NULL) {
+	printf("Unknown ROM chip, system stopped!\n");
+	while(1) {}
+    }
+
+    printf("ROM chip           : %s\n", rom_chip_name);
+    printf("System frequency   : %d\n", clock_get_hz(clk_sys) / 1000);
+    printf("PI bus freq config : %04X\n\n", get_pi_bus_freq());
     printf("Available ROM pages:\n");
 
     for (int i = 0; i < rom_pages; i++) {
@@ -111,10 +131,6 @@ void n64_save_sram(void)
 
 int main(void)
 {
-    set_sys_clock_khz(256000, true);
-
-    stdio_init_all();
-
     for (int i = 0; i <= 27; i++) {
 	gpio_init(i);
 	gpio_set_dir(i, GPIO_IN);
@@ -131,10 +147,13 @@ int main(void)
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
 
-    stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
-    printf("N64 cartridge booting!\r\n");
+    setup_sysconfig();
 
-    setup_rom_storage();
+    stdio_init_all();
+    stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
+
+    printf("N64cart booting!\n\n");
+    show_sysinfo();
 
     memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
 

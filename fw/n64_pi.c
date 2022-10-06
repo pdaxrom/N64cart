@@ -23,6 +23,8 @@
 static uint16_t *rom_file_16;
 static uint16_t *rom_jpeg_16;
 
+static uint16_t pi_bus_freq = 0x40ff;
+
 #if PI_SRAM
 static uint16_t *sram_16 = (uint16_t *) sram_8;
 
@@ -52,6 +54,20 @@ static inline uint32_t swap8(uint16_t value)
 {
     // 0x1122 => 0x2211
     return (value << 8) | (value >> 8);
+}
+
+void set_pi_bus_freq(uint16_t freq)
+{
+    if (freq < 0x4012 && freq > 0x40FF) {
+	freq = 0x40FF;
+    }
+
+    pi_bus_freq = freq;
+}
+
+uint16_t get_pi_bus_freq(void)
+{
+    return pi_bus_freq;
 }
 
 void n64_pi(void)
@@ -92,14 +108,15 @@ void n64_pi(void)
 		word = 0x3780;
 		pio_sm_put(pio, 0, swap8(word));
 		last_addr += 2;
-
-		//word = 0x40FF;
 #if PI_SRAM
-		word = 0x4020;
+		word = pi_bus_freq;
+		//word = 0x40FF;
+		//word = 0x4020;
 #else
-		word = 0x401c;
-#endif
+		word = pi_bus_freq;
+		//word = 0x401c;
 		//word = 0x4012;
+#endif
 		addr = pio_sm_get_blocking(pio, 0);
 		if (addr == 0) {
 		    goto hackentry;
