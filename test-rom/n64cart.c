@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2022 sashz /pdaXrom.org/
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <stdint.h>
 #include <libdragon.h>
 #include "n64cart.h"

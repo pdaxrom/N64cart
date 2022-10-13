@@ -95,16 +95,7 @@ void n64_pi(void)
     do {
 	if (addr == 0) {
 	    //READ
-#if 1
 	    if (last_addr == 0x10000000) {
-		// Configure bus to run slowly.
-		// This is better patched in the rom, so we won't need a branch here.
-		// But let's keep it here so it's easy to import roms easily.
-		// 0x8037FF40 in big-endian
-		//word = 0x40FF3780;
-		//word = 0x40203780;
-		////word = 0x40123780;
-		//word = 0x401c3780;
 		word = 0x3780;
 		pio_sm_put(pio, 0, swap8(word));
 		last_addr += 2;
@@ -123,9 +114,7 @@ void n64_pi(void)
 		}
 
 		continue;
-	    } else
-#endif
-	    if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
+	    } else if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
 		do {
 		    word = rom_file_16[(last_addr & 0xFFFFFF) >> 1];
  hackentry:

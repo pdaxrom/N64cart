@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2022 sashz /pdaXrom.org/
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #ifndef __N64CART_H__
 #define __N64CART_H__
 

@@ -675,26 +675,10 @@ void ep2_in_handler(uint8_t *buf, uint16_t len) {
 
 int usbd_init(void) 
 {
-//    stdio_init_all();
     printf("USB Device Low-Level hardware example\n");
     usb_device_init();
 
     flash_stage = 0;
-
-    // Wait until configured
-//    while (!configured) {
-//        tight_loop_contents();
-//    }
-
-//    printf("USB Device configured\n");
-
-    // Get ready to rx from host
-//    usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
-
-    // Everything is interrupt driven so just loop here
-//    while (1) {
-//        tight_loop_contents();
-//    }
 
     return 0;
 }
