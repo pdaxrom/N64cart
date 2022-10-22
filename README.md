@@ -124,12 +124,19 @@ You can upload new roms, change the background picture with utility.
 
 ### Build
 
-To build, you need to install the libusb development files.
+To build for linux and macOS, you need to install the libusb development files.
 
 ```
   cd utils
 
   make
+```
+
+For windows, install mingw toolchain.
+
+```
+  cd utils
+  make SYSTEM=Windows
 ```
 
 ### How to use
