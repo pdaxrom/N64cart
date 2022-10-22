@@ -136,6 +136,7 @@ For windows, install mingw toolchain.
 
 ```
   cd utils
+  
   make SYSTEM=Windows
 ```
 
