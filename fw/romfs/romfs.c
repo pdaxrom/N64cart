@@ -11,6 +11,9 @@
 #define MAP_SIZE (ROM_SIZE / FLASH_SECTOR)
 #define LIST_MAX (128)
 
+#define ROMFS_EMPTY_ENTRY   (-1)
+#define ROMFS_DELETED_ENTRY (-2)
+
 static uint8_t *flash_base = NULL;
 static uint32_t flash_start = 0;
 static uint32_t mem_size = 0;
@@ -63,12 +66,25 @@ bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
 	    memmove(&flash_list[i], &flash_base[flash_start + i], FLASH_SECTOR);
 	}
 	for (int i = 0; i < map_size; i += FLASH_SECTOR) {
-	    memmove(&flash_map[i], &flash_base[flash_start + list_size + i], FLASH_SECTOR);
+	    memmove(&((uint8_t *)flash_map)[i], &flash_base[flash_start + list_size + i], FLASH_SECTOR);
 	}
 	return true;
     }
 
     return false;
+}
+
+void romfs_flush()
+{
+    for (int i = 0; i < list_size; i += FLASH_SECTOR) {
+	romfs_flash_sector_erase(flash_start + i);
+	romfs_flash_sector_write(flash_start + i, &flash_list[i]);
+    }
+
+    for (int i = 0; i < map_size; i += FLASH_SECTOR) {
+	romfs_flash_sector_erase(flash_start + list_size + i);
+	romfs_flash_sector_write(flash_start + list_size + i, &((uint8_t *)flash_map)[i]);
+    }
 }
 
 bool romfs_format()
@@ -101,11 +117,6 @@ bool romfs_format()
     entry[2].start = (flash_start + list_size) / FLASH_SECTOR;
     entry[2].size = map_size;
 
-    for (int i = 0; i < list_size; i += FLASH_SECTOR) {
-	romfs_flash_sector_erase(flash_start + i);
-	romfs_flash_sector_write(flash_start + i, &flash_list[i]);
-    }
-
 #ifdef DEBUG
     printf("%s: create map\n", __func__);
 #endif
@@ -115,10 +126,7 @@ bool romfs_format()
 	flash_map[i] = i + 1;
     }
 
-    for (int i = 0; i < map_size; i += FLASH_SECTOR) {
-	romfs_flash_sector_erase(flash_start + list_size + i);
-	romfs_flash_sector_write(flash_start + list_size + i, &((uint8_t *)flash_map)[i]);
-    }
+    romfs_flush();
 
     return true;
 }
@@ -148,13 +156,23 @@ bool romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
     return false;
 }
 
-bool romfs_list(romfs_file *file, bool first)
+static bool romfs_list_internal(romfs_file *file, bool first, bool with_deleted)
 {
     if (first) {
 	file->nentry = 0;
     }
 
-    if (((romfs_entry *)flash_list)[file->nentry].name[0] == -1) {
+    if (!with_deleted) {
+	while (((romfs_entry *)flash_list)[file->nentry].name[0] == ROMFS_DELETED_ENTRY) {
+	    file->nentry++;
+	}
+    }
+
+    if (file->nentry > list_size / sizeof(romfs_entry)) {
+	return false;
+    }
+
+    if (((romfs_entry *)flash_list)[file->nentry].name[0] == ROMFS_EMPTY_ENTRY) {
 	return false;
     }
 
@@ -167,7 +185,44 @@ bool romfs_list(romfs_file *file, bool first)
     return true;
 }
 
-bool romfs_delete(char *name)
+static bool romfs_find_internal(romfs_file *file, const char *name)
 {
+    if (romfs_list(file, true)) {
+	bool next_file;
+	do {
+	    if (!strcmp(name, file->entry.name)) {
+		return true;
+	    }
+	    next_file = romfs_list(file, false);
+	} while (next_file);
+    }
+
+    return false;
+}
+
+bool romfs_list(romfs_file *file, bool first)
+{
+    return romfs_list_internal(file, first, false);
+}
+
+bool romfs_delete(const char *name)
+{
+    romfs_file file;
+    if (romfs_find_internal(&file, name)) {
+	((romfs_entry *)flash_list)[file.nentry - 1].name[0] = ROMFS_DELETED_ENTRY;
+
+	uint32_t sectors = ((file.entry.size + (FLASH_SECTOR - 1)) & ~(FLASH_SECTOR - 1)) / FLASH_SECTOR;
+	uint16_t sector = file.entry.start;
+	for (int i = 0; i < sectors; i++) {
+	    uint16_t next = flash_map[sector];
+	    flash_map[sector] = 0xffff;
+	    sector = next;
+	}
+
+	romfs_flush();
+
+	return true;
+    }
+
     return false;
 }

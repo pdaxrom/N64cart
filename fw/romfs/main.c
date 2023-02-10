@@ -10,7 +10,9 @@ void save_romfs(char *name, uint8_t *mem, size_t len)
 {
     FILE *out = fopen(name, "wb");
     if (out) {
-	fwrite(mem, 1, len, out);
+	if (fwrite(mem, 1, len, out) != len) {
+	    fprintf(stderr, "Error write file!\n");
+	}
 	fclose(out);
     }
 }
@@ -20,7 +22,7 @@ bool load_romfs(char *name, uint8_t *mem, size_t len)
     bool ret = true;
     FILE *out = fopen(name, "rb");
     if (out) {
-	if (fread(mem, 1, len, out) != sizeof(memory)) {
+	if (fread(mem, 1, len, out) != len) {
 	    ret = false;
 	}
 	fclose(out);
@@ -32,10 +34,13 @@ bool load_romfs(char *name, uint8_t *mem, size_t len)
 
 int main(int argc, char *argv[])
 {
-    if (argc > 1) {
-	if (!load_romfs(argv[1], memory, sizeof(memory))) {
-	    fprintf(stderr, "Cannot read %s\n", argv[1]);
-	}
+    if (argc <= 1) {
+	fprintf(stderr, "No rom file defined!");
+	return -1;
+    }
+
+    if (!load_romfs(argv[1], memory, sizeof(memory))) {
+	fprintf(stderr, "Cannot read %s\n", argv[1]);
     }
 
     if (!romfs_start(memory, 65536, sizeof(memory))) {
@@ -55,14 +60,17 @@ int main(int argc, char *argv[])
 		    next_file = romfs_list(&file, false);
 		} while (next_file);
 	    }
+	} else if (!strcmp(argv[2], "delete")) {
+	    if (!romfs_delete(argv[3])) {
+		fprintf(stderr, "Error: [%s] file not found!\n", argv[3]);
+	    }
 	} else {
-	    fprintf(stderr, "Unknown command '%s'\n", argv[2]);
+	    fprintf(stderr, "Error: Unknown command '%s'\n", argv[2]);
 	}
     }
 
-    if (argc > 1) {
-	save_romfs(argv[1], memory, sizeof(memory));
-    }
+    save_romfs(argv[1], memory, sizeof(memory));
+
  err:
 
     return 0;

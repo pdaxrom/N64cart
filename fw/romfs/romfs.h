@@ -36,7 +36,7 @@ bool romfs_write_file(void *buffer, uint32_t size, romfs_file *file);
 bool romfs_open_file(char *name, romfs_file *file);
 bool romfs_read_file(void *buffer, uint32_t size, romfs_file *file);
 bool romfs_list(romfs_file *entry, bool first);
-bool romfs_delete(char *name);
+bool romfs_delete(const char *name);
 
 
 void save_romfs(char *name, uint8_t *mem, size_t len);
