@@ -59,8 +59,9 @@ int main(int argc, char *argv[])
 		} while (romfs_list(&file, false) == ROMFS_NOERR);
 	    }
 	} else if (!strcmp(argv[2], "delete")) {
-	    if (!romfs_delete(argv[3])) {
-		fprintf(stderr, "Error: [%s] file not found!\n", argv[3]);
+	    uint16_t err;
+	    if ((err = romfs_delete(argv[3])) != ROMFS_NOERR) {
+		fprintf(stderr, "Error: [%s] %s!\n", argv[3], romfs_strerror(err));
 	    }
 	} else if (!strcmp(argv[2], "push")) {
 	    FILE *inf = fopen(argv[3], "rb");
@@ -69,17 +70,17 @@ int main(int argc, char *argv[])
 		int ret;
 		romfs_file file;
 		if (romfs_create_file(argv[3], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) != ROMFS_NOERR) {
-		    fprintf(stderr, "romfs error: %s\n", romfs_get_string_error(file.err));
+		    fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
 		} else {
 		    while ((ret = fread(buffer, 1, 4096, inf)) > 0) {
 			if (romfs_write_file(buffer, ret, &file) == 0) {
-			    fprintf(stderr, "romfs write error %s\n", romfs_get_string_error(file.err));
+			    fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
 			    break;
 			}
 		    }
 		    if (file.err == ROMFS_NOERR) {
 			if (romfs_close_file(&file) != ROMFS_NOERR) {
-			    fprintf(stderr, "romfs close error %s\n", romfs_get_string_error(file.err));
+			    fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
 			}
 		    }
 		}

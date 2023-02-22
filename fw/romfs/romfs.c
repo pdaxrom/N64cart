@@ -14,7 +14,7 @@
 #define ROMFS_EMPTY_ENTRY   (-1)
 #define ROMFS_DELETED_ENTRY (-2)
 
-static const char *err_string[] = {
+static const char *romfs_errlist[] = {
     "No error",
     "No list entry",
     "No free list entries",
@@ -98,9 +98,6 @@ void romfs_flush()
 
 bool romfs_format()
 {
-#ifdef DEBUG
-    printf("%s: create list entry (%d)\n", __func__, sizeof(romfs_entry));
-#endif
     memset(flash_list, 0xff, list_size);
 
     romfs_entry *entry = (romfs_entry *)flash_list;
@@ -126,9 +123,6 @@ bool romfs_format()
     entry[2].start = (flash_start + list_size) / FLASH_SECTOR;
     entry[2].size = map_size;
 
-#ifdef DEBUG
-    printf("%s: create map\n", __func__);
-#endif
     memset((uint8_t *)flash_map, 0xff, map_size);
 
     for (int i = 0; i < (flash_start + list_size + map_size) / FLASH_SECTOR; i++) {
@@ -180,7 +174,7 @@ static uint32_t romfs_find_internal(romfs_file *file, const char *name)
     if (romfs_list(file, true) == ROMFS_NOERR) {
 	do {
 	    if (!strcmp(name, file->entry.name)) {
-		return true;
+		return (file->err = ROMFS_NOERR);
 	    }
 	} while (romfs_list(file, false) == ROMFS_NOERR);
     }
@@ -237,12 +231,11 @@ static uint16_t romfs_find_free_sector(uint16_t start)
 
 uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer)
 {
-    uint32_t err;
-    if ((err = romfs_find_internal(file, name)) == ROMFS_NOERR) {
+    if (romfs_find_internal(file, name) == ROMFS_NOERR) {
 	return (file->err = ROMFS_ERR_FILE_EXISTS);
     }
 
-    if (err == ROMFS_ERR_NO_ENTRY) {
+    if (file->err == ROMFS_ERR_NO_ENTRY) {
 	strncpy(file->entry.name, name, ROMFS_MAX_NAME_LEN - 1);
 	file->entry.name[ROMFS_MAX_NAME_LEN - 1] = '\0';
 	file->entry.mode = mode;
@@ -363,10 +356,10 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
     return 0;
 }
 
-const char *romfs_get_string_error(uint16_t err)
+const char *romfs_strerror(uint16_t err)
 {
-    if (sizeof(err_string) / sizeof(const char *) < err) {
-	return err_string[err];
+    if (err < sizeof(romfs_errlist) / sizeof(const char *)) {
+	return romfs_errlist[err];
     }
     
     return "Unknown";

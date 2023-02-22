@@ -49,7 +49,7 @@ uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file *file);
 uint32_t romfs_close_file(romfs_file *file);
 uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file);
-const char *romfs_get_string_error(uint16_t err);
+const char *romfs_strerror(uint16_t err);
 
 void save_romfs(char *name, uint8_t *mem, size_t len);
 bool read_romfs(char *name, uint8_t *mem, size_t len);
