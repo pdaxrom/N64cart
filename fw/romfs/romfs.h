@@ -19,23 +19,25 @@ enum {
     ROMFS_ERR_NO_FREE_ENTRIES,
     ROMFS_ERR_NO_SPACE,
     ROMFS_ERR_FILE_EXISTS,
-    ROMFS_ERR_FILE_DATA_TOO_BIG
+    ROMFS_ERR_FILE_DATA_TOO_BIG,
+    ROMFS_ERR_EOF,
 };
 
 typedef struct __attribute__((packed)){
     char     name[ROMFS_MAX_NAME_LEN];
     uint16_t mode: 3;
     uint16_t type: 13;
-    uint16_t start;
+    uint32_t start;
     uint32_t size;
 } romfs_entry;
 
 typedef struct {
     romfs_entry entry;
-    uint16_t nentry;
-    uint16_t pos;
-    uint16_t offset;
-    uint16_t err;
+    uint32_t nentry;
+    uint32_t pos;
+    uint32_t offset;
+    uint32_t read_offset;
+    uint32_t err;
     uint8_t *io_buffer;
 } romfs_file;
 
@@ -49,7 +51,7 @@ uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file *file);
 uint32_t romfs_close_file(romfs_file *file);
 uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file);
-const char *romfs_strerror(uint16_t err);
+const char *romfs_strerror(uint32_t err);
 
 void save_romfs(char *name, uint8_t *mem, size_t len);
 bool read_romfs(char *name, uint8_t *mem, size_t len);

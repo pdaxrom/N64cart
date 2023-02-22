@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
 		} while (romfs_list(&file, false) == ROMFS_NOERR);
 	    }
 	} else if (!strcmp(argv[2], "delete")) {
-	    uint16_t err;
+	    uint32_t err;
 	    if ((err = romfs_delete(argv[3])) != ROMFS_NOERR) {
 		fprintf(stderr, "Error: [%s] %s!\n", argv[3], romfs_strerror(err));
 	    }
@@ -69,26 +69,47 @@ int main(int argc, char *argv[])
 		uint8_t buffer[4096];
 		int ret;
 		romfs_file file;
-		if (romfs_create_file(argv[3], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) != ROMFS_NOERR) {
+		if (romfs_create_file(argv[4], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) != ROMFS_NOERR) {
 		    fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
 		} else {
 		    while ((ret = fread(buffer, 1, 4096, inf)) > 0) {
 			if (romfs_write_file(buffer, ret, &file) == 0) {
-			    fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
 			    break;
 			}
 		    }
+
 		    if (file.err == ROMFS_NOERR) {
 			if (romfs_close_file(&file) != ROMFS_NOERR) {
 			    fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
 			}
+		    } else {
+			fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
 		    }
 		}
 		fclose(inf);
 	    } else {
-		fprintf(stderr, "Cannot open file %s\n", argv[2]);
+		fprintf(stderr, "Cannot open file %s\n", argv[3]);
 	    }
 	} else if (!strcmp(argv[2], "pull")) {
+	    romfs_file file;
+	    if (romfs_open_file(argv[3], &file, NULL) == ROMFS_NOERR) {
+		FILE *outf = fopen(argv[4], "wb");
+		if (outf) {
+		    uint8_t buffer[4096];
+		    int ret;
+		    while ((ret = romfs_read_file(buffer, 4096, &file)) > 0) {
+			fwrite(buffer, 1, ret, outf);
+		    }
+		    
+		    if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
+			fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
+		    }
+		} else {
+		    fprintf(stderr, "Cannot open file %s\n", argv[3]);
+		}
+	    } else {
+		fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
+	    }
 	} else {
 	    fprintf(stderr, "Error: Unknown command '%s'\n", argv[2]);
 	}
