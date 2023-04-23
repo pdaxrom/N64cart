@@ -386,35 +386,37 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 
     size = (file->read_offset + size > file->entry.size) ? (file->entry.size - file->read_offset) : size;
 
-    uint32_t bytes = size % FLASH_SECTOR;
+    //uint32_t bytes = size % FLASH_SECTOR;
 
-    if (file->offset + bytes >= FLASH_SECTOR) {
+    if (file->offset + size == FLASH_SECTOR) {
+	memmove(buffer, &flash_base[file->pos * FLASH_SECTOR], size);
+	file->read_offset += FLASH_SECTOR;
+	file->pos = flash_map[file->pos];
+
+	return size;
+    } else if (file->offset + size > FLASH_SECTOR) {
 	uint32_t need = FLASH_SECTOR - file->offset;
 	memmove(buffer, &flash_base[file->pos * FLASH_SECTOR + file->offset], need);
 	file->pos = flash_map[file->pos];
 	file->read_offset += need;
-	need = bytes - need;
+	need = size - need;
 	if (need > 0) {
-	    memmove(&((char *)buffer)[FLASH_SECTOR - file->offset], &flash_base[flash_map[file->pos] * FLASH_SECTOR], need);
+	    memmove(&((char *)buffer)[FLASH_SECTOR - file->offset], &flash_base[file->pos * FLASH_SECTOR], need);
 	    file->offset = need;
 	    file->read_offset += need;
 	} else {
 	    file->offset = 0;
 	}
 	return size;
-    } else if (bytes > 0) {
-	memmove(buffer, &flash_base[file->pos * FLASH_SECTOR + file->offset], bytes);
-	file->offset += bytes;
-	file->read_offset += bytes;
+    } else if (size > 0) {
+	memmove(buffer, &flash_base[file->pos * FLASH_SECTOR + file->offset], size);
+	file->offset += size;
+	file->read_offset += size;
 	
 	return size;
     }
 
-    memmove(buffer, &flash_base[file->pos * FLASH_SECTOR], size);
-    file->read_offset += FLASH_SECTOR;
-    file->pos = flash_map[file->pos];
-
-    return size;
+    return 0;
 }
 
 const char *romfs_strerror(uint32_t err)
