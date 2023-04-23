@@ -84,7 +84,7 @@ bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
     return false;
 }
 
-void romfs_flush()
+void romfs_flush(void)
 {
     for (int i = 0; i < list_size; i += FLASH_SECTOR) {
 	romfs_flash_sector_erase(flash_start + i);
@@ -97,7 +97,7 @@ void romfs_flush()
     }
 }
 
-bool romfs_format()
+bool romfs_format(void)
 {
     memset(flash_list, 0xff, list_size);
 
@@ -135,7 +135,7 @@ bool romfs_format()
     return true;
 }
 
-uint32_t romfs_free()
+uint32_t romfs_free(void)
 {
     return -1;
 }
@@ -233,6 +233,8 @@ static uint32_t romfs_find_free_sector(uint32_t start)
 
 uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer)
 {
+    file->op = ROMFS_OP_WRITE;
+
     if (romfs_find_internal(file, name) == ROMFS_NOERR) {
 	return (file->err = ROMFS_ERR_FILE_EXISTS);
     }
@@ -331,22 +333,25 @@ uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file *file)
 
 uint32_t romfs_close_file(romfs_file *file)
 {
-    if (file->offset > 0) {
-	if (romfs_allocate_and_write_sector_internal(file->io_buffer, file) != ROMFS_NOERR) {
-	    return file->err;
+    if (file->op == ROMFS_OP_WRITE) {
+	if (file->offset > 0) {
+	    if (romfs_allocate_and_write_sector_internal(file->io_buffer, file) != ROMFS_NOERR) {
+		return file->err;
+	    }
+	    file->entry.size += file->offset;
 	}
-	file->entry.size += file->offset;
+
+	memmove(&((romfs_entry *)flash_list)[file->nentry], &file->entry, sizeof(romfs_entry));
+
+	romfs_flush();
     }
-
-    memmove(&((romfs_entry *)flash_list)[file->nentry], &file->entry, sizeof(romfs_entry));
-
-    romfs_flush();
 
     return ROMFS_NOERR;
 }
 
 uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer)
 {
+    file->op = ROMFS_OP_READ;
     if (romfs_find_internal(file, name) == ROMFS_NOERR) {
 	file->pos = file->entry.start;
 	file->offset = 0;

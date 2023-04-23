@@ -1,7 +1,7 @@
 #ifndef __ROMFS_H__
 #define __ROMFS_H__
 
-#define ROMFS_MAX_NAME_LEN 56
+#define ROMFS_MAX_NAME_LEN 54
 
 #define ROMFS_MODE_READWRITE	(0)
 #define ROMFS_MODE_READONLY	(1 << 0)
@@ -12,6 +12,9 @@
 #define ROMFS_TYPE_FLASHLIST	(0x01)
 #define ROMFS_TYPE_FLASHMAP	(0x02)
 #define ROMFS_TYPE_MISC		(0xff)
+
+#define ROMFS_OP_READ		0
+#define ROMFS_OP_WRITE		1
 
 enum {
     ROMFS_NOERR = 0,
@@ -32,6 +35,7 @@ typedef struct __attribute__((packed)){
 } romfs_entry;
 
 typedef struct {
+    uint32_t op;
     romfs_entry entry;
     uint32_t nentry;
     uint32_t pos;
@@ -42,8 +46,8 @@ typedef struct {
 } romfs_file;
 
 bool romfs_start(uint8_t *mem, uint32_t start, uint32_t size);
-bool romfs_format();
-uint32_t romfs_free();
+bool romfs_format(void);
+uint32_t romfs_free(void);
 uint32_t romfs_list(romfs_file *entry, bool first);
 uint32_t romfs_delete(const char *name);
 uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer);
