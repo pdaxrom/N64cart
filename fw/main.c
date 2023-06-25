@@ -147,6 +147,11 @@ int main(void)
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
 
+    gpio_init(N64_INT);
+    gpio_pull_up(N64_INT);
+    gpio_put(N64_INT, 1);
+    gpio_set_dir(N64_INT, GPIO_OUT);
+
     setup_sysconfig();
 
     stdio_init_all();
@@ -155,7 +160,9 @@ int main(void)
     printf("N64cart booting!\n\n");
     show_sysinfo();
 
+#ifdef PI_SRAM
     memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
+#endif
 
     multicore_launch_core1(n64_pi);
 
