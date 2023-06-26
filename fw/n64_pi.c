@@ -18,13 +18,8 @@
 #include "n64_pi.pio.h"
 #include "n64.h"
 
-#include "rom.h"
-
 static uint16_t *rom_base_16 = (uint16_t *) XIP_BASE;
 uint16_t rom_lookup[16386];
-
-static uint16_t *rom_file_16;
-static uint16_t *rom_jpeg_16;
 
 static uint16_t pi_bus_freq = 0x40ff;
 
@@ -75,9 +70,6 @@ uint16_t get_pi_bus_freq(void)
 
 void n64_pi(void)
 {
-    rom_file_16 = (uint16_t *) rom_file;
-    rom_jpeg_16 = (uint16_t *) (XIP_BASE + jpeg_start);
-
     PIO pio = pio0;
     pio_clear_instruction_memory(pio);
     uint offset = pio_add_program(pio, &pi_program);
@@ -142,16 +134,6 @@ void n64_pi(void)
 
 		continue;
 #endif
-	    } else if (last_addr >= 0x1fd80000) {
-		do {
-		    word = rom_jpeg_16[(last_addr & 0xFFFF) >> 1];
-
-		    pio_sm_put(pio, 0, swap8(word));
-		    last_addr += 2;
-		    addr = pio_sm_get_blocking(pio, 0);
-		} while (addr == 0);
-
-		continue;
 	    } else if (last_addr == 0x1fd01002) {
 		word =
 		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x0200) |
@@ -183,12 +165,6 @@ void n64_pi(void)
 		uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
 	    } else if (last_addr == 0x1fd0100a) {
 		gpio_put(LED_PIN, (addr >> 16) & 0x01);
-	    } else if (last_addr == 0x1fd0100e) {
-		int page = (addr >> 16);
-		if (page < rom_pages) {
-		    rom_file_16 = (uint16_t *) (0x10000000 + rom_start[page]);
-		    flash_set_ea_reg(page);
-		}
 	    }
 
 	    last_addr += 2;

@@ -25,8 +25,6 @@
 volatile uint32_t jpeg_start;
 
 volatile uint32_t rom_pages;
-volatile uint32_t rom_start[4];
-volatile uint32_t rom_size[4];
 
 static const char *rom_chip_name = NULL;
 
@@ -120,20 +118,12 @@ static void setup_sysconfig(void)
     jpeg_start = ((fw_binary_end - XIP_BASE) + 4095) & ~4095;
 
     rom_pages = 1;
-    rom_start[0] = jpeg_start + 64 * 1024;
-    rom_size[0] = 2 * 1024 * 1024;
 
     for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
 	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
 	    rom_pages = flash_chip[i].rom_pages;
-	    rom_size[0] = flash_chip[i].rom_size * 1024 * 1024;
 
 	    rom_chip_idx = i;
-
-	    for (int p = 1; p < flash_chip[i].rom_pages; p++) {
-		rom_start[p] = 0;
-		rom_size[p] = flash_chip[i].rom_size * 1024 * 1024;
-	    }
 
 	    set_sys_clock_khz(flash_chip[i].sys_freq, true);
 	    set_pi_bus_freq(flash_chip[i].pi_bus_freq);
@@ -153,14 +143,7 @@ static void show_sysinfo(void)
     printf("ROM chip           : %s\n", rom_chip_name);
     printf("System frequency   : %d\n", clock_get_hz(clk_sys) / 1000);
     printf("PI bus freq config : %04X\n\n", get_pi_bus_freq());
-    printf("Available ROM pages:\n");
-
-    for (int i = 0; i < rom_pages; i++) {
-	printf("Page %d\n", i);
-	printf(" Address %08X\n", rom_start[i]);
-	printf(" Size    %d bytes\n", rom_size[i] - rom_start[i]);
-    }
-
+    printf("ROM size           : %d MB\n", rom_pages * 16384);
 }
 
 void n64_pi_restart(void)
