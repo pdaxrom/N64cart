@@ -84,16 +84,8 @@ void __no_inline_not_in_flash_func(flash_set_ea_reg)(uint8_t addr)
     uint8_t txbuf[4];
     uint8_t rxbuf[4];
 
-//    txbuf[0] = 0xc8;
-//    xflash_do_cmd_internal(txbuf, rxbuf, 2);
-//    printf("EA register %02X\n", rxbuf[1]);
-
     txbuf[0] = 0x06;
     xflash_do_cmd_internal(txbuf, rxbuf, 1);
-
-//    txbuf[0] = 0x05;
-//    xflash_do_cmd_internal(txbuf, rxbuf, 2);
-//    printf("Status register %02X\n", rxbuf[1]);
 
     txbuf[0] = 0xc5;
     txbuf[1] = addr;
@@ -101,10 +93,6 @@ void __no_inline_not_in_flash_func(flash_set_ea_reg)(uint8_t addr)
 
     txbuf[0] = 0x04;
     xflash_do_cmd_internal(txbuf, rxbuf, 1);
-
-//    txbuf[0] = 0xc8;
-//    xflash_do_cmd_internal(txbuf, rxbuf, 2);
-//    printf("EA register %02X\n", rxbuf[1]);
 
     flash_flush_cache();
     flash_enable_xip_via_boot2();

@@ -19,6 +19,8 @@
 #include "dev_lowlevel.h"
 #include "../main.h"
 #include "../../utils/utils.h"
+#include "../romfs/romfs.h"
+#include "crc32.h"
 
 #define usb_hw_set hw_set_alias(usb_hw)
 #define usb_hw_clear hw_clear_alias(usb_hw)
@@ -578,7 +580,9 @@ static int flash_stage;
 static struct data_header flash_header;
 static int flash_received_size;
 
-static uint32_t flash_offset;
+static romfs_file file;
+
+static uint32_t chksum;
 
 // Device specific functions
 void ep1_out_handler(uint8_t *buf, uint16_t len) {
@@ -586,79 +590,111 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 
     if (flash_stage == 0) {
 	if (len != sizeof(struct data_header)) {
-	    printf("Wrong header size\n");
+	    printf("Wrong header size %d, must be %d\n", len, sizeof(struct data_header));
 	    usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 	    return;
 	}
 	memmove(&flash_header, buf, sizeof(struct data_header));
 	struct data_header *tmp = (struct data_header *) buf;
-	if (flash_header.type == DATA_WRITE || flash_header.type == DATA_PICTURE) {
-	    tmp->type = DATA_REPLY;
-	    if (flash_header.type == DATA_WRITE && flash_header.pages + 1 > rom_pages) {
-		tmp->pages = rom_pages;
-	    } else if (flash_header.type == DATA_WRITE && flash_header.length > ROM_SIZE_MAX) {
-		tmp->length = ROM_SIZE_MAX;
-	    } else if (flash_header.type == DATA_PICTURE && flash_header.length > PICTURE_SIZE_MAX) {
-		tmp->length = PICTURE_SIZE_MAX;
+	if (flash_header.type == DATA_WRITE) {
+	    if (romfs_create_file(flash_header.name, &file, ROMFS_MODE_READWRITE, flash_header.ftype, NULL) != ROMFS_NOERR) {
+		printf("cannot create file, romfs error: %s\n", romfs_strerror(file.err));
+		tmp->type = DATA_ERROR;
+		tmp->length = 0;
+		strncpy(tmp->name, romfs_strerror(file.err), ROMFS_MAX_NAME_LEN);
 	    } else {
+		tmp->type = DATA_REPLY;
 		flash_stage = 1;
 		flash_buffer_pos = 0;
 		flash_received_size = 0;
-		if (flash_header.type == DATA_WRITE) {
-		    flash_offset = rom_start[flash_header.pages];
-		    flash_set_ea_reg(flash_header.pages);
-		    printf("Write ROM %d bytes to ROM page %d\n", flash_header.length, flash_header.pages);
-		} else {
-		    flash_offset = jpeg_start;
-		    flash_set_ea_reg(0);
-		    flash_header.length = (flash_header.length + 4095) & ~4095;
-		    printf("Write picture %d bytes\n", flash_header.length);
-		}
 	    }
-	} else if (flash_header.type == DATA_INFO) {
+	} else if (flash_header.type == DATA_READ) {
+	    if (romfs_open_file(flash_header.name, &file, NULL) == ROMFS_NOERR) {
+		tmp->type = DATA_REPLY;
+		tmp->length = file.entry.size;
+		tmp->ftype = file.entry.type;
+		flash_stage = 1;
+		flash_received_size = 0;
+	    } else {
+		printf("cannot open file, romfs error: %s\n", romfs_strerror(file.err));
+		tmp->type = DATA_ERROR;
+		tmp->length = 0;
+		strncpy(tmp->name, romfs_strerror(file.err), ROMFS_MAX_NAME_LEN);
+	    }
+	} else if (flash_header.type == DATA_FORMAT) {
+    irq_set_enabled(USBCTRL_IRQ, false);
+	    romfs_format();
+    irq_set_enabled(USBCTRL_IRQ, true);
 	    tmp->type = DATA_REPLY;
-	    tmp->pages = rom_pages;
-	    tmp->address = rom_start[0];
-	    tmp->length = rom_size[0];
 	} else {
 	    printf("Unsupported operation tag %08X\n", flash_header.type);
 	    tmp->type = DATA_UNKNOWN;
 	}
     } else if (flash_stage == 1) {
-	if (len == 32) {
+	struct data_header *tmp = (struct data_header *) buf;
+	if (flash_header.type == DATA_WRITE && len == 64) {
+	    chksum = crc32(buf, len);
+//printf("%d: checksum calculated %08X\n", flash_received_size, chksum);
 	    memmove(&flash_buffer[flash_buffer_pos], buf, len);
 	    flash_buffer_pos += len;
 	    flash_received_size += len;
 	    if (flash_buffer_pos == FLASH_BUFFER_SIZE) {
-		if (flash_received_size % 1024 == 0) {
-//		    printf("Received %d of %d          \r", flash_received_size, flash_header.length);
+    irq_set_enabled(USBCTRL_IRQ, false);
+
+		if (romfs_write_file(flash_buffer, FLASH_BUFFER_SIZE, &file) == 0) {
+		    tmp->type = DATA_ERROR;
+		    tmp->length = 0;
+		    strncpy(tmp->name, romfs_strerror(file.err), ROMFS_MAX_NAME_LEN);
+		    len = sizeof(struct data_header);
+		    flash_stage = 0;
+		} else {
+		    if (flash_received_size == flash_header.length) {
+			printf("Total bytes received %d\n", flash_received_size);
+			flash_stage = 0;
+			if (romfs_close_file(&file) != ROMFS_NOERR) {
+			    printf("romfs close error %s\n", romfs_strerror(file.err));
+			}
+		    }
+		    *((uint32_t *)tmp->name) = chksum;
+		    tmp->type = DATA_REPLY;
+		    tmp->length = len;
+		    len = sizeof(struct data_header);
 		}
-
-//		uint32_t ints = save_and_disable_interrupts();
-
-//		printf("flash offset %08X\n", flash_offset);
-		if (flash_offset % 4096 == 0) {
-//		    printf("Erase flash %08X\r", flash_offset);
-		    flash_range_erase(flash_offset, 4096);
-		}
-
-//		printf("Write flash             \r");
-		flash_range_program(flash_offset, flash_buffer, FLASH_BUFFER_SIZE);
-
-//		restore_interrupts (ints);
-
-		flash_offset += FLASH_BUFFER_SIZE;
 		flash_buffer_pos = 0;
+    irq_set_enabled(USBCTRL_IRQ, true);
+	    } else {
+		*((uint32_t *)tmp->name) = chksum;
+		tmp->type = DATA_REPLY;
+		tmp->length = len;
+		len = sizeof(struct data_header);
 	    }
-
-	    if (flash_received_size == flash_header.length) {
-		printf("Total bytes received %d\n", flash_received_size);
+	} else if (len == sizeof(struct data_header) && tmp->type == DATA_READ) {
+	    int req = tmp->length;
+	    if (flash_received_size > 0) {
+		uint32_t r_chksum = *((uint32_t *)tmp->name);
+//		printf("%08X - %08X\n", chksum, r_chksum);
+		if (chksum != r_chksum) {
+		    printf("checksum error!\n");
+		    flash_stage = 0;
+		}
+	    }
+    irq_set_enabled(USBCTRL_IRQ, false);
+	    len = romfs_read_file(buf, req, &file);
+    irq_set_enabled(USBCTRL_IRQ, true);
+	    if (len != req) {
+		printf("file read error - %d, %d\n", len, req);
 		flash_stage = 0;
-		flash_set_ea_reg(0);
+	    }
+	    chksum = crc32(buf, len);
+	    flash_received_size += len;
+//	    printf("req %d send %d, total %d\n", req, len, flash_received_size);
+	    if (flash_received_size == file.entry.size) {
+		printf("read completed\n");
+		flash_stage = 0;
 	    }
 	} else {
-	    printf("Wrong packet size %d\n", len);
-	    flash_set_ea_reg(0);
+	    printf("Wrong packet size %d %04X\n", len, flash_header.type);
+	    flash_stage = 0;
 	}
     }
 

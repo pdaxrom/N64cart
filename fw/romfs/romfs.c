@@ -11,8 +11,8 @@
 #define MAP_SIZE (ROM_SIZE / FLASH_SECTOR)
 #define LIST_MAX (128)
 
-#define ROMFS_EMPTY_ENTRY   (-1)
-#define ROMFS_DELETED_ENTRY (-2)
+#define ROMFS_EMPTY_ENTRY   '\xff'
+#define ROMFS_DELETED_ENTRY '\xfe'
 
 static const char *romfs_errlist[] = {
     "No error",
@@ -34,6 +34,7 @@ static uint8_t flash_buffer[FLASH_SECTOR];
 static uint16_t flash_map[FLASH_SECTOR * 4];
 static uint8_t flash_list[FLASH_SECTOR];
 
+#ifdef TEST
 static bool romfs_flash_sector_erase(uint32_t offset)
 {
 #ifdef DEBUG
@@ -51,6 +52,20 @@ static bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
     memmove(&flash_base[offset], buffer, FLASH_SECTOR);
     return true;
 }
+
+static bool romfs_flash_ea(uint8_t ea)
+{
+#ifdef DEBUG
+    printf("flash ExtAddr %02X\n", ea);
+#endif
+
+    return true;
+}
+
+#define ROM_ADDR_MASK(a) (a)
+#else
+#define ROM_ADDR_MASK(a) ((a) & 0xffffff)
+#endif
 
 bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
 {
@@ -71,6 +86,8 @@ bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
     printf("romfs map size %d\n", map_size);
     printf("romfs list size %d\n", list_size);
 
+    romfs_flash_ea(0);
+
     if (map_size && list_size) {
 	for (int i = 0; i < list_size; i += FLASH_SECTOR) {
 	    memmove(&flash_list[i], &flash_base[flash_start + i], FLASH_SECTOR);
@@ -86,6 +103,8 @@ bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
 
 void romfs_flush(void)
 {
+printf("romfs flush\n");
+
     for (int i = 0; i < list_size; i += FLASH_SECTOR) {
 	romfs_flash_sector_erase(flash_start + i);
 	romfs_flash_sector_write(flash_start + i, &flash_list[i]);
@@ -174,7 +193,7 @@ static uint32_t romfs_find_internal(romfs_file *file, const char *name)
 {
     if (romfs_list(file, true) == ROMFS_NOERR) {
 	do {
-	    if (!strcmp(name, file->entry.name)) {
+	    if (!strncmp(name, file->entry.name, ROMFS_MAX_NAME_LEN)) {
 		file->nentry--;
 		return (file->err = ROMFS_NOERR);
 	    }
@@ -363,6 +382,29 @@ uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer)
     return (file->err = ROMFS_ERR_NO_ENTRY);
 }
 
+bool romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_file *file)
+{
+    file->err = ROMFS_NOERR;
+
+    memset(map_buffer, 0, map_size * sizeof(uint16_t));
+
+    if (file->entry.size == 0) {
+	file->err = ROMFS_NOERR;
+
+	return true;
+    }
+
+    int i = 0;
+    while (file->read_offset < file->entry.size) {
+//printf("map: %04X\n", file->pos);
+	map_buffer[i++] = file->pos;
+	file->pos = flash_map[file->pos];
+	file->read_offset += FLASH_SECTOR;
+    }
+
+    return true;
+}
+
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 {
     file->err = ROMFS_NOERR;
@@ -388,20 +430,24 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 
     //uint32_t bytes = size % FLASH_SECTOR;
 
+    romfs_flash_ea((file->pos * FLASH_SECTOR) >> 24);
+
     if (file->offset + size == FLASH_SECTOR) {
-	memmove(buffer, &flash_base[file->pos * FLASH_SECTOR], size);
-	file->read_offset += FLASH_SECTOR;
+	memmove(buffer, &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR) + file->offset], size);
+	file->read_offset += size;
+	file->offset = 0;
 	file->pos = flash_map[file->pos];
 
 	return size;
     } else if (file->offset + size > FLASH_SECTOR) {
 	uint32_t need = FLASH_SECTOR - file->offset;
-	memmove(buffer, &flash_base[file->pos * FLASH_SECTOR + file->offset], need);
+	memmove(buffer, &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR) + file->offset], need);
 	file->pos = flash_map[file->pos];
 	file->read_offset += need;
 	need = size - need;
 	if (need > 0) {
-	    memmove(&((char *)buffer)[FLASH_SECTOR - file->offset], &flash_base[file->pos * FLASH_SECTOR], need);
+	    romfs_flash_ea((file->pos * FLASH_SECTOR) >> 24);
+	    memmove(&((char *)buffer)[FLASH_SECTOR - file->offset], &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR)], need);
 	    file->offset = need;
 	    file->read_offset += need;
 	} else {
@@ -409,7 +455,7 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 	}
 	return size;
     } else if (size > 0) {
-	memmove(buffer, &flash_base[file->pos * FLASH_SECTOR + file->offset], size);
+	memmove(buffer, &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR) + file->offset], size);
 	file->offset += size;
 	file->read_offset += size;
 	

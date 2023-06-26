@@ -2,7 +2,7 @@ TARGET = usb-uploader
 
 all: $(TARGET)
 
-OBJS = $(TARGET).o
+OBJS = $(TARGET).o crc32.o
 
 ifeq (Windows,$(SYSTEM))
 CC = i686-w64-mingw32-gcc

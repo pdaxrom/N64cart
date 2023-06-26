@@ -15,6 +15,7 @@
 #include "hardware/clocks.h"
 #include "hardware/flash.h"
 #include "flashrom.h"
+#include "romfs/romfs.h"
 
 #include "main.h"
 #include "cic.h"
@@ -29,6 +30,8 @@ volatile uint32_t rom_size[4];
 
 static const char *rom_chip_name = NULL;
 
+static int rom_chip_idx = -1;
+
 static const struct flash_chip {
     uint8_t mf;
     uint16_t id;
@@ -39,7 +42,9 @@ static const struct flash_chip {
     const char *name;
 } flash_chip[] = {
     { 0xef, 0x4020, 4, 16, 220000, 0x4028, "W25Q512" },
-    { 0xef, 0x4019, 2, 16, 256000, 0x4022, "W25Q256" },
+//    { 0xef, 0x4020, 4, 16, 200000, 0x4028, "W25Q512" },
+//    { 0xef, 0x4019, 2, 16, 256000, 0x4022, "W25Q256" },
+    { 0xef, 0x4019, 2, 16, 230000, 0x4022, "W25Q256" },
     { 0xef, 0x4018, 1, 16, 256000, 0x4022, "W25Q128" },
     { 0xef, 0x4017, 1, 8 , 256000, 0x4022, "W25Q64"  },
     { 0xef, 0x4016, 1, 4 , 256000, 0x4022, "W25Q32"  },
@@ -47,6 +52,53 @@ static const struct flash_chip {
 };
 
 extern char __flash_binary_end;
+
+//#define DEBUG_FS 1
+
+bool romfs_flash_sector_erase(uint32_t offset)
+{
+#ifdef DEBUG_FS
+    printf("%s: offset %08X\n", __func__, offset);
+#endif
+    flash_set_ea_reg(offset >> 24);
+
+    flash_range_erase(offset & 0xffffff, 4096);
+
+    return true;
+}
+
+bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
+{
+#ifdef DEBUG_FS
+    printf("%s: offset %08X\n", __func__, offset);
+#endif
+    flash_set_ea_reg(offset >> 24);
+
+    flash_range_program(offset & 0xffffff, buffer, 4096);
+
+    return true;
+}
+
+bool romfs_flash_ea(uint8_t ea)
+{
+#ifdef DEBUG_FS
+    printf("%s: page %02X\n", __func__, ea);
+#endif
+    flash_set_ea_reg(ea);
+
+    return true;
+}
+
+static void flash_ls()
+{
+    romfs_file file;
+    printf("File list:\n");
+    if (romfs_list(&file, true) == ROMFS_NOERR) {
+	do {
+	    printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.mode, file.entry.type);
+	} while (romfs_list(&file, false) == ROMFS_NOERR);
+    }
+}
 
 static void setup_sysconfig(void)
 {
@@ -75,6 +127,8 @@ static void setup_sysconfig(void)
 	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
 	    rom_pages = flash_chip[i].rom_pages;
 	    rom_size[0] = flash_chip[i].rom_size * 1024 * 1024;
+
+	    rom_chip_idx = i;
 
 	    for (int p = 1; p < flash_chip[i].rom_pages; p++) {
 		rom_start[p] = 0;
@@ -106,6 +160,7 @@ static void show_sysinfo(void)
 	printf(" Address %08X\n", rom_start[i]);
 	printf(" Size    %d bytes\n", rom_size[i] - rom_start[i]);
     }
+
 }
 
 void n64_pi_restart(void)
@@ -159,6 +214,27 @@ int main(void)
 
     printf("N64cart booting!\n\n");
     show_sysinfo();
+
+    uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
+
+    if (!romfs_start((uint8_t *)XIP_BASE, ((fw_binary_end - XIP_BASE) + 4095) & ~4095, flash_chip[rom_chip_idx].rom_pages * flash_chip[rom_chip_idx].rom_size * 1024 * 1024)) {
+	printf("Cannot start romfs!\n");
+	while(true) ;
+    }
+
+    if (strncmp((const char *)(XIP_BASE + (((fw_binary_end - XIP_BASE) + 4095) & ~4095)), "firmware", 8)) {
+	printf("no signature found, format\n");
+	romfs_format();
+    }
+
+    flash_ls();
+
+    romfs_file file;
+    if (romfs_open_file("test-rom.z64", &file, NULL) == ROMFS_NOERR) {
+	romfs_read_map_table(rom_lookup, 16384, &file);
+    } else {
+	printf("romfs error: %s\n", romfs_strerror(file.err));
+    }
 
 #ifdef PI_SRAM
     memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);

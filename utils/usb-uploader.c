@@ -7,7 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <libusb.h>
+#include "../fw/romfs/romfs.h"
 #include "utils.h"
 
 #define RETRY_MAX	50 
@@ -45,7 +47,7 @@ int main(int argc, char **argv)
     int actual;
     int err = 1;
 
-    printf("N64cart USB utility by pdaXrom.org, 2022\n\n");
+    printf("N64cart USB utility by pdaXrom.org, 2022-2023\n\n");
 
     if (argc < 2) {
 	usage(argv[0]);
@@ -81,7 +83,7 @@ int main(int argc, char **argv)
     if (!strcmp(argv[1], "info")) {
 	struct data_header header;
 	header.type = DATA_INFO;
-
+/*
 	bulk_transfer(dev_handle, 0x01, (void *)&header, sizeof(struct data_header), &actual, 5000);
 	if (actual != sizeof(struct data_header)) {
 	    fprintf(stderr, "Header error transfer\n");
@@ -105,11 +107,11 @@ int main(int argc, char **argv)
 		printf(" Size    %d\n", header.length);
 	    }
 	}
-
+*/
 	err = 0;
     } else if (!strcmp(argv[1], "picture")) {
 	int ret;
-
+/*
 	FILE *inf = fopen(argv[2], "rb");
 	if (!inf) {
 	    fprintf(stderr, "Cannot open file %s\n", argv[1]);
@@ -201,12 +203,12 @@ int main(int argc, char **argv)
 	    }
 
 	}
-    } else if (!strcmp(argv[1], "rom")) {
+*/
+    } else if (!strcmp(argv[1], "push")) {
 	int ret;
-	int page = atoi(argv[2]);
 	uint32_t type;
 
-	FILE *inf = fopen(argv[3], "rb");
+	FILE *inf = fopen(argv[2], "rb");
 	if (!inf) {
 	    fprintf(stderr, "Cannot open file %s\n", argv[1]);
 	    goto exit;
@@ -234,15 +236,15 @@ int main(int argc, char **argv)
 	fseek(inf, 0, SEEK_SET);
 
 	fprintf(stderr, "ROM size %d\n", size);
-	fprintf(stderr, "Write to page %d\n", page);
 
 	struct data_header *header = alloca(sizeof(struct data_header));
 	struct data_header *header_reply = alloca(sizeof(struct data_header));
 
 	header->type = DATA_WRITE;
-	header->address = 0;
 	header->length = size;
-	header->pages = page;
+	header->ftype = ROMFS_TYPE_MISC;
+	char *tmp_name = strrchr(argv[2], '/');
+	strncpy(header->name, tmp_name ? tmp_name + 1 : argv[2], ROMFS_MAX_NAME_LEN);
 
 	bulk_transfer(dev_handle, 0x01, (void *)header, sizeof(struct data_header), &actual, 5000);
 	if (actual != sizeof(struct data_header)) {
@@ -254,24 +256,23 @@ int main(int argc, char **argv)
 	if (actual != sizeof(struct data_header)) {
 	    fprintf(stderr, "Header reply error transfer\n");
 	    goto exit;
+	} else if (header_reply->type == DATA_ERROR) {
+	    fprintf(stderr, "Error %s\n", header_reply->name);
+	    goto exit;
 	} else if (header_reply->type != DATA_REPLY) {
 	    fprintf(stderr, "Wrong header reply\n");
 	    goto exit;
-	} else if (header_reply->pages != header->pages) {
-	    fprintf(stderr, "Wrong page\n");
-	    goto exit;
-	} else if (header_reply->length != header->length) {
-	    fprintf(stderr, "Wrong ROM size\n");
-	    goto exit;
 	} else {
 	    uint8_t buf[64];
-	    uint8_t buf_in[64];
+	    struct data_header buf_in;
+
+	    uint32_t chksum;
 
 	    while (size) {
-		int r = fread(buf, 1, 32, inf);
-		if (r == 32) {
+		int r = fread(buf, 1, 64, inf);
+		if (r == 64) {
 		    if (type) {
-			for (int i = 0; i < 32; i += 4) {
+			for (int i = 0; i < 64; i += 4) {
 			    uint8_t tmp;
 			    if (type == 1) {
 				tmp = buf[i + 0];
@@ -291,28 +292,43 @@ int main(int argc, char **argv)
 			}
 		    }
 
-		    ret = bulk_transfer(dev_handle, 0x01, buf, 32, &actual, 5000);
+		    chksum = crc32(buf, 64);
+
+		    ret = bulk_transfer(dev_handle, 0x01, buf, 64, &actual, 5000);
 		    if (ret) {
 			fprintf(stderr, "data transfer error - libusb error %d\n", ret);
 			break;
 		    }
-		    if (actual != 32) {
-			fprintf(stderr, "\nData transfer error (%d of 32)\n", actual);
+		    if (actual != 64) {
+			fprintf(stderr, "\nData transfer error (%d of 64)\n", actual);
 			break;
 		    }
 
-		    bulk_transfer(dev_handle, 0x82, buf_in, sizeof(buf_in), &actual, 5000);
-		    if (actual != 32) {
-			fprintf(stderr, "\nData receive error\n");
+		    bulk_transfer(dev_handle, 0x82, (void *)&buf_in, sizeof(buf_in), &actual, 5000);
+		    if (actual != sizeof(buf_in)) {
+			fprintf(stderr, "\nData receive error %d\n", actual);
 			break;
 		    }
 
-		    if (memcmp(buf, buf_in, 32)) {
-			fprintf(stderr, "\nDevice received wrong data\n");
+		    if (buf_in.type != DATA_REPLY) {
+			fprintf(stderr, "\nWrite error %s\n", buf_in.name);
 			break;
 		    }
 
-		    size -= 32;
+		    uint32_t r_chksum = *((uint32_t *) buf_in.name);
+//fprintf(stderr, "%d: checksum received %08X - calculated %08X\n", header->length - size, chksum, r_chksum);
+
+		    if (chksum != r_chksum) {
+			fprintf(stderr, "checksum error: received %08X - calculated %08X\n", chksum, r_chksum);
+			break;
+		    }
+
+//		    if (memcmp(buf, buf_in, 32)) {
+//			fprintf(stderr, "\nDevice received wrong data\n");
+//			break;
+//		    }
+
+		    size -= 64;
 
 		    if ((header->length - size) % 1024 == 0) {
 			printf("Send %d bytes of %d\r", header->length - size, header->length);
@@ -328,6 +344,117 @@ int main(int argc, char **argv)
 		err = 0;
 	    }
 
+	}
+    } else if (!strcmp(argv[1], "pull")) {
+	int ret;
+	uint32_t type;
+
+	struct data_header *header = alloca(sizeof(struct data_header));
+	struct data_header *header_reply = alloca(sizeof(struct data_header));
+
+	header->type = DATA_READ;
+	strncpy(header->name, argv[2], ROMFS_MAX_NAME_LEN);
+
+	bulk_transfer(dev_handle, 0x01, (void *)header, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "Header error transfer\n");
+	    goto exit;
+	}
+
+	bulk_transfer(dev_handle, 0x82, (void *)header_reply, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "Header reply error transfer\n");
+	    goto exit;
+	} else if (header_reply->type == DATA_ERROR) {
+	    fprintf(stderr, "Error %s\n", header_reply->name);
+	    goto exit;
+	} else if (header_reply->type != DATA_REPLY) {
+	    fprintf(stderr, "Wrong header reply\n");
+	    goto exit;
+	} else {
+	    FILE *fout = fopen(header_reply->name, "wb");
+	    if (!fout) {
+		fprintf(stderr, "Cannot create file %s\n", header_reply->name);
+		goto exit;
+	    }
+
+	    uint32_t size = header_reply->length;
+
+	    fprintf(stderr, "File size %d\n", size);
+
+	    uint8_t buf[64];
+	    struct data_header buf_out;
+
+	    uint32_t chksum = 0;
+
+	    while (size) {
+		buf_out.type = DATA_READ;
+		buf_out.length = (size > sizeof(buf)) ? sizeof(buf) : size;
+		*((uint32_t *)buf_out.name) = chksum;
+
+		ret = bulk_transfer(dev_handle, 0x01, (void *)&buf_out, sizeof(buf_out), &actual, 5000);
+		if (ret) {
+		    fprintf(stderr, "data transfer error - libusb error %d\n", ret);
+		    break;
+		}
+
+		if (actual != sizeof(buf_out)) {
+		    fprintf(stderr, "\nData transfer error (%d of 64)\n", actual);
+		    break;
+		}
+
+		bulk_transfer(dev_handle, 0x82, buf, buf_out.length, &actual, 5000);
+		if (actual != buf_out.length) {
+		    fprintf(stderr, "\nData receive error %d\n", actual);
+		    break;
+		}
+
+		chksum = crc32(buf, buf_out.length);
+
+//printf("%d: checksum %08X\n", header_reply->length - size, chksum);
+
+		fwrite(buf, 1, buf_out.length, fout);
+
+		size -= buf_out.length;
+
+		if ((header_reply->length - size) % 1024 == 0) {
+		    printf("Received %d bytes of %d\r", header_reply->length - size, header_reply->length);
+		}
+	    }
+
+	    if (size == 0) {
+		printf("\n");
+		err = 0;
+	    }
+
+	}
+    } else if (!strcmp(argv[1], "format")) {
+	int ret;
+	uint32_t type;
+
+	struct data_header *header = alloca(sizeof(struct data_header));
+	struct data_header *header_reply = alloca(sizeof(struct data_header));
+
+	header->type = DATA_FORMAT;
+
+	bulk_transfer(dev_handle, 0x01, (void *)header, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "Header error transfer\n");
+	    goto exit;
+	}
+
+	bulk_transfer(dev_handle, 0x82, (void *)header_reply, sizeof(struct data_header), &actual, 5000);
+	if (actual != sizeof(struct data_header)) {
+	    fprintf(stderr, "Header reply error transfer\n");
+	    goto exit;
+	} else if (header_reply->type == DATA_ERROR) {
+	    fprintf(stderr, "Error %s\n", header_reply->name);
+	    goto exit;
+	} else if (header_reply->type != DATA_REPLY) {
+	    fprintf(stderr, "Wrong header reply\n");
+	    goto exit;
+	} else {
+	    fprintf(stderr, "okay\n");
 	}
     } else {
 	fprintf(stderr, "Unknown command\n\n");

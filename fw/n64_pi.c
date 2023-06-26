@@ -20,6 +20,9 @@
 
 #include "rom.h"
 
+static uint16_t *rom_base_16 = (uint16_t *) XIP_BASE;
+uint16_t rom_lookup[16386];
+
 static uint16_t *rom_file_16;
 static uint16_t *rom_jpeg_16;
 
@@ -91,6 +94,9 @@ void n64_pi(void)
     uint32_t last_addr = 0;
     uint32_t word;
 
+    uint32_t mapped_addr;
+    uint8_t ea;
+
     uint32_t addr = pio_sm_get_blocking(pio, 0);
     do {
 	if (addr == 0) {
@@ -101,12 +107,10 @@ void n64_pi(void)
 		last_addr += 2;
 #if PI_SRAM
 		word = pi_bus_freq;
-		//word = 0x40FF;
-		//word = 0x4020;
+//		word = 0x40FF;
 #else
 		word = pi_bus_freq;
-		//word = 0x401c;
-		//word = 0x4012;
+//		word = 0x40FF;
 #endif
 		addr = pio_sm_get_blocking(pio, 0);
 		if (addr == 0) {
@@ -116,7 +120,9 @@ void n64_pi(void)
 		continue;
 	    } else if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
 		do {
-		    word = rom_file_16[(last_addr & 0xFFFFFF) >> 1];
+		    mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
+		    ea = (mapped_addr >> 24) & 0x03; // max 64MB
+		    word = rom_base_16[(mapped_addr & 0xffffff) >> 1];
  hackentry:
 		    pio_sm_put(pio, 0, swap8(word));
 		    last_addr += 2;

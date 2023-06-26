@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "Cannot read %s\n", argv[1]);
     }
 
-    if (!romfs_start(memory, 65536, sizeof(memory))) {
+    if (!romfs_start(memory, 0x10D000, sizeof(memory))) {
 	printf("Cannot start romfs!\n");
 	goto err;
     }
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
 		if (romfs_create_file(argv[4], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) != ROMFS_NOERR) {
 		    fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
 		} else {
-		    while ((ret = fread(buffer, 1, 4096, inf)) > 0) {
+		    while ((ret = fread(buffer, 1, 64, inf)) > 0) {
 			if (romfs_write_file(buffer, ret, &file) == 0) {
 			    break;
 			}

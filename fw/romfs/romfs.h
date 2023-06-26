@@ -45,6 +45,12 @@ typedef struct {
     uint8_t *io_buffer;
 } romfs_file;
 
+#ifndef TEST
+bool romfs_flash_sector_erase(uint32_t offset);
+bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer);
+bool romfs_flash_ea(uint8_t ea);
+#endif
+
 bool romfs_start(uint8_t *mem, uint32_t start, uint32_t size);
 bool romfs_format(void);
 uint32_t romfs_free(void);
@@ -54,6 +60,7 @@ uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t
 uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file *file);
 uint32_t romfs_close_file(romfs_file *file);
 uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer);
+bool romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_file *file);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file);
 const char *romfs_strerror(uint32_t err);
 

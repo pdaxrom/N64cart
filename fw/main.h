@@ -18,6 +18,8 @@ extern volatile uint32_t rom_pages;
 extern volatile uint32_t rom_start[4];
 extern volatile uint32_t rom_size[4];
 
+extern uint16_t rom_lookup[16386];
+
 void n64_pi_restart(void);
 
 #if PI_SRAM

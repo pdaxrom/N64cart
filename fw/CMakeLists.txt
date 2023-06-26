@@ -34,7 +34,9 @@ add_executable(
     n64_pi.c
     cic.c
     flashrom.c
+    romfs/romfs.c
     usb/dev_lowlevel.c
+    usb/crc32.c
 )
 
 # pull in common dependencies
