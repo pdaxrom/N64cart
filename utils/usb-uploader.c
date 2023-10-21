@@ -11,6 +11,7 @@
 #include <libusb.h>
 #include "../fw/romfs/romfs.h"
 #include "utils.h"
+#include "crc32.h"
 
 #define RETRY_MAX	50 
 
