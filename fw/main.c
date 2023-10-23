@@ -219,6 +219,15 @@ int main(void)
 	printf("romfs error: %s\n", romfs_strerror(file.err));
     }
 
+    flash_spi_mode();
+
+    for (uint32_t i = 0; i < 16; i++) {
+	uint32_t addr = 0x10000000 + (i << 1);
+	printf("%08X: %04X\n", addr, flash_read16_0C(addr));
+    }
+
+//while(true) {}
+
 #ifdef PI_SRAM
     memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
 #endif

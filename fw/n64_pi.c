@@ -98,11 +98,11 @@ void n64_pi(void)
 		pio_sm_put(pio, 0, swap8(word));
 		last_addr += 2;
 #if PI_SRAM
-		word = pi_bus_freq;
-//		word = 0x40FF;
+//		word = pi_bus_freq;
+		word = 0x40FF;
 #else
-		word = pi_bus_freq;
-//		word = 0x40FF;
+//		word = pi_bus_freq;
+		word = 0x40FF;
 #endif
 		addr = pio_sm_get_blocking(pio, 0);
 		if (addr == 0) {
@@ -113,8 +113,7 @@ void n64_pi(void)
 	    } else if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
 		do {
 		    mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
-		    ea = (mapped_addr >> 24) & 0x03; // max 64MB
-		    word = rom_base_16[(mapped_addr & 0xffffff) >> 1];
+		    word = flash_read16_0C(mapped_addr);
  hackentry:
 		    pio_sm_put(pio, 0, swap8(word));
 		    last_addr += 2;

@@ -3,10 +3,16 @@
 #include "flashrom.h"
 #include "pico/bootrom.h"
 
+#include "hardware/regs/io_qspi.h"
+#include "hardware/regs/pads_qspi.h"
 #include "hardware/structs/ssi.h"
+#include "hardware/structs/xip_ctrl.h"
+#include "hardware/resets.h"
 #include "hardware/structs/ioqspi.h"
 
 #define FLASH_BLOCK_ERASE_CMD 0xd8
+
+static ssi_hw_t *const ssi = (ssi_hw_t *) XIP_SSI_BASE;
 
 #if 1
 #define BOOT2_SIZE_WORDS 64
@@ -119,4 +125,62 @@ uint8_t __no_inline_not_in_flash_func(flash_get_ea_reg)(void)
     flash_enable_xip_via_boot2();
 
     return rxbuf[1];
+}
+
+void __no_inline_not_in_flash_func(flash_spi_mode)(void)
+{
+    rom_connect_internal_flash_fn connect_internal_flash = (rom_connect_internal_flash_fn)rom_func_lookup_inline(ROM_FUNC_CONNECT_INTERNAL_FLASH);
+    rom_flash_exit_xip_fn flash_exit_xip = (rom_flash_exit_xip_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_EXIT_XIP);
+    rom_flash_flush_cache_fn flash_flush_cache = (rom_flash_flush_cache_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_FLUSH_CACHE);
+    assert(connect_internal_flash && flash_exit_xip && flash_flush_cache);
+    flash_init_boot2_copyout();
+    __compiler_memory_barrier();
+    connect_internal_flash();
+    flash_exit_xip();
+
+    ssi->ssienr = 0;
+    ssi->baudr = 2;
+    ssi->ssienr = 1;
+
+    return;
+}
+
+uint16_t __no_inline_not_in_flash_func(flash_read16_0C)(uint32_t addr)
+{
+    uint16_t val;
+
+    uint8_t txbuf[8];
+    uint8_t rxbuf[8];
+
+    txbuf[0] = 0x0c;
+    txbuf[1] = addr >> 24;
+    txbuf[2] = addr >> 16;
+    txbuf[3] = addr >> 8;
+    txbuf[4] = addr;
+
+    xflash_do_cmd_internal(txbuf, rxbuf, 8);
+
+    val = *((uint16_t *)&rxbuf[6]);
+
+    return val;
+}
+
+uint32_t __no_inline_not_in_flash_func(flash_read32_0C)(uint32_t addr)
+{
+    uint32_t val;
+
+    uint8_t txbuf[10];
+    uint8_t rxbuf[10];
+
+    txbuf[0] = 0x0c;
+    txbuf[1] = addr >> 24;
+    txbuf[2] = addr >> 16;
+    txbuf[3] = addr >> 8;
+    txbuf[4] = addr;
+
+    xflash_do_cmd_internal(txbuf, rxbuf, 10);
+
+    val = *((uint32_t *)&rxbuf[6]);
+
+    return val;
 }
