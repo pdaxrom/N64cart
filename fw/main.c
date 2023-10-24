@@ -231,12 +231,19 @@ int main(void)
     }
 #else
     printf("flash quad mode\n");
-    flash_quad_mode();
+    flash_quad_mode(true);
 
     for (uint32_t i = 0; i < 16; i++) {
+//	uint32_t addr = 0x00000000 + (i << 1);
+//	printf("%08X: %04X\n", addr, flash_quad_read16_EB(addr));
+//	uint32_t addr = 0x00000000 + (i << 2);
+//	printf("%08X: %08X\n", addr, flash_quad_read32_EB(addr));
 	uint32_t addr = 0x00000000 + (i << 1);
-	printf("%08X: %04X\n", addr, flash_quad_read16_EB(addr));
+	printf("%08X: %04X\n", addr, flash_quad_read16_EC(addr));
+//	uint32_t addr = 0x00000000 + (i << 2);
+//	printf("%08X: %08X\n", addr, flash_quad_read32_EC(addr));
     }
+
 #endif
 
 //while(true) {}

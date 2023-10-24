@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "flashrom.h"
 #include "pico/bootrom.h"
@@ -244,18 +245,37 @@ uint8_t __no_inline_not_in_flash_func(flash_get_status)(void)
     return rxbuf[1];
 }
 
-void __no_inline_not_in_flash_func(flash_quad_mode)(void)
+void __no_inline_not_in_flash_func(flash_quad_mode)(bool use_a32)
 {
-//    ssi->ssienr = 0;
-//    ssi->baudr = 4;
-//    ssi->ser = 1;
-//    ssi->ssienr = 1;
+    if (use_a32) {
+	ssi->ssienr = 0;
 
-//    io_rw_32 *qspi_ss_ioctrl = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SS_CTRL_OFFSET);
+	ssi->spi_ctrlr0 =
+	    (10u << SSI_SPI_CTRLR0_ADDR_L_LSB) |	/* (Address + mode bits) / 4 */
+	    (4u  << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |	/* Hi-Z dummy clocks following address + mode */
+	    (SSI_SPI_CTRLR0_INST_L_VALUE_8B << SSI_SPI_CTRLR0_INST_L_LSB) | /* 8-bit instruction */
+	    (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_1C2A	/* Send Command in serial mode then address in Quad I/O mode */
+		    << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
 
-//    *qspi_ss_ioctrl = 0;
+	ssi->ssienr = 1;
 
-//    flash_cs_force(1);
+	flash_quad_read32_EC(0);
+	flash_quad_read32_EC(0);
+
+	ssi->ssienr = 0;
+
+#if 0
+	ssi->spi_ctrlr0 =
+	    (0xa0 << SSI_SPI_CTRLR0_XIP_CMD_LSB) |	/* Mode bits to keep flash in continuous read mode */
+	    (10u  << SSI_SPI_CTRLR0_ADDR_L_LSB) |	/* Total number of address + mode bits */
+	    (4u << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |	/* Hi-Z dummy clocks following address + mode */
+	    (SSI_SPI_CTRLR0_INST_L_VALUE_NONE << SSI_SPI_CTRLR0_INST_L_LSB) | /* Do not send a command, instead send XIP_CMD as mode bits after address */
+	    (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_2C2A	/* Send Address in Quad I/O mode (and Command but that is zero bits long) */
+		    << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
+
+#endif
+	ssi->ssienr = 1;
+    }
 
     return;
 }
@@ -278,6 +298,34 @@ uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EB)(uint32_t addr)
 //    while(ssi_hw->sr & SSI_SR_BUSY_BITS) {}
 
     ssi_hw->dr0 = (addr << 8) | 0xa0;
+
+    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
+
+    uint32_t val = ssi_hw->dr0;
+
+    uint16_t val16 = (val >> 24) | ((val >> 8) & 0xff00);
+
+    return val16;
+}
+
+uint32_t __no_inline_not_in_flash_func(flash_quad_read32_EC)(uint32_t addr)
+{
+    ssi_hw->dr0 = 0xec;
+    ssi_hw->dr0 = addr;
+    ssi_hw->dr0 = 0; //0xa0 << 24;
+
+    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
+
+    uint32_t val = ssi_hw->dr0;
+
+    return val;
+}
+
+uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EC)(uint32_t addr)
+{
+    ssi_hw->dr0 = 0xec;
+    ssi_hw->dr0 = addr;
+    ssi_hw->dr0 = 0; //0xa0 << 24;
 
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
 

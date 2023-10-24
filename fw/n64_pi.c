@@ -116,7 +116,8 @@ void n64_pi(void)
 #if 0
 		    word = flash_read16_0C(mapped_addr);
 #else
-		    word = flash_quad_read16_EB(mapped_addr);
+//		    word = flash_quad_read16_EB(mapped_addr);
+		    word = flash_quad_read16_EC(mapped_addr);
 #endif
  hackentry:
 		    pio_sm_put(pio, 0, swap8(word));
