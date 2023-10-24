@@ -13,4 +13,12 @@ uint16_t flash_read16_0C(uint32_t addr);
 
 uint32_t flash_read32_0C(uint32_t addr);
 
+uint8_t flash_get_status(void);
+
+void flash_quad_mode(void);
+
+uint32_t flash_quad_read32_EB(uint32_t addr);
+
+uint16_t flash_quad_read16_EB(uint32_t addr);
+
 #endif

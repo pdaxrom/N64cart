@@ -9,6 +9,7 @@
 #include "hardware/structs/xip_ctrl.h"
 #include "hardware/resets.h"
 #include "hardware/structs/ioqspi.h"
+#include "hardware/structs/pads_qspi.h"
 
 #define FLASH_BLOCK_ERASE_CMD 0xd8
 
@@ -139,7 +140,7 @@ void __no_inline_not_in_flash_func(flash_spi_mode)(void)
     flash_exit_xip();
 
     ssi->ssienr = 0;
-    ssi->baudr = 2;
+    ssi->baudr = 4;
     ssi->ssienr = 1;
 
     return;
@@ -183,4 +184,106 @@ uint32_t __no_inline_not_in_flash_func(flash_read32_0C)(uint32_t addr)
     val = *((uint32_t *)&rxbuf[6]);
 
     return val;
+}
+
+uint8_t __no_inline_not_in_flash_func(flash_get_status)(void)
+{
+//    printf("CTRLR0_ENTER_XIP: %08X\n", CTRLR0_ENTER_XIP);
+//    printf("SPI_CTRLR0_ENTER_XIP: %08X\n", SPI_CTRLR0_ENTER_XIP);
+//    printf("SPI_CTRLR0_XIP: %08X\n", SPI_CTRLR0_XIP);
+
+    printf("xip ctrlr0 : %08X\n", ssi_hw->ctrlr0);
+    printf("xip spi_ctrlr0 : %08X\n", ssi_hw->spi_ctrlr0);
+
+    for (int i = 0; i < 6; i++) {
+	printf("xip pads_qspi_hw->io[%d] : %08X\n", i, pads_qspi_hw->io[i]);
+    }
+
+    rom_connect_internal_flash_fn connect_internal_flash = (rom_connect_internal_flash_fn)rom_func_lookup_inline(ROM_FUNC_CONNECT_INTERNAL_FLASH);
+    rom_flash_exit_xip_fn flash_exit_xip = (rom_flash_exit_xip_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_EXIT_XIP);
+    rom_flash_flush_cache_fn flash_flush_cache = (rom_flash_flush_cache_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_FLUSH_CACHE);
+    assert(connect_internal_flash && flash_exit_xip && flash_flush_cache);
+    flash_init_boot2_copyout();
+    __compiler_memory_barrier();
+    connect_internal_flash();
+    flash_exit_xip();
+
+    uint8_t txbuf[32];
+    uint8_t rxbuf[32];
+
+    txbuf[0] = 0x05;
+    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    printf("Status register 1 %02X\n", rxbuf[1]);
+
+    txbuf[0] = 0x35;
+    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    printf("Status register 2 %02X\n", rxbuf[1]);
+
+    txbuf[0] = 0x15;
+    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    printf("Status register 3 %02X\n", rxbuf[1]);
+
+//    txbuf[0] = 0xec;
+//    txbuf[1] = 0;
+//    txbuf[2] = 0;
+//    txbuf[3] = 0
+//    txbuf[4] = 0;
+//    txbuf[5] = 0x00;
+//    xflash_do_cmd_internal(txbuf, rxbuf, 32);
+
+    printf("spi ctrlr0 : %08X\n", ssi_hw->ctrlr0);
+    printf("spi spi_ctrlr0 : %08X\n", ssi_hw->spi_ctrlr0);
+
+    for (int i = 0; i < 6; i++) {
+	printf("spi pads_qspi_hw->io[%d] : %08X\n", i, pads_qspi_hw->io[i]);
+    }
+
+    flash_flush_cache();
+    flash_enable_xip_via_boot2();
+
+    return rxbuf[1];
+}
+
+void __no_inline_not_in_flash_func(flash_quad_mode)(void)
+{
+//    ssi->ssienr = 0;
+//    ssi->baudr = 4;
+//    ssi->ser = 1;
+//    ssi->ssienr = 1;
+
+//    io_rw_32 *qspi_ss_ioctrl = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SS_CTRL_OFFSET);
+
+//    *qspi_ss_ioctrl = 0;
+
+//    flash_cs_force(1);
+
+    return;
+}
+
+uint32_t __no_inline_not_in_flash_func(flash_quad_read32_EB)(uint32_t addr)
+{
+//    while(ssi_hw->sr & SSI_SR_BUSY_BITS) {}
+
+    ssi_hw->dr0 = (addr << 8) | 0xa0;
+
+    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
+
+    uint32_t val = ssi_hw->dr0;
+
+    return val;
+}
+
+uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EB)(uint32_t addr)
+{
+//    while(ssi_hw->sr & SSI_SR_BUSY_BITS) {}
+
+    ssi_hw->dr0 = (addr << 8) | 0xa0;
+
+    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
+
+    uint32_t val = ssi_hw->dr0;
+
+    uint16_t val16 = (val >> 24) | ((val >> 8) & 0xff00);
+
+    return val16;
 }

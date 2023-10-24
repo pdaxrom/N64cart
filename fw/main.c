@@ -219,12 +219,25 @@ int main(void)
 	printf("romfs error: %s\n", romfs_strerror(file.err));
     }
 
+    flash_get_status();
+
+#if 0
+    printf("flash spi mode\n");
     flash_spi_mode();
 
     for (uint32_t i = 0; i < 16; i++) {
-	uint32_t addr = 0x10000000 + (i << 1);
+	uint32_t addr = 0x00000000 + (i << 1);
 	printf("%08X: %04X\n", addr, flash_read16_0C(addr));
     }
+#else
+    printf("flash quad mode\n");
+    flash_quad_mode();
+
+    for (uint32_t i = 0; i < 16; i++) {
+	uint32_t addr = 0x00000000 + (i << 1);
+	printf("%08X: %04X\n", addr, flash_quad_read16_EB(addr));
+    }
+#endif
 
 //while(true) {}
 
