@@ -77,12 +77,14 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
     return true;
 }
 
-bool romfs_flash_ea(uint8_t ea)
+bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 {
 #ifdef DEBUG_FS
-    printf("%s: page %02X\n", __func__, ea);
+    printf("%s: offset %08X\n", __func__, offset);
 #endif
-    flash_set_ea_reg(ea);
+    flash_set_ea_reg(offset >> 24);
+
+    memmove(buffer, &((uint8_t *)XIP_BASE)[(offset & 0xffffff)], need);
 
     return true;
 }
@@ -200,7 +202,7 @@ int main(void)
 
     uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
 
-    if (!romfs_start((uint8_t *)XIP_BASE, ((fw_binary_end - XIP_BASE) + 4095) & ~4095, flash_chip[rom_chip_idx].rom_pages * flash_chip[rom_chip_idx].rom_size * 1024 * 1024)) {
+    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, flash_chip[rom_chip_idx].rom_pages * flash_chip[rom_chip_idx].rom_size * 1024 * 1024)) {
 	printf("Cannot start romfs!\n");
 	while(true) ;
     }

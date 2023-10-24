@@ -1,6 +1,7 @@
 TARGET = romfs
 
-CFLAGS = -Wall -Wpedantic -g -DTEST -m32
+CFLAGS = -Wall -Wpedantic -g -DTEST
+# -m32
 
 OBJS = romfs.o main.o
 

@@ -18,8 +18,8 @@
 
 #include "dev_lowlevel.h"
 #include "../main.h"
-#include "../../utils/utils.h"
 #include "../romfs/romfs.h"
+#include "../../utils/utils.h"
 #include "crc32.h"
 
 #define usb_hw_set hw_set_alias(usb_hw)

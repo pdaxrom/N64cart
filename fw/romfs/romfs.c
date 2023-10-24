@@ -4,16 +4,6 @@
 #include <stdbool.h>
 #include "romfs.h"
 
-#define DEBUG
-
-#define ROM_SIZE (64 * 1024 * 1024)
-#define FLASH_SECTOR (4096)
-#define MAP_SIZE (ROM_SIZE / FLASH_SECTOR)
-#define LIST_MAX (128)
-
-#define ROMFS_EMPTY_ENTRY   '\xff'
-#define ROMFS_DELETED_ENTRY '\xfe'
-
 static const char *romfs_errlist[] = {
     "No error",
     "No list entry",
@@ -24,60 +14,25 @@ static const char *romfs_errlist[] = {
     "End of file",
 };
 
-static uint8_t *flash_base = NULL;
 static uint32_t flash_start = 0;
 static uint32_t mem_size = 0;
 static uint32_t map_size = 0;
 static uint32_t list_size = 0;
 
-static uint8_t flash_buffer[FLASH_SECTOR];
-static uint16_t flash_map[FLASH_SECTOR * 4];
-static uint8_t flash_list[FLASH_SECTOR];
+static uint8_t flash_buffer[ROMFS_FLASH_SECTOR];
+static uint16_t flash_map[ROMFS_FLASH_SECTOR * 4];
+static uint8_t flash_list[ROMFS_FLASH_SECTOR];
 
-#ifdef TEST
-static bool romfs_flash_sector_erase(uint32_t offset)
+bool romfs_start(uint32_t start, uint32_t size)
 {
-#ifdef DEBUG
-    printf("flash erase %08X\n", offset);
-#endif
-    memset(&flash_base[offset], 0xff, FLASH_SECTOR);
-    return true;
-}
-
-static bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
-{
-#ifdef DEBUG
-    printf("flash write %08X (%p)\n", offset, (void *)buffer);
-#endif
-    memmove(&flash_base[offset], buffer, FLASH_SECTOR);
-    return true;
-}
-
-static bool romfs_flash_ea(uint8_t ea)
-{
-#ifdef DEBUG
-    printf("flash ExtAddr %02X\n", ea);
-#endif
-
-    return true;
-}
-
-#define ROM_ADDR_MASK(a) (a)
-#else
-#define ROM_ADDR_MASK(a) ((a) & 0xffffff)
-#endif
-
-bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
-{
-    flash_base = base;
     flash_start = start;
     mem_size = size;
 
-    map_size = ((size / FLASH_SECTOR) * sizeof(uint16_t) + (FLASH_SECTOR - 1)) & ~(FLASH_SECTOR - 1);
+    map_size = ((size / ROMFS_FLASH_SECTOR) * sizeof(uint16_t) + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1);
     if (map_size > sizeof(flash_map)) {
 	map_size = sizeof(flash_map);
     }
-    list_size = ((size / (1024 * 1024)) * sizeof(romfs_entry) + (FLASH_SECTOR - 1)) & ~(FLASH_SECTOR - 1);
+    list_size = ((size / (1024 * 1024)) * sizeof(romfs_entry) + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1);
     if (list_size > sizeof(flash_list)) {
 	list_size = sizeof(flash_list);
     }
@@ -86,14 +41,12 @@ bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
     printf("romfs map size %d\n", map_size);
     printf("romfs list size %d\n", list_size);
 
-    romfs_flash_ea(0);
-
     if (map_size && list_size) {
-	for (int i = 0; i < list_size; i += FLASH_SECTOR) {
-	    memmove(&flash_list[i], &flash_base[flash_start + i], FLASH_SECTOR);
+	for (int i = 0; i < list_size; i += ROMFS_FLASH_SECTOR) {
+	    romfs_flash_sector_read(flash_start + i, &flash_list[i], ROMFS_FLASH_SECTOR);
 	}
-	for (int i = 0; i < map_size; i += FLASH_SECTOR) {
-	    memmove(&((uint8_t *)flash_map)[i], &flash_base[flash_start + list_size + i], FLASH_SECTOR);
+	for (int i = 0; i < map_size; i += ROMFS_FLASH_SECTOR) {
+	    romfs_flash_sector_read(flash_start + list_size + i, &((uint8_t *)flash_map)[i], ROMFS_FLASH_SECTOR);
 	}
 	return true;
     }
@@ -103,14 +56,12 @@ bool romfs_start(uint8_t *base, uint32_t start, uint32_t size)
 
 void romfs_flush(void)
 {
-printf("romfs flush\n");
-
-    for (int i = 0; i < list_size; i += FLASH_SECTOR) {
+    for (int i = 0; i < list_size; i += ROMFS_FLASH_SECTOR) {
 	romfs_flash_sector_erase(flash_start + i);
 	romfs_flash_sector_write(flash_start + i, &flash_list[i]);
     }
 
-    for (int i = 0; i < map_size; i += FLASH_SECTOR) {
+    for (int i = 0; i < map_size; i += ROMFS_FLASH_SECTOR) {
 	romfs_flash_sector_erase(flash_start + list_size + i);
 	romfs_flash_sector_write(flash_start + list_size + i, &((uint8_t *)flash_map)[i]);
     }
@@ -133,19 +84,19 @@ bool romfs_format(void)
     entry[1].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
     entry[1].mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
     entry[1].type = ROMFS_TYPE_FLASHLIST;
-    entry[1].start = flash_start / FLASH_SECTOR;
+    entry[1].start = flash_start / ROMFS_FLASH_SECTOR;
     entry[1].size = list_size;
 
     strncpy(entry[2].name, "flashmap", ROMFS_MAX_NAME_LEN - 1);
     entry[2].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
     entry[2].mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
     entry[2].type = ROMFS_TYPE_FLASHMAP;
-    entry[2].start = (flash_start + list_size) / FLASH_SECTOR;
+    entry[2].start = (flash_start + list_size) / ROMFS_FLASH_SECTOR;
     entry[2].size = map_size;
 
     memset((uint8_t *)flash_map, 0xff, map_size);
 
-    for (int i = 0; i < (flash_start + list_size + map_size) / FLASH_SECTOR; i++) {
+    for (int i = 0; i < (flash_start + list_size + map_size) / ROMFS_FLASH_SECTOR; i++) {
 	flash_map[i] = i + 1;
     }
 
@@ -210,7 +161,7 @@ uint32_t romfs_list(romfs_file *file, bool first)
 
 static void romfs_unallocate_sectors_chain(uint32_t sector, uint32_t size)
 {
-    uint32_t sectors = ((size + (FLASH_SECTOR - 1)) & ~(FLASH_SECTOR - 1)) / FLASH_SECTOR;
+    uint32_t sectors = ((size + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1)) / ROMFS_FLASH_SECTOR;
 
     for (int i = 0; i < sectors; i++) {
 	uint32_t next = flash_map[sector];
@@ -294,8 +245,8 @@ static uint32_t romfs_allocate_and_write_sector_internal(void *buffer, romfs_fil
 	file->pos = pos;
     }
 
-    romfs_flash_sector_erase(file->pos * FLASH_SECTOR);
-    romfs_flash_sector_write(file->pos * FLASH_SECTOR, (uint8_t *)buffer);
+    romfs_flash_sector_erase(file->pos * ROMFS_FLASH_SECTOR);
+    romfs_flash_sector_write(file->pos * ROMFS_FLASH_SECTOR, (uint8_t *)buffer);
     
     return (file->err = ROMFS_NOERR);
 }
@@ -309,21 +260,21 @@ uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file *file)
 	return 0;
     }
 
-    if (size > FLASH_SECTOR) {
+    if (size > ROMFS_FLASH_SECTOR) {
 	file->err = ROMFS_ERR_FILE_DATA_TOO_BIG;
 
 	return 0;
     }
 
-    uint32_t bytes = size % FLASH_SECTOR;
+    uint32_t bytes = size % ROMFS_FLASH_SECTOR;
 
-    if (file->offset + bytes >= FLASH_SECTOR) {
-	uint32_t need = FLASH_SECTOR - file->offset;
+    if (file->offset + bytes >= ROMFS_FLASH_SECTOR) {
+	uint32_t need = ROMFS_FLASH_SECTOR - file->offset;
 	memmove(&file->io_buffer[file->offset], (char *)buffer, need);
 	if (romfs_allocate_and_write_sector_internal(file->io_buffer, file) != ROMFS_NOERR) {
 	    return 0;
 	}
-	file->entry.size += FLASH_SECTOR;
+	file->entry.size += ROMFS_FLASH_SECTOR;
 	uint32_t offset = need;
 	need = bytes - need;
 	if (need > 0) {
@@ -345,7 +296,7 @@ uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file *file)
 	return 0;
     }
 
-    file->entry.size += FLASH_SECTOR;
+    file->entry.size += ROMFS_FLASH_SECTOR;
 
     return size;
 }
@@ -399,7 +350,7 @@ bool romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_file *f
 //printf("map: %04X\n", file->pos);
 	map_buffer[i++] = file->pos;
 	file->pos = flash_map[file->pos];
-	file->read_offset += FLASH_SECTOR;
+	file->read_offset += ROMFS_FLASH_SECTOR;
     }
 
     return true;
@@ -415,7 +366,7 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 	return 0;
     }
 
-    if (size > FLASH_SECTOR) {
+    if (size > ROMFS_FLASH_SECTOR) {
 	file->err = ROMFS_ERR_FILE_DATA_TOO_BIG;
 
 	return 0;
@@ -428,26 +379,23 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 
     size = (file->read_offset + size > file->entry.size) ? (file->entry.size - file->read_offset) : size;
 
-    //uint32_t bytes = size % FLASH_SECTOR;
+    //uint32_t bytes = size % ROMFS_FLASH_SECTOR;
 
-    romfs_flash_ea((file->pos * FLASH_SECTOR) >> 24);
-
-    if (file->offset + size == FLASH_SECTOR) {
-	memmove(buffer, &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR) + file->offset], size);
+    if (file->offset + size == ROMFS_FLASH_SECTOR) {
+	romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR + file->offset, buffer, size);
 	file->read_offset += size;
 	file->offset = 0;
 	file->pos = flash_map[file->pos];
 
 	return size;
-    } else if (file->offset + size > FLASH_SECTOR) {
-	uint32_t need = FLASH_SECTOR - file->offset;
-	memmove(buffer, &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR) + file->offset], need);
+    } else if (file->offset + size > ROMFS_FLASH_SECTOR) {
+	uint32_t need = ROMFS_FLASH_SECTOR - file->offset;
+	romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR + file->offset, buffer, need);
 	file->pos = flash_map[file->pos];
 	file->read_offset += need;
 	need = size - need;
 	if (need > 0) {
-	    romfs_flash_ea((file->pos * FLASH_SECTOR) >> 24);
-	    memmove(&((char *)buffer)[FLASH_SECTOR - file->offset], &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR)], need);
+	    romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR, &((uint8_t *)buffer)[ROMFS_FLASH_SECTOR - file->offset], need);
 	    file->offset = need;
 	    file->read_offset += need;
 	} else {
@@ -455,7 +403,7 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 	}
 	return size;
     } else if (size > 0) {
-	memmove(buffer, &flash_base[ROM_ADDR_MASK(file->pos * FLASH_SECTOR) + file->offset], size);
+	romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR + file->offset, buffer, size);
 	file->offset += size;
 	file->read_offset += size;
 	

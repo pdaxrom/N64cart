@@ -18,7 +18,6 @@
 #include "n64_pi.pio.h"
 #include "n64.h"
 
-static uint16_t *rom_base_16 = (uint16_t *) XIP_BASE;
 uint16_t rom_lookup[16386];
 
 static uint16_t pi_bus_freq = 0x40ff;
@@ -87,7 +86,6 @@ void n64_pi(void)
     uint32_t word;
 
     uint32_t mapped_addr;
-    uint8_t ea;
 
     uint32_t addr = pio_sm_get_blocking(pio, 0);
     do {

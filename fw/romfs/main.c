@@ -6,6 +6,35 @@
 
 static uint8_t memory[64 * 1024 * 1024];
 
+static uint8_t *flash_base = NULL;
+
+bool romfs_flash_sector_erase(uint32_t offset)
+{
+#ifdef DEBUG
+    printf("flash erase %08X\n", offset);
+#endif
+    memset(&flash_base[offset], 0xff, ROMFS_FLASH_SECTOR);
+    return true;
+}
+
+bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
+{
+#ifdef DEBUG
+    printf("flash write %08X (%p)\n", offset, (void *)buffer);
+#endif
+    memmove(&flash_base[offset], buffer, ROMFS_FLASH_SECTOR);
+    return true;
+}
+
+bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
+{
+#ifdef DEBUG
+    printf("flash read %08X (%p)\n", offset, (void *)buffer);
+#endif
+    memmove(buffer, &flash_base[offset], need);
+    return true;
+}
+
 void save_romfs(char *name, uint8_t *mem, size_t len)
 {
     FILE *out = fopen(name, "wb");
@@ -43,7 +72,9 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "Cannot read %s\n", argv[1]);
     }
 
-    if (!romfs_start(memory, 0x10D000, sizeof(memory))) {
+    flash_base = memory;
+
+    if (!romfs_start(0x10D000, sizeof(memory))) {
 	printf("Cannot start romfs!\n");
 	goto err;
     }

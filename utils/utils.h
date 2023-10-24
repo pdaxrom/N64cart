@@ -18,9 +18,9 @@
 #define DATA_DEL	0x2351
 #define DATA_FORMAT	0x2352
 
-#ifndef ROMFS_MAX_NAME_LEN
-#define ROMFS_MAX_NAME_LEN 54
-#endif
+//#ifndef ROMFS_MAX_NAME_LEN
+//#define ROMFS_MAX_NAME_LEN 54
+//#endif
 
 struct __attribute__((__packed__)) data_header {
     uint16_t	type;

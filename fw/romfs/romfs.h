@@ -1,7 +1,12 @@
 #ifndef __ROMFS_H__
 #define __ROMFS_H__
 
-#define ROMFS_MAX_NAME_LEN 54
+#define ROMFS_FLASH_SECTOR (4096)
+
+#define ROMFS_MAX_NAME_LEN (54)
+
+#define ROMFS_EMPTY_ENTRY   '\xff'
+#define ROMFS_DELETED_ENTRY '\xfe'
 
 #define ROMFS_MODE_READWRITE	(0)
 #define ROMFS_MODE_READONLY	(1 << 0)
@@ -13,8 +18,8 @@
 #define ROMFS_TYPE_FLASHMAP	(0x02)
 #define ROMFS_TYPE_MISC		(0xff)
 
-#define ROMFS_OP_READ		0
-#define ROMFS_OP_WRITE		1
+#define ROMFS_OP_READ		(0)
+#define ROMFS_OP_WRITE		(1)
 
 enum {
     ROMFS_NOERR = 0,
@@ -45,13 +50,11 @@ typedef struct {
     uint8_t *io_buffer;
 } romfs_file;
 
-#ifndef TEST
 bool romfs_flash_sector_erase(uint32_t offset);
 bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer);
-bool romfs_flash_ea(uint8_t ea);
-#endif
+bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need);
 
-bool romfs_start(uint8_t *mem, uint32_t start, uint32_t size);
+bool romfs_start(uint32_t start, uint32_t size);
 bool romfs_format(void);
 uint32_t romfs_free(void);
 uint32_t romfs_list(romfs_file *entry, bool first);
