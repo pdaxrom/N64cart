@@ -65,11 +65,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
     printf("%s: offset %08X\n", __func__, offset);
 #endif
     flash_spi_mode();
-
-    for (int i = 0; i < need; i++) {
-	buffer[i] = flash_read8_0C(offset + i);
-    }
-
+    flash_read_0C(offset, buffer, need);
     flash_quad_mode();
 
     return true;
