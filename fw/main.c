@@ -44,7 +44,7 @@ bool romfs_flash_sector_erase(uint32_t offset)
 #endif
     flash_spi_mode();
     flash_erase_sector(offset);
-    flash_quad_mode(true);
+    flash_quad_mode();
 
     return true;
 }
@@ -56,7 +56,7 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
 #endif
     flash_spi_mode();
     flash_write_sector(offset, buffer);
-    flash_quad_mode(true);
+    flash_quad_mode();
 
     return true;
 }
@@ -72,7 +72,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 	buffer[i] = flash_read8_0C(offset + i);
     }
 
-    flash_quad_mode(true);
+    flash_quad_mode();
 
     return true;
 }
@@ -221,7 +221,7 @@ int main(void)
 
 //    printf("flash quad mode\n");
 
-    flash_quad_mode(true);
+    flash_quad_mode();
 
 #if 0
     for (uint32_t i = 0; i < 16; i++) {

@@ -9,7 +9,7 @@
 
 #define RETRY_MAX	50 
 
-#define DEBUG
+//#define DEBUG
 
 static libusb_context *ctx = NULL;
 static libusb_device_handle *dev_handle;
