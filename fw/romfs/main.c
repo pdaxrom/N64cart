@@ -64,7 +64,7 @@ bool load_romfs(char *name, uint8_t *mem, size_t len)
 int main(int argc, char *argv[])
 {
     if (argc <= 1) {
-	fprintf(stderr, "No rom file defined!");
+	fprintf(stderr, "No rom file defined!\n");
 	return -1;
     }
 

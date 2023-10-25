@@ -9,6 +9,12 @@ uint8_t flash_get_ea_reg(void);
 
 void flash_spi_mode(void);
 
+bool flash_erase_sector(uint32_t addr);
+
+bool flash_write_sector(uint32_t addr, uint8_t *buffer);
+
+uint8_t flash_read8_0C(uint32_t addr);
+
 uint16_t flash_read16_0C(uint32_t addr);
 
 uint32_t flash_read32_0C(uint32_t addr);

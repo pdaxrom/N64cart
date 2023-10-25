@@ -55,14 +55,14 @@ static void __no_inline_not_in_flash_func(flash_cs_force)(bool high) {
     );
 }
 
-static void __no_inline_not_in_flash_func(xflash_do_cmd_internal)(const uint8_t *txbuf, uint8_t *rxbuf, size_t count) 
+static void __no_inline_not_in_flash_func(xflash_do_cmd_internal)(const uint8_t *txbuf, uint8_t *rxbuf, size_t count, size_t rxskip)
 {
     flash_cs_force(0);
     size_t tx_remaining = count;
     size_t rx_remaining = count;
     // We may be interrupted -- don't want FIFO to overflow if we're distracted.
     const size_t max_in_flight = 16 - 2;
-    while (tx_remaining || rx_remaining) {
+    while (tx_remaining || rx_remaining || rxskip) {
         uint32_t flags = ssi_hw->sr;
         bool can_put = !!(flags & SSI_SR_TFNF_BITS);
         bool can_get = !!(flags & SSI_SR_RFNE_BITS);
@@ -70,9 +70,16 @@ static void __no_inline_not_in_flash_func(xflash_do_cmd_internal)(const uint8_t 
             ssi_hw->dr0 = *txbuf++;
             --tx_remaining;
         }
-        if (can_get && rx_remaining) {
-            *rxbuf++ = (uint8_t)ssi_hw->dr0;
-            --rx_remaining;
+        if (can_get && (rx_remaining || rxskip)) {
+            uint8_t rxbyte = (uint8_t)ssi_hw->dr0;
+            if (rxskip) {
+                --rxskip;
+            } else {
+                if (rxbuf) {
+                    *rxbuf++ = rxbyte;
+                }
+                --rx_remaining;
+            }
         }
     }
     flash_cs_force(1);
@@ -93,14 +100,14 @@ void __no_inline_not_in_flash_func(flash_set_ea_reg)(uint8_t addr)
     uint8_t rxbuf[4];
 
     txbuf[0] = 0x06;
-    xflash_do_cmd_internal(txbuf, rxbuf, 1);
+    xflash_do_cmd_internal(txbuf, rxbuf, 1, 0);
 
     txbuf[0] = 0xc5;
     txbuf[1] = addr;
-    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    xflash_do_cmd_internal(txbuf, rxbuf, 2, 0);
 
     txbuf[0] = 0x04;
-    xflash_do_cmd_internal(txbuf, rxbuf, 1);
+    xflash_do_cmd_internal(txbuf, rxbuf, 1, 0);
 
     flash_flush_cache();
     flash_enable_xip_via_boot2();
@@ -121,7 +128,7 @@ uint8_t __no_inline_not_in_flash_func(flash_get_ea_reg)(void)
     uint8_t rxbuf[2];
 
     txbuf[0] = 0xc8;
-    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    xflash_do_cmd_internal(txbuf, rxbuf, 2, 0);
 
     flash_flush_cache();
     flash_enable_xip_via_boot2();
@@ -140,11 +147,99 @@ void __no_inline_not_in_flash_func(flash_spi_mode)(void)
     connect_internal_flash();
     flash_exit_xip();
 
+#if 1
     ssi->ssienr = 0;
+
+//    ssi->ctrlr0 =
+//	(7 << SSI_CTRLR0_DFS_32_LSB) | /* 8 bits per data frame */
+//	(SSI_CTRLR0_TMOD_VALUE_TX_AND_RX << SSI_CTRLR0_TMOD_LSB);
+
+    ssi->ser = 1;
     ssi->baudr = 4;
     ssi->ssienr = 1;
-
+#endif
     return;
+}
+
+static void xflash_wait_ready(void)
+{
+    uint8_t txbuf[2];
+    uint8_t rxbuf[2];
+    do {
+	txbuf[0] = 0x05;
+	xflash_do_cmd_internal(txbuf, rxbuf, 2, 0);
+    } while (rxbuf[1] & 0x1);
+}
+
+static inline void xflash_put_cmd_addr32(uint8_t cmd, uint32_t addr) {
+    flash_cs_force(0);
+    ssi->dr0 = cmd;
+    for (int i = 0; i < 4; ++i) {
+        ssi->dr0 = addr >> 24;
+        addr <<= 8;
+    }
+}
+
+bool __no_inline_not_in_flash_func(flash_erase_sector)(uint32_t addr)
+{
+    uint8_t txbuf[5];
+    uint8_t rxbuf[5];
+
+    txbuf[0] = 0x06;
+    xflash_do_cmd_internal(txbuf, rxbuf, 1, 0);
+    xflash_put_cmd_addr32(0x21, addr);
+
+//    txbuf[0] = 0x21;
+//    txbuf[1] = addr >> 24;
+//    txbuf[2] = addr >> 16;
+//    txbuf[3] = addr >> 8;
+//    txbuf[4] = addr;
+    xflash_do_cmd_internal(txbuf, rxbuf, 0, 5);
+
+    xflash_wait_ready();
+
+//    txbuf[0] = 0x04;
+//    xflash_do_cmd_internal(txbuf, rxbuf, 1, 0);
+
+    return true;
+}
+
+bool __no_inline_not_in_flash_func(flash_write_sector)(uint32_t addr, uint8_t *buffer)
+{
+    uint8_t txbuf[5];
+    uint8_t rxbuf[5];
+
+    for (int i = 0; i < 4096; i += 256) {
+	txbuf[0] = 0x06;
+	xflash_do_cmd_internal(txbuf, rxbuf, 1, 0);
+	xflash_put_cmd_addr32(0x12, addr + i);
+
+	xflash_do_cmd_internal(&buffer[i], NULL, 256, 5);
+
+	xflash_wait_ready();
+    }
+
+    return true;
+}
+
+uint8_t __no_inline_not_in_flash_func(flash_read8_0C)(uint32_t addr)
+{
+    uint16_t val;
+
+    uint8_t txbuf[7];
+    uint8_t rxbuf[7];
+
+    txbuf[0] = 0x0c;
+    txbuf[1] = addr >> 24;
+    txbuf[2] = addr >> 16;
+    txbuf[3] = addr >> 8;
+    txbuf[4] = addr;
+
+    xflash_do_cmd_internal(txbuf, rxbuf, 7, 0);
+
+    val = rxbuf[6];
+
+    return val;
 }
 
 uint16_t __no_inline_not_in_flash_func(flash_read16_0C)(uint32_t addr)
@@ -160,7 +255,7 @@ uint16_t __no_inline_not_in_flash_func(flash_read16_0C)(uint32_t addr)
     txbuf[3] = addr >> 8;
     txbuf[4] = addr;
 
-    xflash_do_cmd_internal(txbuf, rxbuf, 8);
+    xflash_do_cmd_internal(txbuf, rxbuf, 8, 0);
 
     val = *((uint16_t *)&rxbuf[6]);
 
@@ -180,7 +275,7 @@ uint32_t __no_inline_not_in_flash_func(flash_read32_0C)(uint32_t addr)
     txbuf[3] = addr >> 8;
     txbuf[4] = addr;
 
-    xflash_do_cmd_internal(txbuf, rxbuf, 10);
+    xflash_do_cmd_internal(txbuf, rxbuf, 10, 0);
 
     val = *((uint32_t *)&rxbuf[6]);
 
@@ -213,15 +308,15 @@ uint8_t __no_inline_not_in_flash_func(flash_get_status)(void)
     uint8_t rxbuf[32];
 
     txbuf[0] = 0x05;
-    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    xflash_do_cmd_internal(txbuf, rxbuf, 2, 0);
     printf("Status register 1 %02X\n", rxbuf[1]);
 
     txbuf[0] = 0x35;
-    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    xflash_do_cmd_internal(txbuf, rxbuf, 2, 0);
     printf("Status register 2 %02X\n", rxbuf[1]);
 
     txbuf[0] = 0x15;
-    xflash_do_cmd_internal(txbuf, rxbuf, 2);
+    xflash_do_cmd_internal(txbuf, rxbuf, 2, 0);
     printf("Status register 3 %02X\n", rxbuf[1]);
 
 //    txbuf[0] = 0xec;
@@ -230,7 +325,7 @@ uint8_t __no_inline_not_in_flash_func(flash_get_status)(void)
 //    txbuf[3] = 0
 //    txbuf[4] = 0;
 //    txbuf[5] = 0x00;
-//    xflash_do_cmd_internal(txbuf, rxbuf, 32);
+//    xflash_do_cmd_internal(txbuf, rxbuf, 32, 0);
 
     printf("spi ctrlr0 : %08X\n", ssi_hw->ctrlr0);
     printf("spi spi_ctrlr0 : %08X\n", ssi_hw->spi_ctrlr0);
@@ -250,6 +345,19 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(bool use_a32)
     if (use_a32) {
 	ssi->ssienr = 0;
 
+#if 0
+	ssi->ser = 0;
+	ssi->baudr = 4;
+
+	ssi->ctrlr0 =
+	    (SSI_CTRLR0_SPI_FRF_VALUE_QUAD << SSI_CTRLR0_SPI_FRF_LSB) |                          /* Quad I/O mode */
+	    (31 << SSI_CTRLR0_DFS_32_LSB)  |       /* 32 data bits */
+	    (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ     /* Send INST/ADDR, Receive Data */ \
+		<< SSI_CTRLR0_TMOD_LSB);
+
+	ssi->ctrlr1 = 0;
+#endif
+
 	ssi->spi_ctrlr0 =
 	    (10u << SSI_SPI_CTRLR0_ADDR_L_LSB) |	/* (Address + mode bits) / 4 */
 	    (4u  << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |	/* Hi-Z dummy clocks following address + mode */
@@ -259,6 +367,7 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(bool use_a32)
 
 	ssi->ssienr = 1;
 
+	flash_quad_read32_EC(0);
 	flash_quad_read32_EC(0);
 	flash_quad_read32_EC(0);
 

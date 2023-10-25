@@ -12,9 +12,21 @@
 #define SRAM_768KBIT_SIZE         0x00018000
 #define SRAM_1MBIT_SIZE           0x00020000
 
-extern volatile uint32_t rom_pages;
+struct flash_chip {
+    uint8_t mf;
+    uint16_t id;
+    uint8_t rom_pages;
+    uint8_t rom_size;
+    uint32_t sys_freq;
+    uint16_t pi_bus_freq;
+    const char *name;
+};
 
 extern uint16_t rom_lookup[16386];
+
+extern char __flash_binary_end;
+
+const struct flash_chip *get_flash_info(void);
 
 void n64_pi_restart(void);
 

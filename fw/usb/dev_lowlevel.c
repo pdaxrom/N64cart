@@ -19,7 +19,7 @@
 #include "dev_lowlevel.h"
 #include "../main.h"
 #include "../romfs/romfs.h"
-#include "../../utils/utils.h"
+#include "../../utils/utils2.h"
 #include "crc32.h"
 
 #define usb_hw_set hw_set_alias(usb_hw)
@@ -568,139 +568,116 @@ void ep0_out_handler(uint8_t *buf, uint16_t len) {
     ;
 }
 
-
-//#define FLASH_BUFFER_SIZE	1024
-#define FLASH_BUFFER_SIZE	4096
-#define ROM_SIZE_MAX		(16 * 1024 * 1024)
-#define PICTURE_SIZE_MAX	(64 * 1024)
-
-static uint8_t flash_buffer[FLASH_BUFFER_SIZE];
-static int flash_buffer_pos;
-static int flash_stage;
-static struct data_header flash_header;
-static int flash_received_size;
-
-static romfs_file file;
+static uint8_t sector_buffer[ROMFS_FLASH_SECTOR];
+static int sector_buffer_pos;
+static uint32_t write_sector_offset;
 
 static uint32_t chksum;
 
+static struct ack_header ackn;
+
+static int current_req;
+static int flash_stage;
+
 // Device specific functions
 void ep1_out_handler(uint8_t *buf, uint16_t len) {
+    struct usb_endpoint_configuration *ep_out = usb_get_endpoint_configuration(EP2_IN_ADDR);
 //    printf("RX %d bytes from host\n", len);
+    ackn.type = ACK_ERROR;
+    ackn.chksum = 0;
+    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
 
-    if (flash_stage == 0) {
-	if (len != sizeof(struct data_header)) {
-	    printf("Wrong header size %d, must be %d\n", len, sizeof(struct data_header));
+    struct req_header *req = (struct req_header *) buf;
+    if (current_req != CART_WRITE_SEC) {
+	if (len != sizeof(struct req_header)) {
+	    printf("Wrong header size %d, must be %d\n", len, sizeof(struct req_header));
 	    usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 	    return;
 	}
-	memmove(&flash_header, buf, sizeof(struct data_header));
-	struct data_header *tmp = (struct data_header *) buf;
-	if (flash_header.type == DATA_WRITE) {
-	    if (romfs_create_file(flash_header.name, &file, ROMFS_MODE_READWRITE, flash_header.ftype, NULL) != ROMFS_NOERR) {
-		printf("cannot create file, romfs error: %s\n", romfs_strerror(file.err));
-		tmp->type = DATA_ERROR;
-		tmp->length = 0;
-		strncpy(tmp->name, romfs_strerror(file.err), ROMFS_MAX_NAME_LEN);
-	    } else {
-		tmp->type = DATA_REPLY;
-		flash_stage = 1;
-		flash_buffer_pos = 0;
-		flash_received_size = 0;
-	    }
-	} else if (flash_header.type == DATA_READ) {
-	    if (romfs_open_file(flash_header.name, &file, NULL) == ROMFS_NOERR) {
-		tmp->type = DATA_REPLY;
-		tmp->length = file.entry.size;
-		tmp->ftype = file.entry.type;
-		flash_stage = 1;
-		flash_received_size = 0;
-	    } else {
-		printf("cannot open file, romfs error: %s\n", romfs_strerror(file.err));
-		tmp->type = DATA_ERROR;
-		tmp->length = 0;
-		strncpy(tmp->name, romfs_strerror(file.err), ROMFS_MAX_NAME_LEN);
-	    }
-	} else if (flash_header.type == DATA_FORMAT) {
-    irq_set_enabled(USBCTRL_IRQ, false);
-	    romfs_format();
-    irq_set_enabled(USBCTRL_IRQ, true);
-	    tmp->type = DATA_REPLY;
-	} else {
-	    printf("Unsupported operation tag %08X\n", flash_header.type);
-	    tmp->type = DATA_UNKNOWN;
-	}
-    } else if (flash_stage == 1) {
-	struct data_header *tmp = (struct data_header *) buf;
-	if (flash_header.type == DATA_WRITE && len == 64) {
-	    chksum = crc32(buf, len);
-//printf("%d: checksum calculated %08X\n", flash_received_size, chksum);
-	    memmove(&flash_buffer[flash_buffer_pos], buf, len);
-	    flash_buffer_pos += len;
-	    flash_received_size += len;
-	    if (flash_buffer_pos == FLASH_BUFFER_SIZE) {
-    irq_set_enabled(USBCTRL_IRQ, false);
-
-		if (romfs_write_file(flash_buffer, FLASH_BUFFER_SIZE, &file) == 0) {
-		    tmp->type = DATA_ERROR;
-		    tmp->length = 0;
-		    strncpy(tmp->name, romfs_strerror(file.err), ROMFS_MAX_NAME_LEN);
-		    len = sizeof(struct data_header);
-		    flash_stage = 0;
-		} else {
-		    if (flash_received_size == flash_header.length) {
-			printf("Total bytes received %d\n", flash_received_size);
-			flash_stage = 0;
-			if (romfs_close_file(&file) != ROMFS_NOERR) {
-			    printf("romfs close error %s\n", romfs_strerror(file.err));
-			}
-		    }
-		    *((uint32_t *)tmp->name) = chksum;
-		    tmp->type = DATA_REPLY;
-		    tmp->length = len;
-		    len = sizeof(struct data_header);
-		}
-		flash_buffer_pos = 0;
-    irq_set_enabled(USBCTRL_IRQ, true);
-	    } else {
-		*((uint32_t *)tmp->name) = chksum;
-		tmp->type = DATA_REPLY;
-		tmp->length = len;
-		len = sizeof(struct data_header);
-	    }
-	} else if (len == sizeof(struct data_header) && tmp->type == DATA_READ) {
-	    int req = tmp->length;
-	    if (flash_received_size > 0) {
-		uint32_t r_chksum = *((uint32_t *)tmp->name);
-//		printf("%08X - %08X\n", chksum, r_chksum);
-		if (chksum != r_chksum) {
-		    printf("checksum error!\n");
-		    flash_stage = 0;
-		}
-	    }
-    irq_set_enabled(USBCTRL_IRQ, false);
-	    len = romfs_read_file(buf, req, &file);
-    irq_set_enabled(USBCTRL_IRQ, true);
-	    if (len != req) {
-		printf("file read error - %d, %d\n", len, req);
-		flash_stage = 0;
-	    }
-	    chksum = crc32(buf, len);
-	    flash_received_size += len;
-//	    printf("req %d send %d, total %d\n", req, len, flash_received_size);
-	    if (flash_received_size == file.entry.size) {
-		printf("read completed\n");
-		flash_stage = 0;
-	    }
-	} else {
-	    printf("Wrong packet size %d %04X\n", len, flash_header.type);
-	    flash_stage = 0;
+	chksum = req->chksum;
+	req->chksum = 0;
+	if (chksum != crc32(req, sizeof(struct req_header))) {
+	    printf("Request checksum error!\n");
+	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
+	    return;
 	}
     }
 
+//printf("flash_stage = %d, req->type = %04X\n", flash_stage, req->type);
+
+    if (flash_stage == 0) {
+	current_req = req->type;
+	if (req->type == CART_INFO) {
+	    uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
+	    const struct flash_chip *flash_chip = get_flash_info();
+	    ackn.type = ACK_NOERROR;
+	    ackn.chksum = 0;
+	    ackn.data.info.start = ((fw_binary_end - XIP_BASE) + 4095) & ~4095;
+	    ackn.data.info.size = flash_chip->rom_pages * flash_chip->rom_size * 1024 * 1024;
+	    ackn.data.info.vers = 0x0110;
+	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
+	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
+	    return;
+	} else if (req->type == CART_READ_SEC || req->type == CART_READ_SEC_CONT) {
+	    uint8_t tmp[36];
+	    if (req->type == CART_READ_SEC) {
+		romfs_flash_sector_read(req->offset, sector_buffer, ROMFS_FLASH_SECTOR);
+		memmove(tmp, sector_buffer, 32);
+	    } else {
+		memmove(tmp, &sector_buffer[req->offset], 32);
+	    }
+
+//	    printf("read offset = %08X\n", req->offset);
+
+	    *((uint32_t *)&tmp[32]) = crc32(tmp, 32);
+	    usb_start_transfer(ep_out, tmp, sizeof(tmp));
+	    return;
+	} else if (req->type == CART_WRITE_SEC) {
+	    flash_stage = 1;
+	    sector_buffer_pos = 0;
+	    write_sector_offset = req->offset;
+	    ackn.type = ACK_NOERROR;
+	    ackn.chksum = 0;
+	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
+	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
+	    return;
+	} else if (req->type == CART_ERASE_SEC) {
+	    romfs_flash_sector_erase(req->offset);
+	    ackn.type = ACK_NOERROR;
+	    ackn.chksum = 0;
+	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
+	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
+	    return;
+	}
+	current_req = 0;
+    } else if (flash_stage == 1) {
+	if (current_req == CART_WRITE_SEC) {
+	    chksum = *((uint32_t *)&buf[32]);
+	    if (len != 36 || chksum != crc32(buf, 32)) {
+		printf("write transfer checksum error\n");
+	    } else {
+		memmove(&sector_buffer[sector_buffer_pos], buf, 32);
+		sector_buffer_pos += 32;
+		if (sector_buffer_pos == sizeof(sector_buffer)) {
+		    romfs_flash_sector_write(write_sector_offset, sector_buffer);
+		    flash_stage = 0;
+		    current_req = 0;
+		}
+		ackn.type = ACK_NOERROR;
+		ackn.chksum = 0;
+		ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
+		usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
+		return;
+	    }
+	}
+	flash_stage = 0;
+	current_req = 0;
+    }
+
+    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
     // Send data back to host
-    struct usb_endpoint_configuration *ep = usb_get_endpoint_configuration(EP2_IN_ADDR);
-    usb_start_transfer(ep, buf, len);
+//    struct usb_endpoint_configuration *ep = usb_get_endpoint_configuration(EP2_IN_ADDR);
+//    usb_start_transfer(ep, buf, len);
 }
 
 void ep2_in_handler(uint8_t *buf, uint16_t len) {
@@ -714,6 +691,7 @@ int usbd_init(void)
     printf("USB Device Low-Level hardware example\n");
     usb_device_init();
 
+    current_req = 0;
     flash_stage = 0;
 
     return 0;

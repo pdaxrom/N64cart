@@ -1,8 +1,8 @@
-TARGET = usb-uploader
+TARGET = usb-romfs
 
 all: $(TARGET)
 
-OBJS = $(TARGET).o crc32.o
+OBJS = $(TARGET).o crc32.o ../fw/romfs/romfs.o
 
 ifeq (Windows,$(SYSTEM))
 CC = i686-w64-mingw32-gcc
@@ -20,6 +20,8 @@ else
 CFLAGS := $(shell $(PKG_CONFIG_PATH) pkg-config --cflags libusb-1.0) -Wall -Wpedantic
 LIBS   := $(shell $(PKG_CONFIG_PATH) pkg-config --libs libusb-1.0)
 endif
+
+CFLAGS += -I../fw/romfs
 
 $(TARGET): $(LIBUSB_DLL) $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LIBS)

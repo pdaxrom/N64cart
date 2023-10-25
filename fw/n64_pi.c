@@ -142,8 +142,6 @@ void n64_pi(void)
 		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x0100) | 0xf000;
 	    } else if (last_addr == 0x1fd01006) {
 		word = uart_get_hw(UART_ID)->dr << 8;
-	    } else if (last_addr == 0x1fd0100c) {
-		word = rom_pages << 8;
 	    } else {
 		word = 0xdead;
 	    }

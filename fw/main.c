@@ -22,23 +22,7 @@
 #include "n64_pi.h"
 #include "n64.h"
 
-volatile uint32_t jpeg_start;
-
-volatile uint32_t rom_pages;
-
-static const char *rom_chip_name = NULL;
-
-static int rom_chip_idx = -1;
-
-static const struct flash_chip {
-    uint8_t mf;
-    uint16_t id;
-    uint8_t rom_pages;
-    uint8_t rom_size;
-    uint32_t sys_freq;
-    uint16_t pi_bus_freq;
-    const char *name;
-} flash_chip[] = {
+static const struct flash_chip flash_chip[] = {
     { 0xef, 0x4020, 4, 16, 220000, 0x4028, "W25Q512" },
 //    { 0xef, 0x4020, 4, 16, 200000, 0x4028, "W25Q512" },
 //    { 0xef, 0x4019, 2, 16, 256000, 0x4022, "W25Q256" },
@@ -49,42 +33,54 @@ static const struct flash_chip {
     { 0xef, 0x4015, 1, 2 , 256000, 0x4022, "W25Q16"  }
 };
 
-extern char __flash_binary_end;
+static const struct flash_chip *used_flash_chip;
 
 //#define DEBUG_FS 1
 
 bool romfs_flash_sector_erase(uint32_t offset)
 {
-#ifdef DEBUG_FS
+//#ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
-#endif
-    flash_set_ea_reg(offset >> 24);
+//#endif
+//    flash_set_ea_reg(offset >> 24);
 
-    flash_range_erase(offset & 0xffffff, 4096);
+//    flash_range_erase(offset & 0xffffff, 4096);
+
+//    flash_spi_mode();
+    flash_erase_sector(offset);
+//    flash_quad_mode(true);
 
     return true;
 }
 
 bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
 {
-#ifdef DEBUG_FS
+//#ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
-#endif
-    flash_set_ea_reg(offset >> 24);
+//#endif
+//    flash_set_ea_reg(offset >> 24);
 
-    flash_range_program(offset & 0xffffff, buffer, 4096);
+//    flash_range_program(offset & 0xffffff, buffer, 4096);
+
+//    flash_spi_mode();
+    flash_write_sector(offset, buffer);
+//    flash_quad_mode(true);
 
     return true;
 }
 
 bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 {
-#ifdef DEBUG_FS
+//#ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
-#endif
-    flash_set_ea_reg(offset >> 24);
+//#endif
+//    flash_spi_mode();
 
-    memmove(buffer, &((uint8_t *)XIP_BASE)[(offset & 0xffffff)], need);
+    for (int i = 0; i < need; i++) {
+	buffer[i] = flash_read8_0C(offset + i);
+    }
+
+//    flash_quad_mode(true);
 
     return true;
 }
@@ -104,7 +100,6 @@ static void setup_sysconfig(void)
 {
     uint8_t txbuf[4];
     uint8_t rxbuf[4];
-    uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
 
     txbuf[0] = 0x9f;
 
@@ -117,19 +112,12 @@ static void setup_sysconfig(void)
     uint8_t mf = rxbuf[1];
     uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
 
-    jpeg_start = ((fw_binary_end - XIP_BASE) + 4095) & ~4095;
-
-    rom_pages = 1;
-
+    used_flash_chip = NULL;
     for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
 	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
-	    rom_pages = flash_chip[i].rom_pages;
-
-	    rom_chip_idx = i;
-
 	    set_sys_clock_khz(flash_chip[i].sys_freq, true);
 	    set_pi_bus_freq(flash_chip[i].pi_bus_freq);
-	    rom_chip_name = flash_chip[i].name;
+	    used_flash_chip = &flash_chip[i];
 	    break;
 	}
     }
@@ -137,15 +125,20 @@ static void setup_sysconfig(void)
 
 static void show_sysinfo(void)
 {
-    if (rom_chip_name == NULL) {
+    if (used_flash_chip == NULL) {
 	printf("Unknown ROM chip, system stopped!\n");
 	while(1) {}
     }
 
-    printf("ROM chip           : %s\n", rom_chip_name);
+    printf("ROM chip           : %s\n", used_flash_chip->name);
     printf("System frequency   : %d\n", clock_get_hz(clk_sys) / 1000);
     printf("PI bus freq config : %04X\n\n", get_pi_bus_freq());
-    printf("ROM size           : %d MB\n", rom_pages * 16384);
+    printf("ROM size           : %d MB\n", used_flash_chip->rom_pages * used_flash_chip->rom_size);
+}
+
+const struct flash_chip *get_flash_info(void)
+{
+    return used_flash_chip;
 }
 
 void n64_pi_restart(void)
@@ -202,15 +195,30 @@ int main(void)
 
     uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
 
-    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, flash_chip[rom_chip_idx].rom_pages * flash_chip[rom_chip_idx].rom_size * 1024 * 1024)) {
+    flash_spi_mode();
+
+    for (uint32_t i = 0; i < 16; i++) {
+	uint32_t addr = 0x00000000 + (i << 1);
+	printf("%08X: %04X\n", addr, flash_read16_0C(addr));
+    }
+    printf("%08X: %02X\n", 0, flash_read8_0C(0));
+    printf("%08X: %02X\n", 0, flash_read8_0C(1));
+    printf("%08X: %02X\n", 0, flash_read8_0C(2));
+    printf("%08X: %02X\n", 0, flash_read8_0C(3));
+    printf("%08X: %08X\n", 0, flash_read32_0C(0));
+
+
+printf(">>>>%08X\n", ((fw_binary_end - XIP_BASE) + 4095) & ~4095);
+
+    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024)) {
 	printf("Cannot start romfs!\n");
 	while(true) ;
     }
 
-    if (strncmp((const char *)(XIP_BASE + (((fw_binary_end - XIP_BASE) + 4095) & ~4095)), "firmware", 8)) {
-	printf("no signature found, format\n");
-	romfs_format();
-    }
+//    if (strncmp((const char *)(XIP_BASE + (((fw_binary_end - XIP_BASE) + 4095) & ~4095)), "firmware", 8)) {
+//	printf("no signature found, format\n");
+//	romfs_format();
+//    }
 
     flash_ls();
 
@@ -221,8 +229,9 @@ int main(void)
 	printf("romfs error: %s\n", romfs_strerror(file.err));
     }
 
-    flash_get_status();
+//    flash_get_status();
 
+#if 0
 #if 0
     printf("flash spi mode\n");
     flash_spi_mode();
@@ -246,8 +255,15 @@ int main(void)
 //	printf("%08X: %08X\n", addr, flash_quad_read32_EC(addr));
     }
 
-#endif
+    {
+	uint32_t last_addr = 0x6578;
+	uint32_t mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
 
+	printf("%08X: %08X\n", last_addr, flash_quad_read32_EC(mapped_addr));
+    }
+
+#endif
+#endif
 //while(true) {}
 
 #ifdef PI_SRAM
