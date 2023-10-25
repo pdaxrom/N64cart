@@ -138,6 +138,7 @@ uint8_t __no_inline_not_in_flash_func(flash_get_ea_reg)(void)
 
 void __no_inline_not_in_flash_func(flash_spi_mode)(void)
 {
+#if 0
     rom_connect_internal_flash_fn connect_internal_flash = (rom_connect_internal_flash_fn)rom_func_lookup_inline(ROM_FUNC_CONNECT_INTERNAL_FLASH);
     rom_flash_exit_xip_fn flash_exit_xip = (rom_flash_exit_xip_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_EXIT_XIP);
     rom_flash_flush_cache_fn flash_flush_cache = (rom_flash_flush_cache_fn)rom_func_lookup_inline(ROM_FUNC_FLASH_FLUSH_CACHE);
@@ -146,18 +147,34 @@ void __no_inline_not_in_flash_func(flash_spi_mode)(void)
     __compiler_memory_barrier();
     connect_internal_flash();
     flash_exit_xip();
+#endif
+
+//printf("ssi->ser %d\n", ssi->ser);
 
 #if 1
     ssi->ssienr = 0;
 
-//    ssi->ctrlr0 =
-//	(7 << SSI_CTRLR0_DFS_32_LSB) | /* 8 bits per data frame */
-//	(SSI_CTRLR0_TMOD_VALUE_TX_AND_RX << SSI_CTRLR0_TMOD_LSB);
+//printf("1) ctrlr0 %08X ctrlr1 %08X spi_ctrlr0 %08X\n", ssi->ctrlr0, ssi->ctrlr1, ssi->spi_ctrlr0);
+//printf("ioqspi_hw->io[1].ctrl = %08X\n", ioqspi_hw->io[1].ctrl);
+//    for (int i = 0; i < 6; i++) {
+//	printf("spi pads_qspi_hw->io[%d] : %08X\n", i, pads_qspi_hw->io[i]);
+//    }
 
-    ssi->ser = 1;
+    ssi->ctrlr0 =
+	(7 << SSI_CTRLR0_DFS_32_LSB) | /* 8 bits per data frame */
+	(SSI_CTRLR0_TMOD_VALUE_TX_AND_RX << SSI_CTRLR0_TMOD_LSB);
+
+//    ssi->ser = 1;
     ssi->baudr = 4;
     ssi->ssienr = 1;
 #endif
+
+//printf("2) ctrlr0 %08X ctrlr1 %08X spi_ctrlr0 %08X\n", ssi->ctrlr0, ssi->ctrlr1, ssi->spi_ctrlr0);
+//printf("ioqspi_hw->io[1].ctrl = %08X\n", ioqspi_hw->io[1].ctrl);
+//    for (int i = 0; i < 6; i++) {
+//	printf("spi pads_qspi_hw->io[%d] : %08X\n", i, pads_qspi_hw->io[i]);
+//    }
+
     return;
 }
 
@@ -345,8 +362,16 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(bool use_a32)
     if (use_a32) {
 	ssi->ssienr = 0;
 
-#if 0
-	ssi->ser = 0;
+//printf("3) ctrlr0 %08X ctrlr1 %08X spi_ctrlr0 %08X\n", ssi->ctrlr0, ssi->ctrlr1, ssi->spi_ctrlr0);
+//printf("ioqspi_hw->io[1].ctrl = %08X\n", ioqspi_hw->io[1].ctrl);
+//    for (int i = 0; i < 6; i++) {
+//	printf("spi pads_qspi_hw->io[%d] : %08X\n", i, pads_qspi_hw->io[i]);
+//    }
+
+flash_cs_force(1);
+#if 1
+//	ioqspi_hw->io[1].ctrl = 0;
+//	ssi->ser = 1;
 	ssi->baudr = 4;
 
 	ssi->ctrlr0 =
@@ -358,18 +383,23 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(bool use_a32)
 	ssi->ctrlr1 = 0;
 #endif
 
+#if 1
 	ssi->spi_ctrlr0 =
 	    (10u << SSI_SPI_CTRLR0_ADDR_L_LSB) |	/* (Address + mode bits) / 4 */
 	    (4u  << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |	/* Hi-Z dummy clocks following address + mode */
 	    (SSI_SPI_CTRLR0_INST_L_VALUE_8B << SSI_SPI_CTRLR0_INST_L_LSB) | /* 8-bit instruction */
 	    (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_1C2A	/* Send Command in serial mode then address in Quad I/O mode */
 		    << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
-
+#endif
 	ssi->ssienr = 1;
 
+//printf("111\n");
 	flash_quad_read32_EC(0);
+//printf("222\n");
 	flash_quad_read32_EC(0);
+//printf("333\n");
 	flash_quad_read32_EC(0);
+//printf("444\n");
 
 	ssi->ssienr = 0;
 
@@ -383,6 +413,13 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(bool use_a32)
 		    << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
 
 #endif
+
+//printf("4) ctrlr0 %08X ctrlr1 %08X spi_ctrlr0 %08X\n", ssi->ctrlr0, ssi->ctrlr1, ssi->spi_ctrlr0);
+//printf("ioqspi_hw->io[1].ctrl = %08X\n", ioqspi_hw->io[1].ctrl);
+//    for (int i = 0; i < 6; i++) {
+//	printf("spi pads_qspi_hw->io[%d] : %08X\n", i, pads_qspi_hw->io[i]);
+//    }
+
 	ssi->ssienr = 1;
     }
 
@@ -419,6 +456,7 @@ uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EB)(uint32_t addr)
 
 uint32_t __no_inline_not_in_flash_func(flash_quad_read32_EC)(uint32_t addr)
 {
+flash_cs_force(0);
     ssi_hw->dr0 = 0xec;
     ssi_hw->dr0 = addr;
     ssi_hw->dr0 = 0; //0xa0 << 24;
@@ -426,12 +464,14 @@ uint32_t __no_inline_not_in_flash_func(flash_quad_read32_EC)(uint32_t addr)
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
 
     uint32_t val = ssi_hw->dr0;
+flash_cs_force(1);
 
     return val;
 }
 
 uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EC)(uint32_t addr)
 {
+flash_cs_force(0);
     ssi_hw->dr0 = 0xec;
     ssi_hw->dr0 = addr;
     ssi_hw->dr0 = 0; //0xa0 << 24;
@@ -439,6 +479,7 @@ uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EC)(uint32_t addr)
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
 
     uint32_t val = ssi_hw->dr0;
+flash_cs_force(1);
 
     uint16_t val16 = (val >> 24) | ((val >> 8) & 0xff00);
 
