@@ -241,7 +241,7 @@ uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EC)(uint32_t addr)
 
     flash_cs_force(1);
 
-    uint16_t val16 = (val >> 24) | ((val >> 8) & 0xff00);
+    uint16_t val16 = val >> 16;
 
     return val16;
 }
