@@ -1,3 +1,9 @@
+/**
+ * Copyright (c) 2022-2023 sashz /pdaXrom.org/
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #ifndef __MAIN_H__
 #define __MAIN_H__
 

@@ -1,7 +1,5 @@
 /**
- * Copyright (c) 2022 Konrad Beckmann
- *
- * Copyright (c) 2022 sashz /pdaXrom.org/
+ * Copyright (c) 2022-2023 sashz /pdaXrom.org/
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -111,12 +109,7 @@ void n64_pi(void)
 	    } else if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
 		do {
 		    mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
-#if 0
-		    word = flash_read16_0C(mapped_addr);
-#else
-//		    word = flash_quad_read16_EB(mapped_addr);
 		    word = flash_quad_read16_EC(mapped_addr);
-#endif
  hackentry:
 		    pio_sm_put(pio, 0, swap8(word));
 		    last_addr += 2;
