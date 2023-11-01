@@ -615,11 +615,11 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    ackn.chksum = 0;
 	    ackn.data.info.start = ((fw_binary_end - XIP_BASE) + 4095) & ~4095;
 	    ackn.data.info.size = flash_chip->rom_pages * flash_chip->rom_size * 1024 * 1024;
-	    ackn.data.info.vers = 0x0110;
+	    ackn.data.info.vers = FIRMWARE_VERSION;
 	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
 	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
 	    return;
-	} else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == DFU_MODE) {
+	} else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == BOOTLOADER_MODE) {
 	    if (req->type == FLASH_SPI_MODE) {
 		flash_spi_mode();
 	    } else if (req->type == FLASH_QUAD_MODE) {
@@ -630,7 +630,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
 	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
 
-	    if (req->type == DFU_MODE) {
+	    if (req->type == BOOTLOADER_MODE) {
 		printf("reset to bootloader ...\n");
 		reset_usb_boot(1 << PICO_DEFAULT_LED_PIN, 0);
 	    }
