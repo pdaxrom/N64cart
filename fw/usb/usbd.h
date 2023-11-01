@@ -1,6 +1,3 @@
-#ifndef __USBD_H__
-#define __USBD_H__
+#pragma once
 
-int usbd_init(void);
-
-#endif
+void usbd_main(void);

@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include "pico/bootrom.h"
 #include <string.h>
 #include "usb_common.h"
 #include "hardware/regs/usb.h"
@@ -570,7 +571,7 @@ void ep0_out_handler(uint8_t *buf, uint16_t len) {
 
 static uint8_t sector_buffer[ROMFS_FLASH_SECTOR];
 static int sector_buffer_pos;
-static uint32_t write_sector_offset;
+static uint32_t rw_sector_offset;
 
 static uint32_t chksum;
 
@@ -618,15 +619,30 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
 	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
 	    return;
+	} else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == DFU_MODE) {
+	    if (req->type == FLASH_SPI_MODE) {
+		flash_spi_mode();
+	    } else if (req->type == FLASH_QUAD_MODE) {
+		flash_quad_mode();
+	    }
+	    ackn.type = ACK_NOERROR;
+	    ackn.chksum = 0;
+	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
+	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
+
+	    if (req->type == DFU_MODE) {
+		printf("reset to bootloader ...\n");
+		reset_usb_boot(1 << PICO_DEFAULT_LED_PIN, 0);
+	    }
+	    return;
 	} else if (req->type == CART_READ_SEC || req->type == CART_READ_SEC_CONT) {
 	    uint8_t tmp[36];
 	    if (req->type == CART_READ_SEC) {
-		romfs_flash_sector_read(req->offset, sector_buffer, ROMFS_FLASH_SECTOR);
-		memmove(tmp, sector_buffer, 32);
-	    } else {
-		memmove(tmp, &sector_buffer[req->offset], 32);
+		rw_sector_offset = req->offset;
+		flash_read_0C(rw_sector_offset, sector_buffer, ROMFS_FLASH_SECTOR);
+		req->offset = 0;
 	    }
-
+	    memmove(tmp, &sector_buffer[req->offset], 32);
 //	    printf("read offset = %08X\n", req->offset);
 
 	    *((uint32_t *)&tmp[32]) = crc32(tmp, 32);
@@ -635,7 +651,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	} else if (req->type == CART_WRITE_SEC) {
 	    flash_stage = 1;
 	    sector_buffer_pos = 0;
-	    write_sector_offset = req->offset;
+	    rw_sector_offset = req->offset;
 	    ackn.type = ACK_NOERROR;
 	    ackn.chksum = 0;
 	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
@@ -659,7 +675,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 		memmove(&sector_buffer[sector_buffer_pos], buf, 32);
 		sector_buffer_pos += 32;
 		if (sector_buffer_pos == sizeof(sector_buffer)) {
-		    romfs_flash_sector_write(write_sector_offset, sector_buffer);
+		    romfs_flash_sector_write(rw_sector_offset, sector_buffer);
 		    flash_stage = 0;
 		    current_req = 0;
 		}
@@ -675,9 +691,6 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
     }
 
     usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
-    // Send data back to host
-//    struct usb_endpoint_configuration *ep = usb_get_endpoint_configuration(EP2_IN_ADDR);
-//    usb_start_transfer(ep, buf, len);
 }
 
 void ep2_in_handler(uint8_t *buf, uint16_t len) {
@@ -686,13 +699,11 @@ void ep2_in_handler(uint8_t *buf, uint16_t len) {
     usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 }
 
-int usbd_init(void) 
+void usbd_main(void) 
 {
     printf("USB Device Low-Level hardware example\n");
     usb_device_init();
 
     current_req = 0;
     flash_stage = 0;
-
-    return 0;
 }

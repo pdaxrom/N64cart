@@ -34,7 +34,6 @@ Data Line, Bidir (DIO):  CIC Pin 15
 #include "main.h"
 #include "cic.h"
 #include "n64.h"
-#include "usb/usbd.h"
 
 // #define DEBUG
 
@@ -502,12 +501,11 @@ static void cic_run(void)
 
     if (gpio_get(N64_NMI) == 0) {
         printf("N64 NMI low\n");
-	usbd_init();
     }
 
     // Wait for reset to be released
     while (gpio_get(N64_COLD_RESET) == 0) {
-        tight_loop_contents();
+	tight_loop_contents();
     }
 
     // read the region setting

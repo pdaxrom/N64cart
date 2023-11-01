@@ -17,6 +17,7 @@
 
 #include "main.h"
 #include "cic.h"
+#include "usb/usbd.h"
 #include "n64_pi.h"
 #include "n64.h"
 
@@ -40,9 +41,7 @@ bool romfs_flash_sector_erase(uint32_t offset)
 #ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
 #endif
-    flash_spi_mode();
     flash_erase_sector(offset);
-    flash_quad_mode();
 
     return true;
 }
@@ -52,9 +51,7 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
 #ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
 #endif
-    flash_spi_mode();
     flash_write_sector(offset, buffer);
-    flash_quad_mode();
 
     return true;
 }
@@ -64,9 +61,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 #ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
 #endif
-    flash_spi_mode();
     flash_read_0C(offset, buffer, need);
-    flash_quad_mode();
 
     return true;
 }
@@ -204,7 +199,7 @@ int main(void)
 //	romfs_format();
 //    }
 
-    flash_ls();
+//    flash_ls();
 
     romfs_file file;
     if (romfs_open_file("test-rom.z64", &file, NULL) == ROMFS_NOERR) {
@@ -217,7 +212,7 @@ int main(void)
 
     flash_quad_mode();
 
-#if 1
+#if 0
     for (uint32_t i = 0; i < 16; i++) {
 //	uint32_t addr = 0x00000000 + (i << 1);
 //	printf("%08X: %04X\n", addr, flash_quad_read16_EB(addr));
@@ -243,6 +238,7 @@ int main(void)
 
     multicore_launch_core1(n64_pi);
 
+    usbd_main();
     cic_main();
 
     return 0;

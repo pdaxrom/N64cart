@@ -197,7 +197,7 @@ static bool flash_spi_mode(void)
 
     bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
     if (actual != sizeof(romfs_req)) {
-	fprintf(stderr, "Header error transfer\n");
+	fprintf(stderr, "Flash spi mode header error transfer\n");
 	return false;
     }
 
@@ -205,7 +205,7 @@ static bool flash_spi_mode(void)
     chksum = romfs_ack.chksum;
     romfs_ack.chksum = 0;
     if (actual != sizeof(romfs_ack) && chksum != crc32(&romfs_ack, sizeof(romfs_ack))) {
-	fprintf(stderr, "Header reply error transfer\n");
+	fprintf(stderr, "Flash spi mode reply error transfer\n");
 	return false;
     }
 
@@ -225,7 +225,7 @@ static bool flash_quad_mode(void)
 
     bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
     if (actual != sizeof(romfs_req)) {
-	fprintf(stderr, "Header error transfer\n");
+	fprintf(stderr, "Flash quad mode header error transfer\n");
 	return false;
     }
 
@@ -233,7 +233,35 @@ static bool flash_quad_mode(void)
     chksum = romfs_ack.chksum;
     romfs_ack.chksum = 0;
     if (actual != sizeof(romfs_ack) && chksum != crc32(&romfs_ack, sizeof(romfs_ack))) {
-	fprintf(stderr, "Header reply error transfer\n");
+	fprintf(stderr, "Flash quad mode reply error transfer\n");
+	return false;
+    }
+
+    return true;
+}
+
+static bool dfu_mode(void)
+{
+    int actual;
+    uint32_t chksum;
+    struct req_header romfs_req;
+    struct ack_header romfs_ack;
+
+    romfs_req.type = DFU_MODE;
+    romfs_req.chksum = 0;
+    romfs_req.chksum = crc32(&romfs_req, sizeof(romfs_req));
+
+    bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
+    if (actual != sizeof(romfs_req)) {
+	fprintf(stderr, "DFU mode header error transfer\n");
+	return false;
+    }
+
+    bulk_transfer(dev_handle, 0x82, (void *)&romfs_ack, sizeof(romfs_ack), &actual, 5000);
+    chksum = romfs_ack.chksum;
+    romfs_ack.chksum = 0;
+    if (actual != sizeof(romfs_ack) && chksum != crc32(&romfs_ack, sizeof(romfs_ack))) {
+	fprintf(stderr, "DFU mode reply error transfer\n");
 	return false;
     }
 
@@ -288,7 +316,7 @@ int main(int argc, char *argv[])
 	goto err;
     }
 
-//    flash_spi_mode();
+    flash_spi_mode();
 
     if (!romfs_start(romfs_info.data.info.start, romfs_info.data.info.size)) {
 	printf("Cannot start romfs!\n");
@@ -296,7 +324,11 @@ int main(int argc, char *argv[])
     }
 
     if (argc > 1) {
-	if (!strcmp(argv[1], "format")) {
+	if (!strcmp(argv[1], "dfu")) {
+	    dfu_mode();
+
+	    goto finish;
+	} else if (!strcmp(argv[1], "format")) {
 	    romfs_format();
 	} else if (!strcmp(argv[1], "list")) {
 	    romfs_file file;
@@ -364,7 +396,9 @@ int main(int argc, char *argv[])
 
  err:
 
-//    flash_quad_mode();
+    flash_quad_mode();
+
+ finish:
 
     libusb_release_interface(dev_handle, 0);
 
