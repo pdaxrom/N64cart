@@ -12,7 +12,8 @@
 #include "hardware/structs/ioqspi.h"
 #include "hardware/structs/pads_qspi.h"
 
-static void __no_inline_not_in_flash_func(flash_cs_force)(bool high) {
+void __no_inline_not_in_flash_func(flash_cs_force)(bool high)
+{
     uint32_t field_val = high ?
         IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_VALUE_HIGH :
         IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_VALUE_LOW;

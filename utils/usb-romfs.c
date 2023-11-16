@@ -128,7 +128,7 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer) {
 
 bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need) {
 #ifdef DEBUG
-    printf("flash read %08X (%p)\n", offset, (void *)buffer);
+    printf("flash read %08X (%p) %d\n", offset, (void *)buffer, need);
 #endif
 
     int actual;
@@ -157,14 +157,14 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need) {
             return false;
         }
 
-        memmove(&buffer[pos], tmp, 32);
+        memmove(&buffer[pos], tmp, (need > 32) ? 32 : need);
+
+        if (need < 32) {
+            break;
+        }
 
         pos += 32;
         need -= 32;
-
-        if (need == 0) {
-            break;
-        }
 
         romfs_req.type = CART_READ_SEC_CONT;
         romfs_req.offset = pos;
@@ -284,7 +284,7 @@ int main(int argc, char *argv[]) {
                 romfs_file file;
                 if (romfs_list(&file, true) == ROMFS_NOERR) {
                     do {
-                        printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.mode, file.entry.type);
+                        printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.mode, file.entry.attr.type);
                     } while (romfs_list(&file, false) == ROMFS_NOERR);
                 }
             } else if (!strcmp(argv[1], "delete")) {

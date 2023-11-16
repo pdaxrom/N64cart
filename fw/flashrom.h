@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+void flash_cs_force(bool high);
+
 void flash_spi_mode(void);
 
 bool flash_erase_sector(uint32_t addr);

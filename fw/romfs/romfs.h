@@ -39,8 +39,11 @@ enum {
 
 typedef struct __attribute__((packed)){
     char     name[ROMFS_MAX_NAME_LEN];
-    uint16_t mode: 3;
-    uint16_t type: 13;
+    union {
+	uint16_t mode: 3;
+	uint16_t type: 13;
+	uint16_t raw;
+    } attr;
     uint32_t start;
     uint32_t size;
 } romfs_entry;

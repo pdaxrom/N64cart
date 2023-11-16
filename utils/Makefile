@@ -14,11 +14,11 @@ $(LIBUSB_DLL):
 	cd build && ../libusb-1.0.26/configure --host=i686-w64-mingw32 --prefix=$$PWD/inst
 	cd build && make -j install
 	cp build/inst/bin/$(LIBUSB_DLL) .
-CFLAGS := -I$(PWD)/build/inst/include/libusb-1.0 -Wall -Wpedantic
-LIBS   := -L$(PWD)/build/inst/lib -lusb-1.0
+CFLAGS := -I$(PWD)/build/inst/include/libusb-1.0 -Wall -Wpedantic -g
+LIBS   := -L$(PWD)/build/inst/lib -lusb-1.0 -g
 else
-CFLAGS := $(shell $(PKG_CONFIG_PATH) pkg-config --cflags libusb-1.0) -Wall -Wpedantic
-LIBS   := $(shell $(PKG_CONFIG_PATH) pkg-config --libs libusb-1.0)
+CFLAGS := $(shell $(PKG_CONFIG_PATH) pkg-config --cflags libusb-1.0) -Wall -Wpedantic -g
+LIBS   := $(shell $(PKG_CONFIG_PATH) pkg-config --libs libusb-1.0) -g
 endif
 
 CFLAGS += -I../fw/romfs

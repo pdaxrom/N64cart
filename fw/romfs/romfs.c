@@ -10,6 +10,18 @@
 #include <stdbool.h>
 #include "romfs.h"
 
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define to_lsb16(a) (a)
+#define from_lsb16(a) (a)
+#define to_lsb32(a) (a)
+#define from_lsb32(a) (a)
+#else
+#define to_lsb16(a)   (((((a) >> 8) & 0xff) | ((a) << 8)) & 0xffff)
+#define from_lsb16(a) (((((a) >> 8) & 0xff) | ((a) << 8)) & 0xffff)
+#define to_lsb32(a)   ((((a) & 0xff000000) >> 24) | (((a) & 0x00ff0000) >> 8) | (((a) & 0x0000ff00) << 8) | (((a) & 0x000000ff) << 24))
+#define from_lsb32(a) ((((a) & 0xff000000) >> 24) | (((a) & 0x00ff0000) >> 8) | (((a) & 0x0000ff00) << 8) | (((a) & 0x000000ff) << 24))
+#endif
+
 static const char *romfs_errlist[] = {
     "No error",
     "No list entry",
@@ -43,9 +55,9 @@ bool romfs_start(uint32_t start, uint32_t size)
 	list_size = sizeof(flash_list);
     }
 
-    printf("romfs memory size %d\n", mem_size);
-    printf("romfs map size %d\n", map_size);
-    printf("romfs list size %d\n", list_size);
+//    printf("romfs memory size %d\n", mem_size);
+//    printf("romfs map size %d\n", map_size);
+//    printf("romfs list size %d\n", list_size);
 
     if (map_size && list_size) {
 	for (int i = 0; i < list_size; i += ROMFS_FLASH_SECTOR) {
@@ -79,31 +91,36 @@ bool romfs_format(void)
 
     romfs_entry *entry = (romfs_entry *)flash_list;
 
+    romfs_entry tmp;
+
     strncpy(entry[0].name, "firmware", ROMFS_MAX_NAME_LEN - 1);
     entry[0].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-    entry[0].mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
-    entry[0].type = ROMFS_TYPE_FIRMWARE;
-    entry[0].start = 0;
-    entry[0].size = flash_start;
+    tmp.attr.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
+    tmp.attr.mode = ROMFS_TYPE_FIRMWARE;
+    entry[0].attr.raw = to_lsb16(tmp.attr.raw);
+    entry[0].start = to_lsb32(0);
+    entry[0].size = to_lsb32(flash_start);
 
     strncpy(entry[1].name, "flashlist", ROMFS_MAX_NAME_LEN - 1);
     entry[1].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-    entry[1].mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
-    entry[1].type = ROMFS_TYPE_FLASHLIST;
-    entry[1].start = flash_start / ROMFS_FLASH_SECTOR;
-    entry[1].size = list_size;
+    tmp.attr.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
+    tmp.attr.type = ROMFS_TYPE_FLASHLIST;
+    entry[1].attr.raw = to_lsb16(tmp.attr.raw);
+    entry[1].start = to_lsb32(flash_start / ROMFS_FLASH_SECTOR);
+    entry[1].size = to_lsb32(list_size);
 
     strncpy(entry[2].name, "flashmap", ROMFS_MAX_NAME_LEN - 1);
     entry[2].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-    entry[2].mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
-    entry[2].type = ROMFS_TYPE_FLASHMAP;
-    entry[2].start = (flash_start + list_size) / ROMFS_FLASH_SECTOR;
-    entry[2].size = map_size;
+    tmp.attr.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
+    tmp.attr.type = ROMFS_TYPE_FLASHMAP;
+    entry[2].attr.raw = to_lsb16(tmp.attr.raw);
+    entry[2].start = to_lsb32((flash_start + list_size) / ROMFS_FLASH_SECTOR);
+    entry[2].size = to_lsb32(map_size);
 
     memset((uint8_t *)flash_map, 0xff, map_size);
 
     for (int i = 0; i < (flash_start + list_size + map_size) / ROMFS_FLASH_SECTOR; i++) {
-	flash_map[i] = i + 1;
+	flash_map[i] = to_lsb16(i + 1);
     }
 
     romfs_flush();
@@ -137,7 +154,11 @@ static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_dele
 	return (file->err = ROMFS_ERR_NO_ENTRY);
     }
 
-    memmove(&file->entry, &((romfs_entry *)flash_list)[file->nentry], sizeof(romfs_entry));
+    romfs_entry *_entry = &((romfs_entry *)flash_list)[file->nentry];
+    memmove(&file->entry.name, _entry->name, ROMFS_MAX_NAME_LEN);
+    file->entry.attr.raw = from_lsb16(_entry->attr.raw);
+    file->entry.start = from_lsb32(_entry->start);
+    file->entry.size = from_lsb32(_entry->size);
 
     file->nentry++;
     file->pos = 0;
@@ -170,7 +191,7 @@ static void romfs_unallocate_sectors_chain(uint32_t sector, uint32_t size)
     uint32_t sectors = ((size + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1)) / ROMFS_FLASH_SECTOR;
 
     for (int i = 0; i < sectors; i++) {
-	uint32_t next = flash_map[sector];
+	uint32_t next = from_lsb16(flash_map[sector]);
 	flash_map[sector] = 0xffff;
 	sector = next;
     }
@@ -218,8 +239,8 @@ uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t
     if (file->err == ROMFS_ERR_NO_ENTRY) {
 	strncpy(file->entry.name, name, ROMFS_MAX_NAME_LEN - 1);
 	file->entry.name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-	file->entry.mode = mode;
-	file->entry.type = type;
+	file->entry.attr.mode = mode;
+	file->entry.attr.type = type;
 	file->entry.size = 0;
 	file->entry.start = 0xffff;
 	file->offset = 0;
@@ -239,15 +260,15 @@ static uint32_t romfs_allocate_and_write_sector_internal(void *buffer, romfs_fil
 	    return (file->err = ROMFS_ERR_NO_SPACE);
 	}
 	file->pos = file->entry.start;
-	flash_map[file->pos] = file->pos;
+	flash_map[file->pos] = to_lsb16(file->pos);
     } else {
 	uint32_t pos = romfs_find_free_sector(file->pos);
 	if (pos == 0xffff) {
 	    romfs_unallocate_sectors_chain(file->entry.start, file->entry.size);
 	    return (file->err = ROMFS_ERR_NO_SPACE);
 	}
-	flash_map[file->pos] = pos;
-	flash_map[pos] = pos;
+	flash_map[file->pos] = to_lsb16(pos);
+	flash_map[pos] = to_lsb16(pos);
 	file->pos = pos;
     }
 
@@ -317,7 +338,11 @@ uint32_t romfs_close_file(romfs_file *file)
 	    file->entry.size += file->offset;
 	}
 
-	memmove(&((romfs_entry *)flash_list)[file->nentry], &file->entry, sizeof(romfs_entry));
+	romfs_entry *_entry = &((romfs_entry *)flash_list)[file->nentry];
+	memmove(_entry->name, file->entry.name, ROMFS_MAX_NAME_LEN);
+	_entry->attr.raw = to_lsb16(file->entry.attr.raw);
+	_entry->start = to_lsb32(file->entry.start);
+	_entry->size = to_lsb32(file->entry.size);
 
 	romfs_flush();
     }
@@ -355,7 +380,7 @@ bool romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_file *f
     while (file->read_offset < file->entry.size) {
 //printf("map: %04X\n", file->pos);
 	map_buffer[i++] = file->pos;
-	file->pos = flash_map[file->pos];
+	file->pos = from_lsb16(flash_map[file->pos]);
 	file->read_offset += ROMFS_FLASH_SECTOR;
     }
 
@@ -391,13 +416,13 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 	romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR + file->offset, buffer, size);
 	file->read_offset += size;
 	file->offset = 0;
-	file->pos = flash_map[file->pos];
+	file->pos = from_lsb16(flash_map[file->pos]);
 
 	return size;
     } else if (file->offset + size > ROMFS_FLASH_SECTOR) {
 	uint32_t need = ROMFS_FLASH_SECTOR - file->offset;
 	romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR + file->offset, buffer, need);
-	file->pos = flash_map[file->pos];
+	file->pos = from_lsb16(flash_map[file->pos]);
 	file->read_offset += need;
 	need = size - need;
 	if (need > 0) {

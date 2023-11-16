@@ -10,6 +10,8 @@
 #include "pico/stdlib.h"
 #include "pico/stdio.h"
 #include "pico/multicore.h"
+#include "hardware/structs/ssi.h"
+
 #include "hardware/flash.h"
 #include "flashrom.h"
 #include "main.h"
@@ -19,6 +21,8 @@
 uint16_t rom_lookup[16386];
 
 static uint16_t pi_bus_freq = 0x40ff;
+
+static uint16_t flash_ctrl_reg = 0x11;
 
 #if PI_SRAM
 static uint16_t *sram_16 = (uint16_t *) sram_8;
@@ -119,10 +123,21 @@ void n64_pi(void)
 #endif
 	    } else if (last_addr == 0x1fd01002) {
 		word =
-		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x0002) |
-		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x0001) | 0x00f0;
+		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02) |
+		    ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01) | 0x00f0;
 	    } else if (last_addr == 0x1fd01006) {
 		word = uart_get_hw(UART_ID)->dr;
+	    } else if (last_addr == 0x1fd0100e) {
+		word = flash_ctrl_reg;
+	    } else if (last_addr == 0x1fd01012) {
+		uint32_t flags = ssi_hw->sr;
+		word = ((flags & SSI_SR_TFNF_BITS) ? 0x01 : 0x00) | ((flags & SSI_SR_RFNE_BITS) ? 0x02 : 0x00);
+	    } else if (last_addr == 0x1fd01016) {
+		uint8_t byte = (uint8_t)ssi_hw->dr0;
+		word = byte;
+	    } else if (last_addr == 0x1fd0101a) {
+		uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
+		word = (((fw_binary_end - XIP_BASE) + 4095) & ~4095) >> 12;
 	    } else {
 		word = 0xdead;
 	    }
@@ -146,6 +161,20 @@ void n64_pi(void)
 		uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
 	    } else if (last_addr == 0x1fd0100a) {
 		gpio_put(LED_PIN, (addr >> 16) & 0x01);
+	    } else if (last_addr == 0x1fd0100e) {
+		uint16_t ctrl_reg = addr >> 16;
+		if (ctrl_reg & 0x10) {
+		    flash_quad_mode();
+		} else {
+		    if (flash_ctrl_reg & 0x10) {
+			flash_spi_mode();
+		    }
+		    flash_cs_force(ctrl_reg & 0x01);
+		}
+		flash_ctrl_reg = ctrl_reg;
+	    } else if (last_addr == 0x1fd01016) {
+		uint8_t byte = (addr >> 16) & 0xff;
+		ssi_hw->dr0 = byte;
 	    }
 
 	    last_addr += 2;

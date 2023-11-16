@@ -12,7 +12,7 @@ endif
 
 CFLAGS += -DJPEG_OUTPUT_RGB8=1 -DUSE_FILESYSTEM
 
-SRC = main.c n64cart.c jpeg/gba-jpeg-decode.c
+SRC = main.c n64cart.c jpeg/gba-jpeg-decode.c ../fw/romfs/romfs.c
 OBJS = $(SRC:%.c=$(BUILD_DIR)/%.o)
 DEPS = $(SRC:%.c=$(BUILD_DIR)/%.d)
 

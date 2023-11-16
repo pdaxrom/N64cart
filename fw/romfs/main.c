@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 	    romfs_file file;
 	    if (romfs_list(&file, true) == ROMFS_NOERR) {
 		do {
-		    printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.mode, file.entry.type);
+		    printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.mode, file.entry.attr.type);
 		} while (romfs_list(&file, false) == ROMFS_NOERR);
 	    }
 	} else if (!strcmp(argv[2], "delete")) {

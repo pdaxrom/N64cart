@@ -13,19 +13,104 @@
 #include "jpeg/gba-jpeg-decode.h"
 
 #include "n64cart.h"
+#include "../fw/romfs/romfs.h"
 
 #ifndef USE_FILESYSTEM
 #include "image.h"
 #endif
+
+struct flash_chip {
+    uint8_t mf;
+    uint16_t id;
+    uint8_t rom_pages;
+    uint8_t rom_size;
+    const char *name;
+};
+
+static const struct flash_chip flash_chip[] = {
+    { 0xef, 0x4020, 4, 16, "W25Q512" },
+    { 0xef, 0x4019, 2, 16, "W25Q256" },
+    { 0xef, 0x4018, 1, 16, "W25Q128" },
+    { 0xef, 0x4017, 1, 8 , "W25Q64"  },
+    { 0xef, 0x4016, 1, 4 , "W25Q32"  },
+    { 0xef, 0x4015, 1, 2 , "W25Q16"  }
+};
+
+static const struct flash_chip *used_flash_chip = NULL;
 
 static const int scr_width = 320;
 static const int scr_height = 240;
 
 static uint8_t __attribute__((aligned(16))) picture_data[64 * 1024];
 
+bool romfs_flash_sector_erase(uint32_t offset)
+{
+#ifdef DEBUG_FS
+    printf("%s: offset %08X\n", __func__, offset);
+#endif
+    flash_mode(0);
+    flash_erase_sector(offset);
+    flash_mode(1);
+
+    return true;
+}
+
+bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
+{
+#ifdef DEBUG_FS
+    printf("%s: offset %08X\n", __func__, offset);
+#endif
+    flash_mode(0);
+    flash_write_sector(offset, buffer);
+    flash_mode(1);
+
+    return true;
+}
+
+bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
+{
+#ifdef DEBUG_FS
+    char tmp[256];
+    snprintf(tmp, sizeof(tmp) - 1, "%s: offset %08lX, need %ld\n", __func__, offset, need);
+    n64cart_uart_puts(tmp);
+#endif
+    flash_mode(0);
+    flash_read_0C(offset, buffer, need);
+    flash_mode(1);
+
+    return true;
+}
+
 static int valign(char *s)
 {
     return (scr_width >> 1) - strlen(s) * 4;
+}
+
+static void detect_flash_chip()
+{
+    uint8_t txbuf[4];
+    uint8_t rxbuf[4];
+
+    txbuf[0] = 0x9f;
+
+    flash_mode(0);
+    flash_do_cmd(txbuf, rxbuf, 4, 0);
+    flash_mode(1);
+
+//	char tmp[256];
+//	snprintf(tmp, sizeof(tmp) - 1, "Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
+//	n64cart_uart_puts(tmp);
+
+    uint8_t mf = rxbuf[1];
+    uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
+
+    used_flash_chip = NULL;
+    for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
+	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
+	    used_flash_chip = &flash_chip[i];
+	    break;
+	}
+    }
 }
 
 int main(void)
@@ -35,8 +120,57 @@ int main(void)
     controller_init();
 
     dma_wait();
-    data_cache_hit_writeback_invalidate(picture_data, sizeof(picture_data));
-    dma_read(picture_data, 0x1fd80000, sizeof(picture_data));
+
+    detect_flash_chip();
+
+    {
+	char tmp[256];
+	snprintf(tmp, sizeof(tmp) - 1, "N64Cart fw size: %ld\n", n64cart_fw_size());
+	n64cart_uart_puts(tmp);
+    }
+
+    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024)) {
+	n64cart_uart_puts("Cannot start romfs!\n");
+    } else {
+	char tmp[256];
+	romfs_file file;
+	n64cart_uart_puts("File list:\n");
+	if (romfs_list(&file, true) == ROMFS_NOERR) {
+	    do {
+		snprintf(tmp, sizeof(tmp) - 1, "%s\t%ld\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.mode, file.entry.attr.type);
+		n64cart_uart_puts(tmp);
+	    } while (romfs_list(&file, false) == ROMFS_NOERR);
+	}
+
+	if (romfs_open_file("background.jpg", &file, NULL) == ROMFS_NOERR) {
+            int ret;
+            int pos = 0;
+            while (pos < sizeof(picture_data) && (ret = romfs_read_file(&picture_data[pos], 4096, &file)) > 0) {
+		pos += ret;
+            }
+            romfs_close_file(&file);
+	    snprintf(tmp, sizeof(tmp) - 1, "read image file %d bytes\n", pos);
+	    n64cart_uart_puts(tmp);
+
+/*
+	    if (romfs_create_file("xxx.jpg", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) == ROMFS_NOERR) {
+		int len = pos;
+		pos = 0;
+        	while (len > 0) {
+                    if (romfs_write_file(&picture_data[pos], (len < 4096) ? len : 4096, &file) == 0) {
+                        break;
+                    }
+                    if (len < 4096) {
+                	break;
+                    }
+		    len -= 4096;
+		    pos += 4096;
+        	}
+        	romfs_close_file(&file);
+	    }
+ */
+	}
+    }
 
     uint8_t *img_jpeg;
 
@@ -71,8 +205,6 @@ int main(void)
     /* define two variables */
     int x = 0;
     int y = 0;
-
-    int rom_pages = n64cart_get_rom_pages();
 
     int selected_rom = -1;
 
@@ -115,15 +247,19 @@ int main(void)
 	sprintf(tStr, "X %d Y %d", keys.c[0].x, keys.c[0].y);
 	graphics_draw_text( disp, 10, 70, tStr );
 
-	sprintf(tStr, "Available ROMs: %d", rom_pages);
+	if (used_flash_chip) {
+	    sprintf(tStr, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
+	} else {
+	    sprintf(tStr, "Unknown flash chip");
+	}
 	graphics_draw_text( disp, valign(tStr), 90, tStr );
 
 	strcpy(tStr, "Press [UP]/[DOWN] to select");
 	graphics_draw_text( disp, valign(tStr), 100, tStr );
 
-	if (selected_rom < (rom_pages - 1) && keys.c[0].up) {
-	    selected_rom++;
-	}
+//	if (selected_rom < (rom_pages - 1) && keys.c[0].up) {
+//	    selected_rom++;
+//	}
 
 	if (keys.c[0].down) {
 	    if (selected_rom > 0) {
@@ -133,13 +269,13 @@ int main(void)
 	    }
 	}
 
-	if (selected_rom != -1) {
-	    n64cart_set_rom_page(selected_rom);
-	    sprintf(tStr, "Selected ROM: %d", selected_rom);
-	    graphics_draw_text( disp, valign(tStr), 120, tStr );
-	    strcpy(tStr, "Press [RESET] to start");
-	    graphics_draw_text( disp, valign(tStr), 130,  tStr);
-	}
+//	if (selected_rom != -1) {
+//	    n64cart_set_rom_page(selected_rom);
+//	    sprintf(tStr, "Selected ROM: %d", selected_rom);
+//	    graphics_draw_text( disp, valign(tStr), 120, tStr );
+//	    strcpy(tStr, "Press [RESET] to start");
+//	    graphics_draw_text( disp, valign(tStr), 130,  tStr);
+//	}
 
 
 	if (keys.c[0].start) {
