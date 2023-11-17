@@ -23,7 +23,7 @@ $(BUILD_DIR)/test-rom.dfs: $(wildcard filesystem/*)
 $(BUILD_DIR)/test-rom.elf: $(OBJS)
 
 clean:
-	rm -rf $(BUILD_DIR) *.z64 rom.h
+	rm -rf $(BUILD_DIR) fw *.z64
 
 .PHONY: clean upload
 
