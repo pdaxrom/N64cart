@@ -137,7 +137,7 @@ int main(void)
 	n64cart_uart_puts("File list:\n");
 	if (romfs_list(&file, true) == ROMFS_NOERR) {
 	    do {
-		snprintf(tmp, sizeof(tmp) - 1, "%s\t%ld\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.mode, file.entry.attr.type);
+		snprintf(tmp, sizeof(tmp) - 1, "%s\t%ld\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
 		n64cart_uart_puts(tmp);
 	    } while (romfs_list(&file, false) == ROMFS_NOERR);
 	}

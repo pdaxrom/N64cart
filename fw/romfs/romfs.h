@@ -37,11 +37,15 @@ enum {
     ROMFS_ERR_EOF,
 };
 
-typedef struct __attribute__((packed)){
+typedef struct __attribute__((packed)) {
+    uint16_t mode: 3;
+    uint16_t type: 13;
+} attr_by_names;
+
+typedef struct __attribute__((packed)) {
     char     name[ROMFS_MAX_NAME_LEN];
     union {
-	uint16_t mode: 3;
-	uint16_t type: 13;
+	attr_by_names names;
 	uint16_t raw;
     } attr;
     uint32_t start;

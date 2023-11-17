@@ -95,25 +95,28 @@ bool romfs_format(void)
 
     strncpy(entry[0].name, "firmware", ROMFS_MAX_NAME_LEN - 1);
     entry[0].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-    tmp.attr.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
-    tmp.attr.mode = ROMFS_TYPE_FIRMWARE;
-    entry[0].attr.raw = to_lsb16(tmp.attr.raw);
+    tmp.attr.names.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
+    tmp.attr.names.type = ROMFS_TYPE_FIRMWARE;
+    uint16_t raw = (tmp.attr.names.mode & 0x07) | (tmp.attr.names.type << 3);
+    entry[0].attr.raw = to_lsb16(raw);
     entry[0].start = to_lsb32(0);
     entry[0].size = to_lsb32(flash_start);
 
     strncpy(entry[1].name, "flashlist", ROMFS_MAX_NAME_LEN - 1);
     entry[1].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-    tmp.attr.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
-    tmp.attr.type = ROMFS_TYPE_FLASHLIST;
-    entry[1].attr.raw = to_lsb16(tmp.attr.raw);
+    tmp.attr.names.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
+    tmp.attr.names.type = ROMFS_TYPE_FLASHLIST;
+    raw = (tmp.attr.names.mode & 0x07) | (tmp.attr.names.type << 3);
+    entry[1].attr.raw = to_lsb16(raw);
     entry[1].start = to_lsb32(flash_start / ROMFS_FLASH_SECTOR);
     entry[1].size = to_lsb32(list_size);
 
     strncpy(entry[2].name, "flashmap", ROMFS_MAX_NAME_LEN - 1);
     entry[2].name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-    tmp.attr.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
-    tmp.attr.type = ROMFS_TYPE_FLASHMAP;
-    entry[2].attr.raw = to_lsb16(tmp.attr.raw);
+    tmp.attr.names.mode = ROMFS_MODE_READONLY | ROMFS_MODE_SYSTEM;
+    tmp.attr.names.type = ROMFS_TYPE_FLASHMAP;
+    raw = (tmp.attr.names.mode & 0x07) | (tmp.attr.names.type << 3);
+    entry[2].attr.raw = to_lsb16(raw);
     entry[2].start = to_lsb32((flash_start + list_size) / ROMFS_FLASH_SECTOR);
     entry[2].size = to_lsb32(map_size);
 
@@ -156,7 +159,9 @@ static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_dele
 
     romfs_entry *_entry = &((romfs_entry *)flash_list)[file->nentry];
     memmove(&file->entry.name, _entry->name, ROMFS_MAX_NAME_LEN);
-    file->entry.attr.raw = from_lsb16(_entry->attr.raw);
+    uint16_t raw = from_lsb16(_entry->attr.raw);
+    file->entry.attr.names.mode = raw & 0x07;
+    file->entry.attr.names.type = raw >> 3;
     file->entry.start = from_lsb32(_entry->start);
     file->entry.size = from_lsb32(_entry->size);
 
@@ -239,8 +244,8 @@ uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t
     if (file->err == ROMFS_ERR_NO_ENTRY) {
 	strncpy(file->entry.name, name, ROMFS_MAX_NAME_LEN - 1);
 	file->entry.name[ROMFS_MAX_NAME_LEN - 1] = '\0';
-	file->entry.attr.mode = mode;
-	file->entry.attr.type = type;
+	file->entry.attr.names.mode = mode;
+	file->entry.attr.names.type = type;
 	file->entry.size = 0;
 	file->entry.start = 0xffff;
 	file->offset = 0;
@@ -340,7 +345,8 @@ uint32_t romfs_close_file(romfs_file *file)
 
 	romfs_entry *_entry = &((romfs_entry *)flash_list)[file->nentry];
 	memmove(_entry->name, file->entry.name, ROMFS_MAX_NAME_LEN);
-	_entry->attr.raw = to_lsb16(file->entry.attr.raw);
+	uint16_t raw = (file->entry.attr.names.mode & 0x07) | (file->entry.attr.names.type << 3);
+	_entry->attr.raw = to_lsb16(raw);
 	_entry->start = to_lsb32(file->entry.start);
 	_entry->size = to_lsb32(file->entry.size);
 
