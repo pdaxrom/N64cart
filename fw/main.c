@@ -174,67 +174,28 @@ int main(void)
     printf("N64cart booting!\n\n");
     show_sysinfo();
 
+#ifdef PI_SRAM
+    memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
+#endif
+
     uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
 
     flash_spi_mode();
-
-//    for (uint32_t i = 0; i < 16; i++) {
-//	uint32_t addr = 0x00000000 + (i << 1);
-//	printf("%08X: %04X\n", addr, flash_read16_0C(addr));
-//    }
-//    printf("%08X: %02X\n", 0, flash_read8_0C(0));
-//    printf("%08X: %02X\n", 0, flash_read8_0C(1));
-//    printf("%08X: %02X\n", 0, flash_read8_0C(2));
-//    printf("%08X: %02X\n", 0, flash_read8_0C(3));
-//    printf("%08X: %08X\n", 0, flash_read32_0C(0));
-//printf(">>>>%08X\n", ((fw_binary_end - XIP_BASE) + 4095) & ~4095);
 
     if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024)) {
 	printf("Cannot start romfs!\n");
 	while(true) ;
     }
 
-//    if (strncmp((const char *)(XIP_BASE + (((fw_binary_end - XIP_BASE) + 4095) & ~4095)), "firmware", 8)) {
-//	printf("no signature found, format\n");
-//	romfs_format();
-//    }
-
-//    flash_ls();
-
     romfs_file file;
     if (romfs_open_file("test-rom.z64", &file, NULL) == ROMFS_NOERR) {
 	romfs_read_map_table(rom_lookup, 16384, &file);
     } else {
 	printf("romfs error: %s\n", romfs_strerror(file.err));
+	while(true) ;
     }
-
-//    printf("flash quad mode\n");
 
     flash_quad_mode();
-
-#if 0
-    for (uint32_t i = 0; i < 16; i++) {
-//	uint32_t addr = 0x00000000 + (i << 1);
-//	printf("%08X: %04X\n", addr, flash_quad_read16_EB(addr));
-//	uint32_t addr = 0x00000000 + (i << 2);
-//	printf("%08X: %08X\n", addr, flash_quad_read32_EB(addr));
-	uint32_t addr = 0x00000000 + (i << 1);
-	printf("%08X: %04X\n", addr, flash_quad_read16_EC(addr));
-//	uint32_t addr = 0x00000000 + (i << 2);
-//	printf("%08X: %08X\n", addr, flash_quad_read32_EC(addr));
-    }
-
-    {
-	uint32_t last_addr = 0x6578;
-	uint32_t mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
-
-	printf("%08X: %08X\n", last_addr, flash_quad_read32_EC(mapped_addr));
-    }
-#endif
-
-#ifdef PI_SRAM
-    memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
-#endif
 
     multicore_launch_core1(n64_pi);
 
