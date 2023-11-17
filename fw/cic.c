@@ -497,11 +497,13 @@ static void cic_run(void)
     memset(_CicMem, 0, sizeof(_CicMem));
     memset(_6105Mem, 0, sizeof(_6105Mem));
 
+#ifdef DEBUG_INFO
     printf("CIC Emulator core running!\r\n");
 
     if (gpio_get(N64_NMI) == 0) {
         printf("N64 NMI low\n");
     }
+#endif
 
     // Wait for reset to be released
     while (gpio_get(N64_COLD_RESET) == 0) {
@@ -563,7 +565,9 @@ static void cic_run(void)
     }
 
     n64_pi_restart();
+#ifdef DEBUG_INFO
     printf("CIC Emulator core finished!\r\n");
+#endif
 }
 
 void cic_main(void)

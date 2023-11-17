@@ -382,7 +382,9 @@ void usb_set_device_configuration(volatile struct usb_setup_packet *pkt) {
     configured = true;
 
     // Get ready to rx from host
+#ifdef DEBUG_INFO
     printf("USB Device configured\n");
+#endif
     usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 }
 
@@ -701,7 +703,9 @@ void ep2_in_handler(uint8_t *buf, uint16_t len) {
 
 void usbd_main(void) 
 {
+#ifdef DEBUG_INFO
     printf("USB Device Low-Level hardware example\n");
+#endif
     usb_device_init();
 
     current_req = 0;

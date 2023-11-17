@@ -106,11 +106,6 @@ static void setup_sysconfig(void)
 
 static void show_sysinfo(void)
 {
-    if (used_flash_chip == NULL) {
-	printf("Unknown ROM chip, system stopped!\n");
-	while(1) {}
-    }
-
     printf("ROM chip           : %s\n", used_flash_chip->name);
     printf("System frequency   : %d\n", clock_get_hz(clk_sys) / 1000);
     printf("PI bus freq config : %04X\n\n", get_pi_bus_freq());
@@ -171,8 +166,16 @@ int main(void)
     stdio_init_all();
     stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
 
-    printf("N64cart booting!\n\n");
+    printf("N64cart by pdaXrom!\n");
+
+    if (used_flash_chip == NULL) {
+	printf("Unknown ROM chip, system stopped!\n");
+	while(1) {}
+    }
+
+#ifdef DEBUG_INFO
     show_sysinfo();
+#endif
 
 #ifdef PI_SRAM
     memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);

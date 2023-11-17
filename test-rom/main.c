@@ -229,7 +229,7 @@ int main(void)
 	strcpy(tStr, "N64CART TEST");
         graphics_draw_text( disp, valign(tStr), 10, tStr);
 
-	strcpy(tStr, "(c) sashz /pdaXrom.org/, 2022");
+	strcpy(tStr, "(c) sashz /pdaXrom.org/, 2022-2023");
         graphics_draw_text( disp, valign(tStr), 20, tStr);
 
         /* Scan for User input */
