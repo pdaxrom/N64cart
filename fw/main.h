@@ -29,6 +29,7 @@ struct flash_chip {
 };
 
 extern uint16_t rom_lookup[16386];
+extern uint8_t sram_8[SRAM_1MBIT_SIZE];
 
 extern char __flash_binary_end;
 

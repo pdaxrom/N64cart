@@ -15,6 +15,7 @@
 #include "hardware/resets.h"
 #include "hardware/sync.h"
 #include "hardware/flash.h"
+#include "hardware/watchdog.h"
 #include "flashrom.h"
 
 #include "dev_lowlevel.h"
@@ -621,7 +622,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    ackn.chksum = crc32(&ackn, sizeof(struct ack_header));
 	    usb_start_transfer(ep_out, (uint8_t *)&ackn, sizeof(struct ack_header));
 	    return;
-	} else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == BOOTLOADER_MODE) {
+	} else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == BOOTLOADER_MODE || req->type == CART_REBOOT) {
 	    if (req->type == FLASH_SPI_MODE) {
 		flash_spi_mode();
 	    } else if (req->type == FLASH_QUAD_MODE) {
@@ -635,6 +636,9 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    if (req->type == BOOTLOADER_MODE) {
 		printf("reset to bootloader ...\n");
 		reset_usb_boot(1 << PICO_DEFAULT_LED_PIN, 0);
+	    } else if (req->type == CART_REBOOT) {
+		printf("reboot ...\n");
+		watchdog_reboot(0, 0, 100);
 	    }
 	    return;
 	} else if (req->type == CART_READ_SEC || req->type == CART_READ_SEC_CONT) {

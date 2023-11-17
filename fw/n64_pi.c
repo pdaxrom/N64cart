@@ -25,6 +25,8 @@ static uint16_t pi_bus_freq = 0x40ff;
 static uint16_t flash_ctrl_reg = 0x11;
 
 #if PI_SRAM
+uint8_t sram_8[SRAM_1MBIT_SIZE];
+
 static uint16_t *sram_16 = (uint16_t *) sram_8;
 
 static inline uint32_t resolve_sram_address(uint32_t address)

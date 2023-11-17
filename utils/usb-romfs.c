@@ -270,6 +270,8 @@ int main(int argc, char *argv[]) {
     if (argc > 1 && strcmp(argv[1], "help")) {
         if (!strcmp(argv[1], "bootloader")) {
             send_usb_cmd(BOOTLOADER_MODE);
+        } else if (!strcmp(argv[1], "reboot")) {
+            send_usb_cmd(CART_REBOOT);
         } else {
             send_usb_cmd(FLASH_SPI_MODE);
 
@@ -356,6 +358,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage:\n");
         fprintf(stderr, "%s help\n", argv[0]);
         fprintf(stderr, "%s bootloader\n", argv[0]);
+        fprintf(stderr, "%s reboot\n", argv[0]);
         fprintf(stderr, "%s format\n", argv[0]);
         fprintf(stderr, "%s list\n", argv[0]);
         fprintf(stderr, "%s delete <remote filename>\n", argv[0]);

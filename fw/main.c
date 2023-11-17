@@ -123,6 +123,7 @@ void n64_pi_restart(void)
     multicore_launch_core1(n64_pi);
 }
 
+/*
 #if PI_SRAM
 const uint8_t __aligned(4096) __in_flash("n64_sram") n64_sram[SRAM_1MBIT_SIZE];
 
@@ -137,6 +138,7 @@ void n64_save_sram(void)
     flash_range_program(offset, sram_8, count);
 }
 #endif
+ */
 
 int main(void)
 {
@@ -170,16 +172,21 @@ int main(void)
 
     if (used_flash_chip == NULL) {
 	printf("Unknown ROM chip, system stopped!\n");
-	while(1) {}
+	while(true) {
+	    tight_loop_contents();
+	}
     }
 
 #ifdef DEBUG_INFO
     show_sysinfo();
 #endif
 
+/*
+//TODO: read sram saves from romfs
 #ifdef PI_SRAM
     memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
 #endif
+ */
 
     uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
 
@@ -187,7 +194,9 @@ int main(void)
 
     if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024)) {
 	printf("Cannot start romfs!\n");
-	while(true) ;
+	while(true) {
+	    tight_loop_contents();
+	}
     }
 
     romfs_file file;
@@ -195,7 +204,10 @@ int main(void)
 	romfs_read_map_table(rom_lookup, 16384, &file);
     } else {
 	printf("romfs error: %s\n", romfs_strerror(file.err));
-	while(true) ;
+	usbd_main();
+	while(true) {
+	    tight_loop_contents();
+	}
     }
 
     flash_quad_mode();
