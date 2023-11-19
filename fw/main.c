@@ -123,23 +123,6 @@ void n64_pi_restart(void)
     multicore_launch_core1(n64_pi);
 }
 
-/*
-#if PI_SRAM
-const uint8_t __aligned(4096) __in_flash("n64_sram") n64_sram[SRAM_1MBIT_SIZE];
-
-uint8_t sram_8[SRAM_1MBIT_SIZE];
-
-void n64_save_sram(void)
-{
-    uint32_t offset = ((uint32_t) n64_sram) - XIP_BASE;
-    uint32_t count = sizeof(n64_sram);
-
-    flash_range_erase(offset, count);
-    flash_range_program(offset, sram_8, count);
-}
-#endif
- */
-
 int main(void)
 {
     for (int i = 0; i <= 27; i++) {
@@ -181,18 +164,19 @@ int main(void)
     show_sysinfo();
 #endif
 
-/*
-//TODO: read sram saves from romfs
-#ifdef PI_SRAM
-    memcpy(sram_8, n64_sram, SRAM_1MBIT_SIZE);
-#endif
- */
-
     uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
 
     flash_spi_mode();
 
-    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024)) {
+    uint32_t flash_map_size, flash_list_size;
+
+    romfs_get_buffers_sizes(used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
+
+    uint16_t *romfs_flash_map = (uint16_t *) pi_sram;
+    uint8_t *romfs_flash_list = &pi_sram[flash_map_size];
+    uint8_t *romfs_flash_buffer = &pi_sram[flash_map_size + flash_list_size];
+
+    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
 	printf("Cannot start romfs!\n");
 	while(true) {
 	    tight_loop_contents();
@@ -200,8 +184,8 @@ int main(void)
     }
 
     romfs_file file;
-    if (romfs_open_file("test-rom.z64", &file, NULL) == ROMFS_NOERR) {
-	romfs_read_map_table(rom_lookup, 16384, &file);
+    if (romfs_open_file("test-rom.z64", &file, romfs_flash_buffer) == ROMFS_NOERR) {
+	romfs_read_map_table(pi_rom_lookup, 16384, &file);
     } else {
 	printf("romfs error: %s\n", romfs_strerror(file.err));
 	usbd_main();

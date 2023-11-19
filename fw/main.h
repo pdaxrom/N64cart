@@ -28,19 +28,13 @@ struct flash_chip {
     const char *name;
 };
 
-extern uint16_t rom_lookup[16386];
-extern uint8_t sram_8[SRAM_1MBIT_SIZE];
+extern uint8_t pi_sram[];
+extern uint16_t *pi_rom_lookup;
 
 extern char __flash_binary_end;
 
 const struct flash_chip *get_flash_info(void);
 
 void n64_pi_restart(void);
-
-#if PI_SRAM
-extern uint8_t sram_8[];
-
-void n64_save_sram(void);
-#endif
 
 #endif

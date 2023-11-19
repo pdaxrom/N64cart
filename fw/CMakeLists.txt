@@ -29,6 +29,7 @@ add_compile_options(
     -Wno-maybe-uninitialized
     -fomit-frame-pointer
     -DFIRMWARE_VERSION=${FIRMWARE_VERSION}
+    -DROMFS_NO_INTERNAL_BUFFERS
 )
 
 add_executable(

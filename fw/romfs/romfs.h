@@ -29,6 +29,7 @@
 
 enum {
     ROMFS_NOERR = 0,
+    ROMFS_ERR_NO_IO_BUFFER,
     ROMFS_ERR_NO_ENTRY,
     ROMFS_ERR_NO_FREE_ENTRIES,
     ROMFS_ERR_NO_SPACE,
@@ -67,7 +68,12 @@ bool romfs_flash_sector_erase(uint32_t offset);
 bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer);
 bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need);
 
-bool romfs_start(uint32_t start, uint32_t size);
+#ifdef ROMFS_NO_INTERNAL_BUFFERS
+void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t *map_size, uint32_t *list_size);
+bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t *flash_list);
+#else
+bool romfs_start(uint32_t start, uint32_t rom_size);
+#endif
 bool romfs_format(void);
 uint32_t romfs_free(void);
 uint32_t romfs_list(romfs_file *entry, bool first);
@@ -79,8 +85,5 @@ uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer);
 bool romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_file *file);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file);
 const char *romfs_strerror(uint32_t err);
-
-void save_romfs(char *name, uint8_t *mem, size_t len);
-bool read_romfs(char *name, uint8_t *mem, size_t len);
 
 #endif

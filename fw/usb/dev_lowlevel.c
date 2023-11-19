@@ -572,7 +572,7 @@ void ep0_out_handler(uint8_t *buf, uint16_t len) {
     ;
 }
 
-static uint8_t sector_buffer[ROMFS_FLASH_SECTOR];
+static uint8_t *sector_buffer = pi_sram;
 static int sector_buffer_pos;
 static uint32_t rw_sector_offset;
 
@@ -680,7 +680,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    } else {
 		memmove(&sector_buffer[sector_buffer_pos], buf, 32);
 		sector_buffer_pos += 32;
-		if (sector_buffer_pos == sizeof(sector_buffer)) {
+		if (sector_buffer_pos == ROMFS_FLASH_SECTOR) {
 		    romfs_flash_sector_write(rw_sector_offset, sector_buffer);
 		    flash_stage = 0;
 		    current_req = 0;
