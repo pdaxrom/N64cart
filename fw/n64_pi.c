@@ -19,14 +19,14 @@
 #include "n64_pi.pio.h"
 #include "n64.h"
 
-//uint16_t rom_lookup[16386];
-
 static uint16_t pi_bus_freq = 0x40ff;
 static uint16_t flash_ctrl_reg = 0x11;
 
 uint8_t pi_sram[SRAM_1MBIT_SIZE + ROMFS_FLASH_SECTOR * 4 * 2];
 uint16_t *pi_rom_lookup = (uint16_t *) &pi_sram[SRAM_1MBIT_SIZE];
+
 static uint16_t *sram_16 = (uint16_t *) pi_sram;
+static const uint16_t *rom_lookup = (uint16_t *) &pi_sram[SRAM_1MBIT_SIZE];
 
 static inline uint32_t resolve_sram_address(uint32_t address)
 {
@@ -100,7 +100,7 @@ void n64_pi(void)
 		continue;
 	    } else if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
 		do {
-		    mapped_addr = (pi_rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
+		    mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
 		    word = flash_quad_read16_EC(mapped_addr);
  hackentry:
 		    pio_sm_put(pio, 0, word);
