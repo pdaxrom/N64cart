@@ -41,6 +41,10 @@ static const struct flash_chip *used_flash_chip = NULL;
 static const int scr_width = 320;
 static const int scr_height = 240;
 
+static char *files[128];
+static int num_files = 0;
+static int menu_sel = 0;
+
 static uint8_t __attribute__((aligned(16))) picture_data[64 * 1024];
 
 bool romfs_flash_sector_erase(uint32_t offset)
@@ -137,6 +141,9 @@ int main(void)
 	n64cart_uart_puts("File list:\n");
 	if (romfs_list(&file, true) == ROMFS_NOERR) {
 	    do {
+		if (file.entry.attr.names.type > ROMFS_TYPE_FLASHMAP) {
+		    files[num_files++] = strdup(file.entry.name);
+		}
 		snprintf(tmp, sizeof(tmp) - 1, "%s\t%ld\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
 		n64cart_uart_puts(tmp);
 	    } while (romfs_list(&file, false) == ROMFS_NOERR);
@@ -206,7 +213,7 @@ int main(void)
     int x = 0;
     int y = 0;
 
-    int selected_rom = -1;
+    graphics_set_color(0xeeeeee00, 0x00000000);
 
     /* Main loop test */
     while(1) 
@@ -257,26 +264,62 @@ int main(void)
 	strcpy(tStr, "Press [UP]/[DOWN] to select");
 	graphics_draw_text( disp, valign(tStr), 100, tStr );
 
-//	if (selected_rom < (rom_pages - 1) && keys.c[0].up) {
-//	    selected_rom++;
-//	}
+	if (menu_sel > 0 && keys.c[0].up) {
+	    menu_sel--;
+	} else if (menu_sel < (num_files - 1) && keys.c[0].down) {
+	    menu_sel++;
+	} else if (keys.c[0].A) {
+	    romfs_file file;
 
-	if (keys.c[0].down) {
-	    if (selected_rom > 0) {
-		selected_rom--;
+	    graphics_draw_box(disp, 40, 110, 320 - 40 * 2, 50, 0x00000080);
+	    graphics_draw_box(disp, 45, 110 + 5, 320 - 45 * 2, 40, 0x77777780);
+
+	    if (romfs_open_file(files[menu_sel], &file, NULL) == ROMFS_NOERR) {
+		uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4 * 2];
+		romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
+
+		n64cart_sram_unlock();
+		for (int i = 0; i < sizeof(rom_lookup) / 4; i += 2) {
+		    uint32_t data = (rom_lookup[i] << 16) | rom_lookup[i + 1];
+		    io_write(N64CART_ROM_LOOKUP + (i << 1), data);
+		}
+		n64cart_sram_lock();
+
+		sprintf(tStr, "ROM: %s", files[menu_sel]);
+		graphics_draw_text( disp, valign(tStr), 120, tStr );
+		strcpy(tStr, "Press [RESET] to start");
+		graphics_draw_text( disp, valign(tStr), 130,  tStr);
+		strcpy(tStr, "or (B) to continue");
+		graphics_draw_text( disp, valign(tStr), 140,  tStr);
 	    } else {
-		selected_rom = 0;
+		sprintf(tStr, "File open error!");
+		graphics_draw_text( disp, valign(tStr), 120, tStr );
+		strcpy(tStr, "Press (B) to continue");
+		graphics_draw_text( disp, valign(tStr), 130,  tStr);
 	    }
+
+	    display_show(disp);
+
+	    while (1) {
+		controller_scan();
+		keys = get_keys_down();
+
+		if (keys.c[0].B) {
+		    break;
+		}
+	    }
+
+	    continue;
 	}
 
-//	if (selected_rom != -1) {
-//	    n64cart_set_rom_page(selected_rom);
-//	    sprintf(tStr, "Selected ROM: %d", selected_rom);
-//	    graphics_draw_text( disp, valign(tStr), 120, tStr );
-//	    strcpy(tStr, "Press [RESET] to start");
-//	    graphics_draw_text( disp, valign(tStr), 130,  tStr);
-//	}
-
+	for (int i = 0; i < num_files; i++) {
+	    if (i == menu_sel) {
+		sprintf(tStr, "%02d: *%s", i, files[i]);
+	    } else {
+		sprintf(tStr, "%02d:  %s", i, files[i]);
+	    }
+	    graphics_draw_text(disp, 40, 120 + i * 10, tStr);
+	}
 
 	if (keys.c[0].start) {
 	    static int led_on = 0;

@@ -30,6 +30,10 @@ static const uint16_t *rom_lookup = (uint16_t *) &pi_sram[SRAM_1MBIT_SIZE];
 
 static inline uint32_t resolve_sram_address(uint32_t address)
 {
+    if (flash_ctrl_reg & 0x100) {
+	return address & 0x3ffff;
+    }
+
     uint32_t bank = (address >> 18) & 0x3;
     uint32_t resolved_address;
 

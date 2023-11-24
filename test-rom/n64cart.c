@@ -33,15 +33,15 @@ void n64cart_uart_puts(char *str)
     }
 }
 
-void flash_cs_force(bool high)
+static void flash_cs_force(bool high)
 {
-    uint32_t ctrl = io_read(N64CART_FLASH_CTRL);
+    uint32_t ctrl = io_read(N64CART_SYS_CTRL);
     if (high) {
-	ctrl |= N64CART_FLASH_CTRL_CS_HIGH;
+	ctrl |= N64CART_FLASH_CS_HIGH;
     } else {
-	ctrl &= ~N64CART_FLASH_CTRL_CS_MASK;
+	ctrl &= ~N64CART_FLASH_CS_HIGH;
     }
-    io_write(N64CART_FLASH_CTRL, ctrl);
+    io_write(N64CART_SYS_CTRL, ctrl);
 }
 
 static void xflash_do_cmd_internal(const uint8_t *txbuf, uint8_t *rxbuf, size_t count, size_t rxskip)
@@ -85,13 +85,13 @@ void flash_do_cmd(const uint8_t *txbuf, uint8_t *rxbuf, size_t count, size_t rxs
 
 void flash_mode(bool mode)
 {
-    uint32_t ctrl = io_read(N64CART_FLASH_CTRL);
+    uint32_t ctrl = io_read(N64CART_SYS_CTRL);
     if (mode) {
-	ctrl |= N64CART_FLASH_CTRL_MODE_QUAD;
+	ctrl |= N64CART_FLASH_MODE_QUAD;
     } else {
-	ctrl &= ~N64CART_FLASH_CTRL_MODE_MASK;
+	ctrl &= ~N64CART_FLASH_MODE_QUAD;
     }
-    io_write(N64CART_FLASH_CTRL, ctrl);
+    io_write(N64CART_SYS_CTRL, ctrl);
 }
 
 static void xflash_wait_ready(void)
@@ -215,4 +215,18 @@ uint32_t flash_read32_0C(uint32_t addr)
 uint32_t n64cart_fw_size(void)
 {
     return (io_read(N64CART_FW_SIZE) & 0xffff) << 12;
+}
+
+void n64cart_sram_lock()
+{
+    uint32_t ctrl = io_read(N64CART_SYS_CTRL);
+    ctrl &= ~N64CART_SRAM_UNLOCK;
+    io_write(N64CART_SYS_CTRL, ctrl);
+}
+
+void n64cart_sram_unlock()
+{
+    uint32_t ctrl = io_read(N64CART_SYS_CTRL);
+    ctrl |= N64CART_SRAM_UNLOCK;
+    io_write(N64CART_SYS_CTRL, ctrl);
 }

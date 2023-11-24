@@ -564,7 +564,7 @@ static void cic_run(void)
         }
     }
 
-    n64_pi_restart();
+//    n64_pi_restart();
 #ifdef DEBUG_INFO
     printf("CIC Emulator core finished!\r\n");
 #endif

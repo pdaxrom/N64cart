@@ -14,25 +14,27 @@
 
 #define N64CART_LED_CTRL	0x1fd01008
 
-#define N64CART_FLASH_CTRL	0x1fd0100c
+#define N64CART_SYS_CTRL	0x1fd0100c
 #define N64CART_SSI_SR		0x1fd01010
 #define N64CART_SSI_DR0		0x1fd01014
-#define N64CART_FLASH_CTRL_MODE_MASK	0x10
-#define N64CART_FLASH_CTRL_CS_MASK	0x01
-#define N64CART_FLASH_CTRL_MODE_QUAD	0x10
-#define N64CART_FLASH_CTRL_MODE_SPI	0x00
-#define N64CART_FLASH_CTRL_CS_HIGH	0x01
-#define N64CART_FLASH_CTRL_CS_LOW	0x00
+
+#define N64CART_SRAM_UNLOCK	0x100
+#define N64CART_FLASH_MODE_QUAD	0x10
+#define N64CART_FLASH_CS_HIGH	0x01
+
 #define N64CART_SSI_SR_TFNF_BITS	0x01
 #define N64CART_SSI_SR_RFNE_BITS	0x02
 
 #define N64CART_FW_SIZE		0x1fd01018
 
+#define N64CART_SRAM		0x08000000
+#define N64CART_ROM_LOOKUP	0x08020000
+
 uint8_t n64cart_uart_getc(void);
 void n64cart_uart_putc(uint8_t data);
 void n64cart_uart_puts(char *str);
 
-void flash_cs_force(bool high);
+//void flash_cs_force(bool high);
 void flash_do_cmd(const uint8_t *txbuf, uint8_t *rxbuf, size_t count, size_t rxskip);
 void flash_mode(bool mode);
 bool flash_erase_sector(uint32_t addr);
@@ -43,5 +45,8 @@ uint16_t flash_read16_0C(uint32_t addr);
 uint32_t flash_read32_0C(uint32_t addr);
 
 uint32_t n64cart_fw_size(void);
+
+void n64cart_sram_lock();
+void n64cart_sram_unlock();
 
 #endif
