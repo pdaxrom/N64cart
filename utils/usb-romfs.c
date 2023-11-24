@@ -305,11 +305,20 @@ int main(int argc, char *argv[]) {
                                               ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) != ROMFS_NOERR) {
                             fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
                         } else {
-                            while ((ret = fread(buffer, 1, 64, inf)) > 0) {
+                            fseek(inf, 0, SEEK_END);
+                            int file_size = ftell(inf);
+                            fseek(inf, 0, SEEK_SET);
+                            int total = 0;
+                            printf("\n");
+                            while ((ret = fread(buffer, 1, 4096, inf)) > 0) {
                                 if (romfs_write_file(buffer, ret, &file) == 0) {
                                     break;
                                 }
+                                total += ret;
+                                printf("\rWrite %.1f%%", (double)total / (double)file_size * 100.);
+                                fflush(stdout);
                             }
+                            printf("\n");
 
                             if (file.err == ROMFS_NOERR) {
                                 if (romfs_close_file(&file) != ROMFS_NOERR) {
@@ -334,9 +343,13 @@ int main(int argc, char *argv[]) {
                         if (outf) {
                             uint8_t buffer[4096];
                             int ret;
+                            printf("\n");
                             while ((ret = romfs_read_file(buffer, 4096, &file)) > 0) {
                                 fwrite(buffer, 1, ret, outf);
+                                printf("\rRead %.1f%%", (double)file.read_offset / (double)file.entry.size * 100.);
+                                fflush(stdout);
                             }
+                            printf("\n");
 
                             if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
                                 fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
