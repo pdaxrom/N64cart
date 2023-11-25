@@ -34,8 +34,11 @@ Data Line, Bidir (DIO):  CIC Pin 15
 #include "main.h"
 #include "cic.h"
 #include "n64.h"
+#include "n64_pi.h"
 
 // #define DEBUG
+
+//#define DEBUG_INFO
 
 #define REGION_NTSC (0)
 #define REGION_PAL  (1)
@@ -86,44 +89,55 @@ static void EncodeRound(unsigned char index);
 static void CicRound(unsigned char *);
 static void Cic6105Algo(void);
 
-/* Select SEED and CHECKSUM here */
-const unsigned char _CicSeed = CIC6102_SEED;
-// const unsigned char _CicSeed = CIC6105_SEED;
+typedef struct {
+    unsigned char CicSeed;
+    unsigned char CicChecksum[12];
+} CIC_DATA;
 
-const unsigned char _CicChecksum[] = {
-    CIC6102_CHECKSUM
-    // CIC6105_CHECKSUM
+static const CIC_DATA cic_data[] = {
+    { CIC6102_SEED, { CIC6102_CHECKSUM } },
+    { CIC6101_SEED, { CIC6101_CHECKSUM } },
+    { CIC6103_SEED, { CIC6103_CHECKSUM } },
+    { CIC6105_SEED, { CIC6105_CHECKSUM } },
+    { CIC7102_SEED, { CIC7102_CHECKSUM } },
 };
 
+/* Select SEED and CHECKSUM here */
+static unsigned char _CicSeed;
+static const unsigned char *_CicChecksum;
 
 /* NTSC initial RAM */
-const unsigned char _CicRamInitNtsc[] = {
+static const unsigned char _CicRamInitNtsc[] = {
     0xE, 0x0, 0x9, 0xA, 0x1, 0x8, 0x5, 0xA, 0x1, 0x3, 0xE, 0x1, 0x0, 0xD, 0xE, 0xC,
     0x0, 0xB, 0x1, 0x4, 0xF, 0x8, 0xB, 0x5, 0x7, 0xC, 0xD, 0x6, 0x1, 0xE, 0x9, 0x8
 };
 
 /* PAL initial RAM */
-const unsigned char _CicRamInitPal[] = {
+static const unsigned char _CicRamInitPal[] = {
     0xE, 0x0, 0x4, 0xF, 0x5, 0x1, 0x2, 0x1, 0x7, 0x1, 0x9, 0x8, 0x5, 0x7, 0x5, 0xA,
     0x0, 0xB, 0x1, 0x2, 0x3, 0xF, 0x8, 0x2, 0x7, 0x1, 0x9, 0x8, 0x1, 0x1, 0x5, 0xC
 };
 
 /* Memory for the CIC algorithm */
-unsigned char _CicMem[32];
+static unsigned char _CicMem[32];
 
 /* Memory for the 6105 algorithm */
-unsigned char _6105Mem[32];
+static unsigned char _6105Mem[32];
 
 /* YOU HAVE TO IMPLEMENT THE LOW LEVEL GPIO FUNCTIONS ReadBit() and WriteBit() */
 
 static bool check_running(void)
 {
     if (gpio_get(N64_NMI) == 0) {
-//        printf("N64 NMI\n");
+#ifdef DEBUG_INFO
+        printf("N64 NMI\n");
+#endif
     }
 
     if (gpio_get(N64_COLD_RESET) == 0) {
-        // Reset the CIC
+#ifdef DEBUG_INFO
+	printf("Reset the CIC\n");
+#endif
         return false;
     }
 
@@ -509,6 +523,9 @@ static void cic_run(void)
     while (gpio_get(N64_COLD_RESET) == 0) {
 	tight_loop_contents();
     }
+#ifdef DEBUG_INFO
+	printf("N64 COLD RESET\n");
+#endif
 
     // read the region setting
     isPal = GET_REGION();
@@ -573,6 +590,9 @@ static void cic_run(void)
 void cic_main(void)
 {
     while (1) {
+	int cic_cfg = 0;
+	_CicSeed = cic_data[cic_cfg].CicSeed;
+	_CicChecksum = cic_data[cic_cfg].CicChecksum;
         cic_run();
     }
 }

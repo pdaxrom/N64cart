@@ -15,6 +15,9 @@
 #include "n64cart.h"
 #include "../fw/romfs/romfs.h"
 
+#include "ext/boot.h"
+#include "ext/io.h"
+
 #ifndef USE_FILESYSTEM
 #include "image.h"
 #endif
@@ -284,6 +287,32 @@ int main(void)
 		    io_write(N64CART_ROM_LOOKUP + (i << 1), data);
 		}
 		n64cart_sram_lock();
+
+//		n64cart_cic_config(2);
+{
+		sprintf(tStr, "tv_type %ld\n", OS_INFO->tv_type);
+		n64cart_uart_puts(tStr);
+		sprintf(tStr, "device_type %ld\n", OS_INFO->device_type);
+		n64cart_uart_puts(tStr);
+		sprintf(tStr, "device_base %ld\n", OS_INFO->device_base);
+		n64cart_uart_puts(tStr);
+		sprintf(tStr, "reset_type %ld\n", OS_INFO->reset_type);
+		n64cart_uart_puts(tStr);
+		sprintf(tStr, "cic_id %ld\n", OS_INFO->cic_id);
+		n64cart_uart_puts(tStr);
+		sprintf(tStr, "version %ld\n", OS_INFO->version);
+		n64cart_uart_puts(tStr);
+		sprintf(tStr, "mem_size %ld\n", OS_INFO->mem_size);
+		n64cart_uart_puts(tStr);
+
+		boot_params_t params;
+		params.device_type = BOOT_DEVICE_TYPE_ROM;
+//		params.reset_type = BOOT_RESET_TYPE_COLD;
+		params.reset_type = OS_INFO->reset_type;
+		params.tv_type = BOOT_TV_TYPE_NTSC;
+		params.detect_cic_seed = true;
+		boot(&params);
+}
 
 		sprintf(tStr, "ROM: %s", files[menu_sel]);
 		graphics_draw_text( disp, valign(tStr), 120, tStr );

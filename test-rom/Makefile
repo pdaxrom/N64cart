@@ -10,17 +10,23 @@ else
 SED = sed
 endif
 
+ASFLAGS += -x assembler-with-cpp
 CFLAGS += -DJPEG_OUTPUT_RGB8=1 -DUSE_FILESYSTEM
 
-SRC = main.c n64cart.c jpeg/gba-jpeg-decode.c ../fw/romfs/romfs.c
+SRC = main.c n64cart.c jpeg/gba-jpeg-decode.c ../fw/romfs/romfs.c ext/io.c ext/crc32.c ext/boot.c
+ASMSRC = ext/reboot.S
+
 OBJS = $(SRC:%.c=$(BUILD_DIR)/%.o)
+ASMOBJS = $(ASMSRC:%.S=$(BUILD_DIR)/%.o)
+
 DEPS = $(SRC:%.c=$(BUILD_DIR)/%.d)
+ASMDEPS = $(ASMSRC:%.S=$(BUILD_DIR)/%.d)
 
 test-rom.z64: N64_ROM_TITLE = "test-rom"
 test-rom.z64: $(BUILD_DIR)/test-rom.dfs
 
 $(BUILD_DIR)/test-rom.dfs: $(wildcard filesystem/*)
-$(BUILD_DIR)/test-rom.elf: $(OBJS)
+$(BUILD_DIR)/test-rom.elf: $(OBJS) $(ASMOBJS)
 
 clean:
 	rm -rf $(BUILD_DIR) fw *.z64
@@ -28,3 +34,4 @@ clean:
 .PHONY: clean upload
 
 -include $(DEPS)
+-include $(ASMDEPS)
