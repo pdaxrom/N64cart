@@ -168,6 +168,8 @@ int main(void)
 
     flash_spi_mode();
 
+sleep_us(50);
+
     uint32_t flash_map_size, flash_list_size;
 
     romfs_get_buffers_sizes(used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
@@ -186,6 +188,8 @@ int main(void)
     romfs_file file;
     if (romfs_open_file("test-rom.z64", &file, romfs_flash_buffer) == ROMFS_NOERR) {
 	romfs_read_map_table(pi_rom_lookup, 16384, &file);
+
+	backup_rom_lookup();
     } else {
 	printf("romfs error: %s\n", romfs_strerror(file.err));
 	usbd_main();

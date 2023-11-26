@@ -1,5 +1,4 @@
-#ifndef __FLASHROM_H__
-#define __FLASHROM_H__
+#pragma once
 
 #include <stdint.h>
 
@@ -24,5 +23,3 @@ void flash_quad_mode(void);
 uint32_t flash_quad_read32_EC(uint32_t addr);
 
 uint16_t flash_quad_read16_EC(uint32_t addr);
-
-#endif

@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#ifndef __MAIN_H__
-#define __MAIN_H__
+#pragma once
 
 #define PI_SRAM 1
 
@@ -36,5 +35,3 @@ extern char __flash_binary_end;
 const struct flash_chip *get_flash_info(void);
 
 void n64_pi_restart(void);
-
-#endif

@@ -132,6 +132,7 @@ static bool check_running(void)
 #ifdef DEBUG_INFO
         printf("N64 NMI\n");
 #endif
+	restore_rom_lookup();
     }
 
     if (gpio_get(N64_COLD_RESET) == 0) {
@@ -581,6 +582,7 @@ static void cic_run(void)
         }
     }
 
+    restore_rom_lookup();
 //    n64_pi_restart();
 #ifdef DEBUG_INFO
     printf("CIC Emulator core finished!\r\n");

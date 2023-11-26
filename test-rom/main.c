@@ -16,7 +16,7 @@
 #include "../fw/romfs/romfs.h"
 
 #include "ext/boot.h"
-#include "ext/io.h"
+#include "ext/boot_io.h"
 
 #ifndef USE_FILESYSTEM
 #include "image.h"
@@ -124,7 +124,7 @@ int main(void)
 {
     display_init(RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, ANTIALIAS_RESAMPLE);
 
-    controller_init();
+    joypad_init();
 
     dma_wait();
 
@@ -182,35 +182,20 @@ int main(void)
 	}
     }
 
-    uint8_t *img_jpeg;
-
-    if (picture_data[0] == 0xff && picture_data[1] == 0xd8) {
-	img_jpeg = picture_data;
-	n64cart_uart_puts("User picture\n");
-    } else {
-	n64cart_uart_puts("Default picture\n");
-#ifdef USE_FILESYSTEM   
-    /* Initialize Filesystem */
-	dfs_init(DFS_DEFAULT_LOCATION);
+    sprite_t *img = NULL;
     
-	int fp = dfs_open("/default.jpg");
-	img_jpeg = malloc(dfs_size(fp));
-	dfs_read(img_jpeg, 1, dfs_size(fp), fp);
-	dfs_close(fp);
-#else
-	img_jpeg = (uint8_t *) bg_image_jpg;
-#endif
+    if (picture_data[0] == 0xff && picture_data[1] == 0xd8) {
+	n64cart_uart_puts("User picture\n");
+
+	img = malloc(sizeof(sprite_t) + scr_width * scr_height * 4);
+	img->width = scr_width;
+	img->height = scr_height;
+	img->flags = FMT_RGBA32;
+	img->hslices = 1;
+	img->vslices = 1;
+
+	JPEG_DecompressImage(picture_data, (JPEG_OUTPUT_TYPE *)&img->data[0], scr_width, scr_height);
     }
-
-    sprite_t *img = malloc(sizeof(sprite_t) + scr_width * scr_height * 4);
-    img->width = scr_width;
-    img->height = scr_height;
-    img->bitdepth = 4;
-    img->format = 0;
-    img->hslices = 1;
-    img->vslices = 1;
-
-    JPEG_DecompressImage(img_jpeg, (JPEG_OUTPUT_TYPE *)&img->data[0], scr_width, scr_height);
 
     /* define two variables */
     int x = 0;
@@ -218,22 +203,23 @@ int main(void)
 
     graphics_set_color(0xeeeeee00, 0x00000000);
 
+    static display_context_t disp = 0;
+
     /* Main loop test */
     while(1) 
     {
-        static display_context_t disp = 0;
+	disp = display_get();
 
-        /* Grab a render buffer */
-        while( !(disp = display_lock()) );
-        
         /* Fill the screen */
         graphics_fill_screen( disp, 0 );
        
 	/* Create Place for Text */
 	char tStr[256];
 
-	/* Logo */
-	graphics_draw_sprite_trans(disp, x, y, img);
+	if (img) {
+	    /* Logo */
+	    graphics_draw_sprite_trans(disp, x, y, img);
+	}
 
         /* Text */
 	strcpy(tStr, "N64CART TEST");
@@ -243,18 +229,20 @@ int main(void)
         graphics_draw_text( disp, valign(tStr), 20, tStr);
 
         /* Scan for User input */
-        controller_scan();
-        struct controller_data keys = get_keys_down();
+	joypad_poll();
+        joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
+//        joypad_buttons_t held = joypad_get_buttons_held(JOYPAD_PORT_1);
+	joypad_inputs_t inputs = joypad_get_inputs(JOYPAD_PORT_1);
 
-	sprintf(tStr, "A %d B %d Z %d Start %d", keys.c[0].A, keys.c[0].B, keys.c[0].Z, keys.c[0].start);
+	sprintf(tStr, "A %d B %d Z %d Start %d", pressed.a, pressed.b, pressed.z, pressed.start);
 	graphics_draw_text( disp, 10, 40, tStr );
-	sprintf(tStr, "D-U %d D-D %d D-L %d D-R %d", keys.c[0].up, keys.c[0].down, keys.c[0].left, keys.c[0].right);
+	sprintf(tStr, "D-U %d D-D %d D-L %d D-R %d", pressed.d_up, pressed.d_down, pressed.d_left, pressed.d_right);
 	graphics_draw_text( disp, 10, 50, tStr );
 
-	sprintf(tStr, "L %d R %d C-U %d C-D %d C-L %d C-R %d", keys.c[0].L, keys.c[0].R, keys.c[0].C_up, keys.c[0].C_down, keys.c[0].C_left, keys.c[0].C_right);
+	sprintf(tStr, "L %d R %d C-U %d C-D %d C-L %d C-R %d", pressed.l, pressed.r, pressed.c_up, pressed.c_down, pressed.c_left, pressed.c_right);
 	graphics_draw_text( disp, 10, 60, tStr );
 
-	sprintf(tStr, "X %d Y %d", keys.c[0].x, keys.c[0].y);
+	sprintf(tStr, "X %d Y %d", inputs.stick_x, inputs.stick_y);
 	graphics_draw_text( disp, 10, 70, tStr );
 
 	if (used_flash_chip) {
@@ -267,11 +255,11 @@ int main(void)
 	strcpy(tStr, "Press [UP]/[DOWN] to select");
 	graphics_draw_text( disp, valign(tStr), 100, tStr );
 
-	if (menu_sel > 0 && keys.c[0].up) {
+	if (menu_sel > 0 && pressed.d_up) {
 	    menu_sel--;
-	} else if (menu_sel < (num_files - 1) && keys.c[0].down) {
+	} else if (menu_sel < (num_files - 1) && pressed.d_down) {
 	    menu_sel++;
-	} else if (keys.c[0].A) {
+	} else if (pressed.a) {
 	    romfs_file file;
 
 	    graphics_draw_box(disp, 40, 110, 320 - 40 * 2, 50, 0x00000080);
@@ -279,6 +267,7 @@ int main(void)
 
 	    if (romfs_open_file(files[menu_sel], &file, NULL) == ROMFS_NOERR) {
 		uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4 * 2];
+		memset(rom_lookup, 0, sizeof(rom_lookup));
 		romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
 
 		n64cart_sram_unlock();
@@ -288,13 +277,11 @@ int main(void)
 		}
 		n64cart_sram_lock();
 
-//		n64cart_cic_config(2);
-{
 		sprintf(tStr, "tv_type %ld\n", OS_INFO->tv_type);
 		n64cart_uart_puts(tStr);
 		sprintf(tStr, "device_type %ld\n", OS_INFO->device_type);
 		n64cart_uart_puts(tStr);
-		sprintf(tStr, "device_base %ld\n", OS_INFO->device_base);
+		sprintf(tStr, "device_base %8lX\n", OS_INFO->device_base);
 		n64cart_uart_puts(tStr);
 		sprintf(tStr, "reset_type %ld\n", OS_INFO->reset_type);
 		n64cart_uart_puts(tStr);
@@ -305,21 +292,18 @@ int main(void)
 		sprintf(tStr, "mem_size %ld\n", OS_INFO->mem_size);
 		n64cart_uart_puts(tStr);
 
+
+		joypad_close();
+		display_close();
+
 		boot_params_t params;
 		params.device_type = BOOT_DEVICE_TYPE_ROM;
-//		params.reset_type = BOOT_RESET_TYPE_COLD;
-		params.reset_type = OS_INFO->reset_type;
 		params.tv_type = BOOT_TV_TYPE_NTSC;
 		params.detect_cic_seed = true;
-		boot(&params);
-}
 
-		sprintf(tStr, "ROM: %s", files[menu_sel]);
-		graphics_draw_text( disp, valign(tStr), 120, tStr );
-		strcpy(tStr, "Press [RESET] to start");
-		graphics_draw_text( disp, valign(tStr), 130,  tStr);
-		strcpy(tStr, "or (B) to continue");
-		graphics_draw_text( disp, valign(tStr), 140,  tStr);
+		disable_interrupts();
+
+		boot(&params);
 	    } else {
 		sprintf(tStr, "File open error!");
 		graphics_draw_text( disp, valign(tStr), 120, tStr );
@@ -330,10 +314,10 @@ int main(void)
 	    display_show(disp);
 
 	    while (1) {
-		controller_scan();
-		keys = get_keys_down();
+		joypad_poll();
+		joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
-		if (keys.c[0].B) {
+		if (pressed.b) {
 		    break;
 		}
 	    }
@@ -350,7 +334,7 @@ int main(void)
 	    graphics_draw_text(disp, 40, 120 + i * 10, tStr);
 	}
 
-	if (keys.c[0].start) {
+	if (pressed.start) {
 	    static int led_on = 0;
 	    led_on = !led_on;
 	    if (led_on) {
@@ -361,7 +345,6 @@ int main(void)
 	    io_write(N64CART_LED_CTRL, led_on);
 	}
 
-        /* Update Display */
         display_show(disp);
     }
 }

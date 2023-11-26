@@ -22,11 +22,22 @@
 static uint16_t pi_bus_freq = 0x40ff;
 static uint16_t flash_ctrl_reg = 0x11;
 
-uint8_t pi_sram[SRAM_1MBIT_SIZE + ROMFS_FLASH_SECTOR * 4 * 2];
+uint8_t pi_sram[SRAM_1MBIT_SIZE + ROMFS_FLASH_SECTOR * 4 * 2 * 2];
 uint16_t *pi_rom_lookup = (uint16_t *) &pi_sram[SRAM_1MBIT_SIZE];
 
 static uint16_t *sram_16 = (uint16_t *) pi_sram;
 static const uint16_t *rom_lookup = (uint16_t *) &pi_sram[SRAM_1MBIT_SIZE];
+
+void backup_rom_lookup(void)
+{
+    memmove(&pi_rom_lookup[ROMFS_FLASH_SECTOR * 4], pi_rom_lookup, ROMFS_FLASH_SECTOR * 4 * 2);
+}
+
+void restore_rom_lookup(void)
+{
+    memmove(pi_rom_lookup, &pi_rom_lookup[ROMFS_FLASH_SECTOR * 4], ROMFS_FLASH_SECTOR * 4 * 2);
+    __dmb();
+}
 
 static inline uint32_t resolve_sram_address(uint32_t address)
 {
