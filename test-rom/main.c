@@ -325,13 +325,18 @@ int main(void)
 	    continue;
 	}
 
-	for (int i = 0; i < num_files; i++) {
+	int menu_page_size = 10;
+	int first_file = menu_sel - menu_sel % menu_page_size;
+	int total_files_to_show = first_file + menu_page_size;
+	total_files_to_show = (total_files_to_show > num_files) ? num_files : total_files_to_show;
+
+	for (int i = first_file; i < total_files_to_show; i++) {
 	    if (i == menu_sel) {
 		sprintf(tStr, "%02d: *%s", i, files[i]);
 	    } else {
 		sprintf(tStr, "%02d:  %s", i, files[i]);
 	    }
-	    graphics_draw_text(disp, 40, 120 + i * 10, tStr);
+	    graphics_draw_text(disp, 40, 120 + (i - first_file) * 10, tStr);
 	}
 
 	if (pressed.start) {
