@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <libdragon.h>
 #include <stdlib.h>
-#include "jpeg/gba-jpeg-decode.h"
 
 #include "n64cart.h"
 #include "../fw/romfs/romfs.h"
@@ -18,9 +17,11 @@
 #include "ext/boot.h"
 #include "ext/boot_io.h"
 
-#ifndef USE_FILESYSTEM
-#include "image.h"
-#endif
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_IMG_STATIC
+#define STBI_NO_STDIO
+#define STBI_NO_THREAD_LOCALS
+#include "stb_image.h"
 
 struct flash_chip {
     uint8_t mf;
@@ -41,14 +42,15 @@ static const struct flash_chip flash_chip[] = {
 
 static const struct flash_chip *used_flash_chip = NULL;
 
-static const int scr_width = 320;
-static const int scr_height = 240;
+static int scr_width;
+static int scr_height;
 
 static char *files[128];
 static int num_files = 0;
 static int menu_sel = 0;
 
-static uint8_t __attribute__((aligned(16))) picture_data[64 * 1024];
+static uint8_t *picture_data = NULL;
+static int picture_data_length;
 
 bool romfs_flash_sector_erase(uint32_t offset)
 {
@@ -88,7 +90,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
     return true;
 }
 
-static int valign(char *s)
+static int valign(const char *s)
 {
     return (scr_width >> 1) - strlen(s) * 4;
 }
@@ -122,7 +124,11 @@ static void detect_flash_chip()
 
 int main(void)
 {
-    display_init(RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, ANTIALIAS_RESAMPLE);
+    display_init(is_memory_expanded() ? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+//    display_init(RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+
+    scr_width = display_get_width();
+    scr_height = display_get_height();
 
     joypad_init();
 
@@ -155,7 +161,10 @@ int main(void)
 	if (romfs_open_file("background.jpg", &file, NULL) == ROMFS_NOERR) {
             int ret;
             int pos = 0;
-            while (pos < sizeof(picture_data) && (ret = romfs_read_file(&picture_data[pos], 4096, &file)) > 0) {
+            picture_data_length = file.entry.size;
+            picture_data = malloc(picture_data_length);
+
+            while (pos < picture_data_length && (ret = romfs_read_file(&picture_data[pos], 4096, &file)) > 0) {
 		pos += ret;
             }
             romfs_close_file(&file);
@@ -183,25 +192,43 @@ int main(void)
     }
 
     sprite_t *img = NULL;
-    
-    if (picture_data[0] == 0xff && picture_data[1] == 0xd8) {
+
+    if (picture_data != NULL && picture_data[0] == 0xff && picture_data[1] == 0xd8) {
 	n64cart_uart_puts("User picture\n");
 
-	img = malloc(sizeof(sprite_t) + scr_width * scr_height * 4);
-	img->width = scr_width;
-	img->height = scr_height;
+	int w, h, channels;
+
+	stbi_uc *stbi_img = stbi_load_from_memory(picture_data, picture_data_length, &w, &h, &channels, 4);
+
+	char tmp[256];
+	snprintf(tmp, sizeof(tmp) - 1, "w = %d, h = %d, c = %d\n", w, h, channels);
+	n64cart_uart_puts(tmp);
+
+	free(picture_data);
+
+	img = malloc(sizeof(sprite_t) + w * h * 4);
+	img->width = w;
+	img->height = h;
 	img->flags = FMT_RGBA32;
 	img->hslices = 1;
 	img->vslices = 1;
 
-	JPEG_DecompressImage(picture_data, (JPEG_OUTPUT_TYPE *)&img->data[0], scr_width, scr_height);
+	memmove(&img->data[0], stbi_img, w * h * 4);
+
+	stbi_image_free(stbi_img);
     }
 
-    /* define two variables */
-    int x = 0;
-    int y = 0;
+    static const char *txt_title_1 = "N64CART MANAGER";
+    static const char *txt_title_2 = "(c) sashz /pdaXrom.org/, 2022-2023";
+    static char txt_rom_info[128];
+    static const char *txt_menu_info_1 = "[UP]/[DOWN]-Select, [L]/[R]-Page";
+    static const char *txt_menu_info_2 = "[A]-Run, [X]-Delete";
 
-    graphics_set_color(0xeeeeee00, 0x00000000);
+    if (used_flash_chip) {
+	snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
+    } else {
+	strncpy(txt_rom_info, "Unknown flash chip", sizeof(txt_rom_info) - 1);
+    }
 
     static display_context_t disp = 0;
 
@@ -218,48 +245,27 @@ int main(void)
 
 	if (img) {
 	    /* Logo */
-	    graphics_draw_sprite_trans(disp, x, y, img);
+	    graphics_draw_sprite(disp, 0, 0, img);
 	}
 
-        /* Text */
-	strcpy(tStr, "N64CART TEST");
-        graphics_draw_text( disp, valign(tStr), 10, tStr);
+	graphics_set_color(0xeeeeee00, 0x00000000);
 
-	strcpy(tStr, "(c) sashz /pdaXrom.org/, 2022-2023");
-        graphics_draw_text( disp, valign(tStr), 20, tStr);
+        /* Text */
+        graphics_draw_text( disp, valign(txt_title_1), 10, txt_title_1);
+        graphics_draw_text( disp, valign(txt_title_2), 20, txt_title_2);
 
         /* Scan for User input */
 	joypad_poll();
         joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 //        joypad_buttons_t held = joypad_get_buttons_held(JOYPAD_PORT_1);
-	joypad_inputs_t inputs = joypad_get_inputs(JOYPAD_PORT_1);
+//	joypad_inputs_t inputs = joypad_get_inputs(JOYPAD_PORT_1);
 
-	sprintf(tStr, "A %d B %d Z %d Start %d", pressed.a, pressed.b, pressed.z, pressed.start);
-	graphics_draw_text( disp, 10, 40, tStr );
-	sprintf(tStr, "D-U %d D-D %d D-L %d D-R %d", pressed.d_up, pressed.d_down, pressed.d_left, pressed.d_right);
-	graphics_draw_text( disp, 10, 50, tStr );
+	graphics_draw_text(disp, valign(txt_rom_info), 30, txt_rom_info);
 
-	sprintf(tStr, "L %d R %d C-U %d C-D %d C-L %d C-R %d", pressed.l, pressed.r, pressed.c_up, pressed.c_down, pressed.c_left, pressed.c_right);
-	graphics_draw_text( disp, 10, 60, tStr );
+	graphics_draw_text(disp, valign(txt_menu_info_1), 90, txt_menu_info_1);
+	graphics_draw_text(disp, valign(txt_menu_info_2), 100, txt_menu_info_2);
 
-	sprintf(tStr, "X %d Y %d", inputs.stick_x, inputs.stick_y);
-	graphics_draw_text( disp, 10, 70, tStr );
-
-	if (used_flash_chip) {
-	    sprintf(tStr, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
-	} else {
-	    sprintf(tStr, "Unknown flash chip");
-	}
-	graphics_draw_text( disp, valign(tStr), 90, tStr );
-
-	strcpy(tStr, "Press [UP]/[DOWN] to select");
-	graphics_draw_text( disp, valign(tStr), 100, tStr );
-
-	if (menu_sel > 0 && pressed.d_up) {
-	    menu_sel--;
-	} else if (menu_sel < (num_files - 1) && pressed.d_down) {
-	    menu_sel++;
-	} else if (pressed.a) {
+	if (pressed.a) {
 	    romfs_file file;
 
 	    graphics_draw_box(disp, 40, 110, 320 - 40 * 2, 50, 0x00000080);
@@ -305,10 +311,10 @@ int main(void)
 
 		boot(&params);
 	    } else {
-		sprintf(tStr, "File open error!");
-		graphics_draw_text( disp, valign(tStr), 120, tStr );
-		strcpy(tStr, "Press (B) to continue");
-		graphics_draw_text( disp, valign(tStr), 130,  tStr);
+		static const char *fopen_error_1 = "File open error!";
+		graphics_draw_text(disp, valign(fopen_error_1), 120, fopen_error_1);
+		static const char *fopen_error_2 = "Press (B) to continue";
+		graphics_draw_text( disp, valign(fopen_error_2), 130,  fopen_error_2);
 	    }
 
 	    display_show(disp);
@@ -326,6 +332,18 @@ int main(void)
 	}
 
 	int menu_page_size = 10;
+
+	if (menu_sel > 0 && pressed.d_up) {
+	    menu_sel--;
+	} else if (menu_sel < (num_files - 1) && pressed.d_down) {
+	    menu_sel++;
+	} else if (menu_sel >= menu_page_size && pressed.l) {
+	    menu_sel -= menu_page_size;
+	} else if ((menu_sel - menu_sel % menu_page_size) + menu_page_size < num_files && pressed.r) {
+	    menu_sel += menu_page_size;
+	    menu_sel = (menu_sel < num_files) ? menu_sel : (num_files - 1);
+	}
+
 	int first_file = menu_sel - menu_sel % menu_page_size;
 	int total_files_to_show = first_file + menu_page_size;
 	total_files_to_show = (total_files_to_show > num_files) ? num_files : total_files_to_show;

@@ -11,9 +11,9 @@ SED = sed
 endif
 
 ASFLAGS += -x assembler-with-cpp
-CFLAGS += -DJPEG_OUTPUT_RGB8=1 -DUSE_FILESYSTEM
+CFLAGS += -Wno-error=unused-but-set-variable
 
-SRC = main.c n64cart.c jpeg/gba-jpeg-decode.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c
+SRC = main.c n64cart.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c
 ASMSRC = ext/reboot.S
 
 OBJS = $(SRC:%.c=$(BUILD_DIR)/%.o)
