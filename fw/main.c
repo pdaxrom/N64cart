@@ -186,7 +186,7 @@ sleep_us(50);
     }
 
     romfs_file file;
-    if (romfs_open_file("test-rom.z64", &file, romfs_flash_buffer) == ROMFS_NOERR) {
+    if (romfs_open_file("n64cart-manager.z64", &file, romfs_flash_buffer) == ROMFS_NOERR) {
 	romfs_read_map_table(pi_rom_lookup, 16384, &file);
 
 	backup_rom_lookup();

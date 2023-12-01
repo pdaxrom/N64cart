@@ -1,4 +1,4 @@
-all: test-rom.z64
+all: n64cart-manager.z64
 .PHONY: all
 
 BUILD_DIR = build
@@ -22,9 +22,9 @@ ASMOBJS = $(ASMSRC:%.S=$(BUILD_DIR)/%.o)
 DEPS = $(SRC:%.c=$(BUILD_DIR)/%.d)
 ASMDEPS = $(ASMSRC:%.S=$(BUILD_DIR)/%.d)
 
-test-rom.z64: N64_ROM_TITLE = "test-rom"
+n64cart-manager.z64: N64_ROM_TITLE = "n64cart-manager"
 
-$(BUILD_DIR)/test-rom.elf: $(OBJS) $(ASMOBJS)
+$(BUILD_DIR)/n64cart-manager.elf: $(OBJS) $(ASMOBJS)
 
 clean:
 	rm -rf $(BUILD_DIR) fw *.z64
