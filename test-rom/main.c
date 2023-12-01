@@ -22,6 +22,8 @@
 #define STBI_NO_STDIO
 #define STBI_NO_THREAD_LOCALS
 #include "stb_image.h"
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "stb_image_resize2.h"
 
 struct flash_chip {
     uint8_t mf;
@@ -199,6 +201,14 @@ int main(void)
 	int w, h, channels;
 
 	stbi_uc *stbi_img = stbi_load_from_memory(picture_data, picture_data_length, &w, &h, &channels, 4);
+
+	if (w != scr_width || h != scr_height) {
+	    stbi_uc *stbi_img_new = stbir_resize_uint8_linear(stbi_img, w, h, w * 4, NULL, scr_width, scr_height, scr_width * 4, STBIR_RGBA);
+	    stbi_image_free(stbi_img);
+	    stbi_img = stbi_img_new;
+	    w = scr_width;
+	    h = scr_height;
+	}
 
 	char tmp[256];
 	snprintf(tmp, sizeof(tmp) - 1, "w = %d, h = %d, c = %d\n", w, h, channels);

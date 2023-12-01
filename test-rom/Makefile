@@ -11,7 +11,7 @@ SED = sed
 endif
 
 ASFLAGS += -x assembler-with-cpp
-CFLAGS += -Wno-error=unused-but-set-variable
+CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function
 
 SRC = main.c n64cart.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c
 ASMSRC = ext/reboot.S
