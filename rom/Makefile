@@ -22,12 +22,22 @@ ASMOBJS = $(ASMSRC:%.S=$(BUILD_DIR)/%.o)
 DEPS = $(SRC:%.c=$(BUILD_DIR)/%.d)
 ASMDEPS = $(ASMSRC:%.S=$(BUILD_DIR)/%.d)
 
+#wy700font-regular.sprite: assets/wy700font-regular.png
+wy700font-regular.sprite: assets/wy700font-bold.png
+	@mkdir -p $(dir $@)
+	@echo "    [SPRITE] $@"
+	$(N64_MKSPRITE) 32 32 8 "$<" "$@"
+
+wy700font-regular.h: wy700font-regular.sprite
+	xxd -i $^ > $@
+	$(SED) -i 's/unsigned char /static const unsigned char /g' $@
+
 n64cart-manager.z64: N64_ROM_TITLE = "n64cart-manager"
 
-$(BUILD_DIR)/n64cart-manager.elf: $(OBJS) $(ASMOBJS)
+$(BUILD_DIR)/n64cart-manager.elf: wy700font-regular.h $(OBJS) $(ASMOBJS)
 
 clean:
-	rm -rf $(BUILD_DIR) fw *.z64
+	rm -rf $(BUILD_DIR) fw *.z64 wy700font-regular.sprite wy700font-regular.h
 
 .PHONY: clean upload
 

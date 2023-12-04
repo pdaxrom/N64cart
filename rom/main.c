@@ -17,6 +17,8 @@
 #include "ext/boot.h"
 #include "ext/boot_io.h"
 
+#include "wy700font-regular.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_IMG_STATIC
 #define STBI_NO_STDIO
@@ -46,6 +48,7 @@ static const struct flash_chip *used_flash_chip = NULL;
 
 static int scr_width;
 static int scr_height;
+static int scr_scale;
 
 static char *files[128];
 static int num_files = 0;
@@ -94,7 +97,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 
 static int valign(const char *s)
 {
-    return (scr_width >> 1) - strlen(s) * 4;
+    return (scr_width >> 1) - strlen(s) * 4 * scr_scale;
 }
 
 static void detect_flash_chip()
@@ -127,7 +130,13 @@ static void detect_flash_chip()
 int main(void)
 {
     display_init(is_memory_expanded() ? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
-//    display_init(RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+
+    if (is_memory_expanded()) {
+	graphics_set_font_sprite((sprite_t *)wy700font_regular_sprite);
+	scr_scale = 2;
+    } else {
+	scr_scale = 1;
+    }
 
     scr_width = display_get_width();
     scr_height = display_get_height();
@@ -242,6 +251,8 @@ int main(void)
 
     static display_context_t disp = 0;
 
+    bool hide_menu = false;
+
     /* Main loop test */
     while(1) 
     {
@@ -260,26 +271,35 @@ int main(void)
 
 	graphics_set_color(0xeeeeee00, 0x00000000);
 
-        /* Text */
-        graphics_draw_text( disp, valign(txt_title_1), 10, txt_title_1);
-        graphics_draw_text( disp, valign(txt_title_2), 20, txt_title_2);
-
         /* Scan for User input */
 	joypad_poll();
         joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 //        joypad_buttons_t held = joypad_get_buttons_held(JOYPAD_PORT_1);
 //	joypad_inputs_t inputs = joypad_get_inputs(JOYPAD_PORT_1);
 
-	graphics_draw_text(disp, valign(txt_rom_info), 30, txt_rom_info);
+	if (pressed.z) {
+	    hide_menu = !hide_menu;
+	}
 
-	graphics_draw_text(disp, valign(txt_menu_info_1), 90, txt_menu_info_1);
-	graphics_draw_text(disp, valign(txt_menu_info_2), 100, txt_menu_info_2);
+	if (hide_menu) {
+	    display_show(disp);
+	    continue;
+	}
+
+        /* Text */
+        graphics_draw_text( disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
+        graphics_draw_text( disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
+
+	graphics_draw_text(disp, valign(txt_rom_info), 30 * scr_scale, txt_rom_info);
+
+	graphics_draw_text(disp, valign(txt_menu_info_1), 90 * scr_scale, txt_menu_info_1);
+	graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);
 
 	if (pressed.a) {
 	    romfs_file file;
 
-	    graphics_draw_box(disp, 40, 110, 320 - 40 * 2, 50, 0x00000080);
-	    graphics_draw_box(disp, 45, 110 + 5, 320 - 45 * 2, 40, 0x77777780);
+	    graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
+	    graphics_draw_box(disp, 45 * scr_scale, 115 * scr_scale, (320 - 45 * 2) * scr_scale, 40 * scr_scale, 0x77777780);
 
 	    if (romfs_open_file(files[menu_sel], &file, NULL) == ROMFS_NOERR) {
 		uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4 * 2];
@@ -322,9 +342,9 @@ int main(void)
 		boot(&params);
 	    } else {
 		static const char *fopen_error_1 = "File open error!";
-		graphics_draw_text(disp, valign(fopen_error_1), 120, fopen_error_1);
+		graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
 		static const char *fopen_error_2 = "Press (B) to continue";
-		graphics_draw_text( disp, valign(fopen_error_2), 130,  fopen_error_2);
+		graphics_draw_text( disp, valign(fopen_error_2), 130 * scr_scale,  fopen_error_2);
 	    }
 
 	    display_show(disp);
@@ -364,7 +384,7 @@ int main(void)
 	    } else {
 		sprintf(tStr, "%02d:  %s", i, files[i]);
 	    }
-	    graphics_draw_text(disp, 40, 120 + (i - first_file) * 10, tStr);
+	    graphics_draw_text(disp, 40 * scr_scale, (120 + (i - first_file) * 10) * scr_scale, tStr);
 	}
 
 	if (pressed.start) {
