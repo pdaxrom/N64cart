@@ -22,14 +22,12 @@
 #include "n64.h"
 
 static const struct flash_chip flash_chip[] = {
-    { 0xef, 0x4020, 4, 16, 220000, 0x2840, "W25Q512" },
-//    { 0xef, 0x4020, 4, 16, 200000, 0x2840, "W25Q512" },
-//    { 0xef, 0x4019, 2, 16, 256000, 0x2240, "W25Q256" },
-    { 0xef, 0x4019, 2, 16, 230000, 0x2240, "W25Q256" },
-    { 0xef, 0x4018, 1, 16, 256000, 0x2240, "W25Q128" },
-    { 0xef, 0x4017, 1, 8 , 256000, 0x2240, "W25Q64"  },
-    { 0xef, 0x4016, 1, 4 , 256000, 0x2240, "W25Q32"  },
-    { 0xef, 0x4015, 1, 2 , 256000, 0x2240, "W25Q16"  }
+    { 0xef, 0x4020, 4, 16, 266000, "W25Q512" },
+    { 0xef, 0x4019, 2, 16, 266000, "W25Q256" },
+    { 0xef, 0x4018, 1, 16, 266000, "W25Q128" },
+    { 0xef, 0x4017, 1, 8 , 266000, "W25Q64"  },
+    { 0xef, 0x4016, 1, 4 , 266000, "W25Q32"  },
+    { 0xef, 0x4015, 1, 2 , 266000, "W25Q16"  }
 };
 
 static const struct flash_chip *used_flash_chip;
@@ -97,7 +95,6 @@ static void setup_sysconfig(void)
     for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
 	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
 	    set_sys_clock_khz(flash_chip[i].sys_freq, true);
-	    set_pi_bus_freq(flash_chip[i].pi_bus_freq);
 	    used_flash_chip = &flash_chip[i];
 	    break;
 	}
@@ -108,7 +105,6 @@ static void show_sysinfo(void)
 {
     printf("ROM chip           : %s\n", used_flash_chip->name);
     printf("System frequency   : %d\n", clock_get_hz(clk_sys) / 1000);
-    printf("PI bus freq config : %04X\n\n", get_pi_bus_freq());
     printf("ROM size           : %d MB\n", used_flash_chip->rom_pages * used_flash_chip->rom_size);
 }
 
@@ -168,7 +164,7 @@ int main(void)
 
     flash_spi_mode();
 
-sleep_us(50);
+    sleep_us(50);
 
     uint32_t flash_map_size, flash_list_size;
 

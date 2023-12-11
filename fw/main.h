@@ -23,7 +23,6 @@ struct flash_chip {
     uint8_t rom_pages;
     uint8_t rom_size;
     uint32_t sys_freq;
-    uint16_t pi_bus_freq;
     const char *name;
 };
 

@@ -19,7 +19,6 @@
 #include "n64_pi.pio.h"
 #include "n64.h"
 
-static uint16_t pi_bus_freq = 0x40ff;
 static uint16_t flash_ctrl_reg = 0x11;
 
 uint8_t pi_sram[SRAM_1MBIT_SIZE + ROMFS_FLASH_SECTOR * 4 * 2 * 2];
@@ -58,20 +57,6 @@ static inline uint32_t resolve_sram_address(uint32_t address)
     return resolved_address;
 }
 
-void set_pi_bus_freq(uint16_t freq)
-{
-    if ((freq >> 8) < 0x12) {
-	freq = 0xFF40;
-    }
-
-    pi_bus_freq = freq;
-}
-
-uint16_t get_pi_bus_freq(void)
-{
-    return pi_bus_freq;
-}
-
 void n64_pi(void)
 {
     PIO pio = pio0;
@@ -96,28 +81,10 @@ void n64_pi(void)
     do {
 	if (addr == 0) {
 	    //READ
-	    if (last_addr == 0x10000000) {
-		word = 0x8037;
-		pio_sm_put(pio, 0, word);
-		last_addr += 2;
-#if PI_SRAM
-//		word = pi_bus_freq;
-		word = 0xFF40;
-#else
-//		word = pi_bus_freq;
-		word = 0xFF40;
-#endif
-		addr = pio_sm_get_blocking(pio, 0);
-		if (addr == 0) {
-		    goto hackentry;
-		}
-
-		continue;
-	    } else if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
+	    if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
 		do {
 		    mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
 		    word = flash_quad_read16_EC(mapped_addr);
- hackentry:
 		    pio_sm_put(pio, 0, word);
 		    last_addr += 2;
 		    addr = pio_sm_get_blocking(pio, 0);

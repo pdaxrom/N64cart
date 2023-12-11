@@ -286,7 +286,8 @@ int main(int argc, char *argv[]) {
                 romfs_file file;
                 if (romfs_list(&file, true) == ROMFS_NOERR) {
                     do {
-                        printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
+                        printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode,
+                               file.entry.attr.names.type);
                     } while (romfs_list(&file, false) == ROMFS_NOERR);
                 }
             } else if (!strcmp(argv[1], "delete")) {
@@ -295,6 +296,29 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error: [%s] %s!\n", argv[3], romfs_strerror(err));
                 }
             } else if (!strcmp(argv[1], "push")) {
+                bool fix_endian = false;
+                int rom_type = -1;
+                bool fix_pi_freq = false;
+                uint16_t pi_freq = 0xff;
+
+                if (argc > 2 && !strcmp(argv[2], "--fix-rom")) {
+                    fix_endian = true;
+                    fix_pi_freq = true;
+                    argv++;
+                    argc--;
+                }
+
+                char *param = argv[2];
+
+                if (argc > 2 && !strncmp(param, "--fix-pi-bus-speed", 18)) {
+                    fix_pi_freq = true;
+                    if (param[18] == '=') {
+                        pi_freq = strtoimax(&param[19], NULL, 16) & 0xff;
+                    }
+                    argv++;
+                    argc--;
+                }
+
                 if (argc > 2) {
                     FILE *inf = fopen(argv[2], "rb");
                     if (inf) {
@@ -311,6 +335,62 @@ int main(int argc, char *argv[]) {
                             int total = 0;
                             printf("\n");
                             while ((ret = fread(buffer, 1, 4096, inf)) > 0) {
+                                if (fix_endian) {
+                                    if (rom_type == -1) {
+                                        uint32_t type = ((uint32_t *)buffer)[0];
+                                        fprintf(stderr, "Detected ROM type: ");
+                                        if (type == 0x40123780) {
+                                            rom_type = 0;
+                                            fprintf(stderr, "Z64\n");
+                                        } else if (type == 0x80371240) {
+                                            rom_type = 1;
+                                            fprintf(stderr, "N64\n");
+                                        } else if (type == 0x12408037) {
+                                            rom_type = 2;
+                                            fprintf(stderr, "V64\n");
+                                        } else {
+                                            fprintf(stderr, "Unknown\n\nError!\n");
+                                            break;
+                                        }
+                                    }
+
+                                    if (ret % 4 != 0) {
+                                        fprintf(stderr, "Unaligned read from local file, error!\n");
+                                        break;
+                                    }
+
+                                    if (rom_type) {
+                                        for (int i = 0; i < ret; i += 4) {
+                                            uint8_t tmp;
+                                            if (rom_type == 1) {
+                                                tmp = buffer[i + 0];
+                                                buffer[i + 0] = buffer[i + 3];
+                                                buffer[i + 3] = tmp;
+                                                tmp = buffer[i + 2];
+                                                buffer[i + 2] = buffer[i + 1];
+                                                buffer[i + 1] = tmp;
+                                            } else {
+                                                tmp = buffer[i + 0];
+                                                buffer[i + 0] = buffer[i + 1];
+                                                buffer[i + 1] = tmp;
+                                                tmp = buffer[i + 2];
+                                                buffer[i + 2] = buffer[i + 3];
+                                                buffer[i + 3] = tmp;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (fix_pi_freq) {
+                                    if (buffer[0] == 0x80 && buffer[1] == 0x37 && buffer[3] == 0x40) {
+                                        buffer[2] = pi_freq;
+                                    } else {
+                                        fprintf(stderr, "Rom type is not Z64, use --fix-rom to convert to Z64 type!\n");
+                                        break;
+                                    }
+                                    fix_pi_freq = false;
+                                }
+
                                 if (romfs_write_file(buffer, ret, &file) == 0) {
                                     break;
                                 }
@@ -375,7 +455,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "%s format\n", argv[0]);
         fprintf(stderr, "%s list\n", argv[0]);
         fprintf(stderr, "%s delete <remote filename>\n", argv[0]);
-        fprintf(stderr, "%s push <local filename>[ <remote filename>]\n", argv[0]);
+        fprintf(stderr, "%s push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]\n", argv[0]);
         fprintf(stderr, "%s pull <remote filename>[ <local filename>]\n", argv[0]);
     }
 
