@@ -217,6 +217,7 @@ static char *find_filename(char *path) {
 }
 
 int main(int argc, char *argv[]) {
+    int retval = 1;
     uint32_t r = libusb_init(&ctx);
 
     if (r < 0) {
@@ -269,19 +270,28 @@ int main(int argc, char *argv[]) {
 
     if (argc > 1 && strcmp(argv[1], "help")) {
         if (!strcmp(argv[1], "bootloader")) {
-            send_usb_cmd(BOOTLOADER_MODE);
+            if (send_usb_cmd(BOOTLOADER_MODE)) {
+                retval = 0;
+            }
         } else if (!strcmp(argv[1], "reboot")) {
-            send_usb_cmd(CART_REBOOT);
+            if (send_usb_cmd(CART_REBOOT)) {
+                retval = 0;
+            }
         } else {
-            send_usb_cmd(FLASH_SPI_MODE);
+            if (!send_usb_cmd(FLASH_SPI_MODE)) {
+                fprintf(stderr, "cannot switch flash to spi mode, error!\n");
+                goto err_io;
+            }
 
             if (!romfs_start(romfs_info.data.info.start, romfs_info.data.info.size)) {
                 printf("Cannot start romfs!\n");
-                goto err;
+                goto err_io;
             }
 
             if (!strcmp(argv[1], "format")) {
-                romfs_format();
+                if (romfs_format()) {
+                    retval = 0;
+                }
             } else if (!strcmp(argv[1], "list")) {
                 romfs_file file;
                 if (romfs_list(&file, true) == ROMFS_NOERR) {
@@ -289,11 +299,14 @@ int main(int argc, char *argv[]) {
                         printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode,
                                file.entry.attr.names.type);
                     } while (romfs_list(&file, false) == ROMFS_NOERR);
+                    retval = 0;
                 }
             } else if (!strcmp(argv[1], "delete")) {
                 uint32_t err;
                 if ((err = romfs_delete(argv[2])) != ROMFS_NOERR) {
                     fprintf(stderr, "Error: [%s] %s!\n", argv[3], romfs_strerror(err));
+                } else {
+                    retval = 0;
                 }
             } else if (!strcmp(argv[1], "push")) {
                 bool fix_endian = false;
@@ -314,6 +327,9 @@ int main(int argc, char *argv[]) {
                     fix_pi_freq = true;
                     if (param[18] == '=') {
                         pi_freq = strtoimax(&param[19], NULL, 16) & 0xff;
+                        if (pi_freq < 0x12) {
+                            pi_freq = 0x12;
+                        }
                     }
                     argv++;
                     argc--;
@@ -403,6 +419,8 @@ int main(int argc, char *argv[]) {
                             if (file.err == ROMFS_NOERR) {
                                 if (romfs_close_file(&file) != ROMFS_NOERR) {
                                     fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
+                                } else {
+                                    retval = 0;
                                 }
                             } else {
                                 fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
@@ -433,6 +451,8 @@ int main(int argc, char *argv[]) {
 
                             if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
                                 fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
+                            } else {
+                                retval = 0;
                             }
                         } else {
                             fprintf(stderr, "Cannot open file %s\n", argv[3]);
@@ -445,7 +465,11 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Error: Unknown command '%s'\n", argv[2]);
             }
 
-            send_usb_cmd(FLASH_QUAD_MODE);
+err_io:
+            if (!send_usb_cmd(FLASH_QUAD_MODE)) {
+                fprintf(stderr, "cannot switch flash to quad mode, error!\n");
+                retval = 1;
+            }
         }
     } else {
         fprintf(stderr, "Usage:\n");
@@ -463,5 +487,5 @@ err:
 
     libusb_release_interface(dev_handle, 0);
 
-    return 0;
+    return retval;
 }
