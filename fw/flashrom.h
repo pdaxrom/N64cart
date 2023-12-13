@@ -39,16 +39,22 @@ uint16_t flash_read16_0C(uint32_t addr);
 
 uint32_t flash_read32_0C(uint32_t addr);
 
-void flash_quad_mode(void);
+void flash_quad_cont_read_mode(void);
 
 uint16_t inline flash_quad_read16_EC(uint32_t addr)
 {
-    ssi_hw->dr0 = 0xec;
     ssi_hw->dr0 = addr;
-    ssi_hw->dr0 = 0;
+    ssi_hw->dr0 = 0xa0;
 
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
-    uint16_t val = ssi_hw->dr0;
+    return ssi_hw->dr0;
+}
 
-    return val;
+void inline flash_quad_exit_cont_read_mode()
+{
+    ssi_hw->dr0 = 0x0;
+    ssi_hw->dr0 = 0x0;
+
+    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
+    (void) ssi_hw->dr0;
 }

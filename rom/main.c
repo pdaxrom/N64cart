@@ -105,15 +105,14 @@ static void detect_flash_chip()
     uint8_t txbuf[4];
     uint8_t rxbuf[4];
 
-    txbuf[0] = 0x9f;
-
     flash_mode(0);
+    txbuf[0] = 0x9f;
     flash_do_cmd(txbuf, rxbuf, 4, 0);
     flash_mode(1);
 
-//	char tmp[256];
-//	snprintf(tmp, sizeof(tmp) - 1, "Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
-//	n64cart_uart_puts(tmp);
+    char tmp[256];
+    snprintf(tmp, sizeof(tmp) - 1, "Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
+    n64cart_uart_puts(tmp);
 
     uint8_t mf = rxbuf[1];
     uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
@@ -146,6 +145,12 @@ int main(void)
     dma_wait();
 
     detect_flash_chip();
+
+    if (used_flash_chip) {
+	char tmp[256];
+	snprintf(tmp, sizeof(tmp) - 1, "Flash chip: %s (%d MB)\n", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
+	n64cart_uart_puts(tmp);
+    }
 
     {
 	char tmp[256];

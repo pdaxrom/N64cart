@@ -624,15 +624,10 @@ void ep1_out_handler(uint8_t *buf, uint16_t len) {
 	    return;
 	} else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == BOOTLOADER_MODE || req->type == CART_REBOOT) {
 	    if (req->type == FLASH_SPI_MODE) {
+		flash_quad_exit_cont_read_mode();
 		flash_spi_mode();
-		flash_read32_0C(0);
-		flash_read32_0C(0);
-		flash_read32_0C(0);
 	    } else if (req->type == FLASH_QUAD_MODE) {
-		flash_quad_mode();
-		flash_quad_read16_EC(0);
-		flash_quad_read16_EC(0);
-		flash_quad_read16_EC(0);
+		flash_quad_cont_read_mode();
 	    }
 	    ackn.type = ACK_NOERROR;
 	    ackn.chksum = 0;

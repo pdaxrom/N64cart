@@ -146,9 +146,10 @@ void n64_pi(void)
 	    } else if (last_addr == 0x1fd0100e) {
 		uint16_t ctrl_reg = addr >> 16;
 		if (ctrl_reg & 0x10) {
-		    flash_quad_mode();
+		    flash_quad_cont_read_mode();
 		} else {
 		    if (flash_ctrl_reg & 0x10) {
+			flash_quad_exit_cont_read_mode();
 			flash_spi_mode();
 		    }
 		    flash_cs_force(ctrl_reg & 0x01);

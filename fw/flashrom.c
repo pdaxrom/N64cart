@@ -54,7 +54,6 @@ void __no_inline_not_in_flash_func(flash_spi_mode)(void)
 	(7 << SSI_CTRLR0_DFS_32_LSB) | /* 8 bits per data frame */
 	(SSI_CTRLR0_TMOD_VALUE_TX_AND_RX << SSI_CTRLR0_TMOD_LSB);
 
-//    ssi_hw->ser = 1;
     ssi_hw->baudr = 4;
     ssi_hw->ssienr = 1;
 
@@ -237,13 +236,12 @@ uint32_t __no_inline_not_in_flash_func(flash_read32_0C)(uint32_t addr)
     return val;
 }
 
-void __no_inline_not_in_flash_func(flash_quad_mode)(void)
+void __no_inline_not_in_flash_func(flash_quad_cont_read_mode)(void)
 {
     ssi_hw->ssienr = 0;
 
     flash_cs_force(1);
 
-//    ssi_hw->ser = 1;
     ssi_hw->baudr = 4;
 
     ssi_hw->ctrlr0 =
@@ -260,12 +258,31 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(void)
 	    (SSI_SPI_CTRLR0_INST_L_VALUE_8B << SSI_SPI_CTRLR0_INST_L_LSB) | /* 8-bit instruction */
 	    (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_1C2A			/* Send Command in serial mode then address in Quad I/O mode */
 		    << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
+
     ssi_hw->ssienr = 1;
 
     io_rw_32 *reg = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SS_CTRL_OFFSET);
     *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_LSB);
     // Read to flush async bridge
     (void) *reg;
+
+    ssi_hw->dr0 = 0xec;
+    ssi_hw->dr0 = 0;
+    ssi_hw->dr0 = 0xa0;
+    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS) && (ssi_hw->sr & SSI_SR_BUSY_BITS)) {}
+    (void) ssi_hw->dr0;
+
+    ssi_hw->ssienr = 0;
+
+    ssi_hw->spi_ctrlr0 =
+	    (0xa0<< SSI_SPI_CTRLR0_XIP_CMD_LSB) |			/* Mode bits to keep flash in continuous read mode */
+	    (10u << SSI_SPI_CTRLR0_ADDR_L_LSB) |			/* (Address + mode bits) / 4 */
+	    (4u  << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |			/* Hi-Z dummy clocks following address + mode */
+	    (SSI_SPI_CTRLR0_INST_L_VALUE_NONE << SSI_SPI_CTRLR0_INST_L_LSB) | /* Do not send a command, instead send XIP_CMD as mode bits after address */
+	    (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_2C2A			/* Send Address in Quad I/O mode (and Command but that is zero bits long) */
+		    << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
+
+    ssi_hw->ssienr = 1;
 
     return;
 }
