@@ -163,6 +163,10 @@ int main(void)
     uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
 
     flash_spi_mode();
+    flash_read32_0C(0);
+    flash_read32_0C(0);
+    flash_read32_0C(0);
+    flash_read32_0C(0);
 
     sleep_us(50);
 
@@ -195,6 +199,19 @@ int main(void)
     }
 
     flash_quad_mode();
+
+    flash_quad_read16_EC(0);
+    flash_quad_read16_EC(0);
+    flash_quad_read16_EC(0);
+    flash_quad_read16_EC(0);
+
+//    printf("%04X\n", flash_quad_read16_EC(0));
+//    printf("%04X\n", flash_quad_read16_EC(2));
+//    printf("%04X\n", flash_quad_read16_EC(4));
+//    printf("%04X\n", flash_quad_read16_EC(16));
+//    printf("%04X\n", flash_quad_read16_EC(18));
+
+//    while(1) {}
 
     multicore_launch_core1(n64_pi);
 

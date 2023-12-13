@@ -12,17 +12,6 @@
 #include "hardware/structs/ioqspi.h"
 #include "hardware/structs/pads_qspi.h"
 
-void __no_inline_not_in_flash_func(flash_cs_force)(bool high)
-{
-    uint32_t field_val = high ?
-        IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_VALUE_HIGH :
-        IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_VALUE_LOW;
-    hw_write_masked(&ioqspi_hw->io[1].ctrl,
-        field_val << IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_LSB,
-        IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_BITS
-    );
-}
-
 static void __no_inline_not_in_flash_func(xflash_do_cmd_internal)(const uint8_t *txbuf, uint8_t *rxbuf, size_t count, size_t rxskip)
 {
     flash_cs_force(0);
@@ -67,13 +56,6 @@ void __no_inline_not_in_flash_func(flash_spi_mode)(void)
 
 //    ssi_hw->ser = 1;
     ssi_hw->baudr = 4;
-    ssi_hw->ssienr = 1;
-
-    flash_read32_0C(0);
-    flash_read32_0C(0);
-    flash_read32_0C(0);
-
-    ssi_hw->ssienr = 0;
     ssi_hw->ssienr = 1;
 
     return;
@@ -157,6 +139,7 @@ uint8_t __no_inline_not_in_flash_func(flash_read8_0C)(uint32_t addr)
     return val;
 }
 
+#if 1
 uint16_t __no_inline_not_in_flash_func(flash_read16_0C)(uint32_t addr)
 {
     uint16_t val;
@@ -172,10 +155,67 @@ uint16_t __no_inline_not_in_flash_func(flash_read16_0C)(uint32_t addr)
 
     xflash_do_cmd_internal(txbuf, rxbuf, 8, 0);
 
-    val = *((uint16_t *)&rxbuf[6]);
+    val = (rxbuf[6] << 8) | rxbuf[7];
 
     return val;
 }
+#else
+
+uint16_t __no_inline_not_in_flash_func(flash_read16_0C)(uint32_t addr)
+{
+    static uint32_t next_addr = 0xffffffff;
+
+    uint16_t val;
+
+    uint8_t txbuf[8];
+    uint8_t rxbuf[8];
+
+    int tx_c = 0;
+    int rx_c = 0;
+
+    if (addr == next_addr) {
+	while (rx_c < 2) {
+	    if ((ssi_hw->sr & SSI_SR_TFNF_BITS) && (tx_c < 2)) {
+		ssi_hw->dr0 = txbuf[tx_c++];
+	    }
+	    if ((ssi_hw->sr & SSI_SR_RFNE_BITS) && (rx_c < 2)) {
+		rxbuf[rx_c++] = ssi_hw->dr0;
+	    }
+	}
+
+	next_addr = addr + 2;
+
+	val = (rxbuf[0] << 8) | rxbuf[1];
+
+	return val;
+    }
+
+    flash_cs_force(1);
+
+    txbuf[0] = 0x0c;
+    txbuf[1] = addr >> 24;
+    txbuf[2] = addr >> 16;
+    txbuf[3] = addr >> 8;
+    txbuf[4] = addr;
+
+    flash_cs_force(0);
+
+    while (rx_c < sizeof(rxbuf)) {
+	if ((ssi_hw->sr & SSI_SR_TFNF_BITS) && (tx_c < sizeof(txbuf))) {
+	    ssi_hw->dr0 = txbuf[tx_c++];
+	}
+	if ((ssi_hw->sr & SSI_SR_RFNE_BITS) && (rx_c < sizeof(rxbuf))) {
+	    rxbuf[rx_c++] = ssi_hw->dr0;
+	}
+    }
+
+    next_addr = addr + 2;
+
+    val = (rxbuf[6] << 8) | rxbuf[7];
+
+    return val;
+}
+#endif
 
 uint32_t __no_inline_not_in_flash_func(flash_read32_0C)(uint32_t addr)
 {
@@ -208,7 +248,7 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(void)
 
     ssi_hw->ctrlr0 =
 	    (SSI_CTRLR0_SPI_FRF_VALUE_QUAD << SSI_CTRLR0_SPI_FRF_LSB) |	/* Quad I/O mode */
-	    (31 << SSI_CTRLR0_DFS_32_LSB)  |				/* 32 data bits */
+	    (15 << SSI_CTRLR0_DFS_32_LSB)  |				/* 16 data bits */
 	    (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ				/* Send INST/ADDR, Receive Data */
 		<< SSI_CTRLR0_TMOD_LSB);
 
@@ -222,47 +262,10 @@ void __no_inline_not_in_flash_func(flash_quad_mode)(void)
 		    << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
     ssi_hw->ssienr = 1;
 
-    flash_quad_read32_EC(0);
-    flash_quad_read32_EC(0);
-    flash_quad_read32_EC(0);
-
-    ssi_hw->ssienr = 0;
-
-    ssi_hw->ssienr = 1;
+    io_rw_32 *reg = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SS_CTRL_OFFSET);
+    *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_LSB);
+    // Read to flush async bridge
+    (void) *reg;
 
     return;
-}
-
-uint32_t __no_inline_not_in_flash_func(flash_quad_read32_EC)(uint32_t addr)
-{
-    flash_cs_force(0);
-
-    ssi_hw->dr0 = 0xec;
-    ssi_hw->dr0 = addr;
-    ssi_hw->dr0 = 0;
-
-    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
-    uint32_t val = ssi_hw->dr0;
-
-    flash_cs_force(1);
-
-    return val;
-}
-
-uint16_t __no_inline_not_in_flash_func(flash_quad_read16_EC)(uint32_t addr)
-{
-    flash_cs_force(0);
-
-    ssi_hw->dr0 = 0xec;
-    ssi_hw->dr0 = addr;
-    ssi_hw->dr0 = 0;
-
-    while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {}
-    uint32_t val = ssi_hw->dr0;
-
-    flash_cs_force(1);
-
-    uint16_t val16 = val >> 16;
-
-    return val16;
 }

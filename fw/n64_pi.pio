@@ -9,6 +9,8 @@
 ; For debugging, `set pins, 0` up to `3` may be used
 
 pi_start:
+    ; Clear ISR (needed when jumping here manually from C-code quickly)
+    mov isr, null
 
     ; Change IO dir of all pins to INPUT
     mov osr, null
