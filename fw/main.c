@@ -129,10 +129,13 @@ int main(void)
 
     gpio_init(N64_CIC_DCLK);
     gpio_init(N64_CIC_DIO);
+    gpio_init(N64_SI_CLK);
+    gpio_init(N64_SI_DATA);
     gpio_init(N64_COLD_RESET);
     gpio_init(N64_NMI);
 
     gpio_pull_up(N64_CIC_DIO);
+    gpio_pull_up(N64_SI_DATA);
 
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);

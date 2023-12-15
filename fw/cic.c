@@ -126,6 +126,31 @@ static unsigned char _6105Mem[32];
 
 /* YOU HAVE TO IMPLEMENT THE LOW LEVEL GPIO FUNCTIONS ReadBit() and WriteBit() */
 
+static volatile unsigned char cic_in_bits;
+static volatile int cic_in_count;
+static volatile unsigned char cic_out_bits;
+static volatile int cic_out_count;
+
+void cic_dclk_callback(uint gpio, uint32_t events)
+{
+    if (events & GPIO_IRQ_EDGE_FALL) {
+	if (cic_out_count) {
+	    if (!(cic_out_bits & 0x08)) {
+		gpio_set_dir(N64_CIC_DIO, GPIO_OUT);
+		gpio_put(N64_CIC_DIO, 0);
+	    }
+	    cic_out_bits <<= 1;
+	    cic_out_count--;
+	} else if (cic_in_count) {
+	    cic_in_bits <<= 1;
+	    cic_in_bits |= gpio_get(N64_CIC_DIO) ? 1 : 0;
+	    cic_in_count--;
+	}
+    } else if (events & GPIO_IRQ_EDGE_RISE) {
+	gpio_set_dir(N64_CIC_DIO, GPIO_IN);
+    }
+}
+
 static bool check_running(void)
 {
     if (gpio_get(N64_NMI) == 0) {
@@ -145,59 +170,35 @@ static bool check_running(void)
     return true;
 }
 
-static unsigned char ReadBit(void)
+static unsigned char ReadBits(int n)
 {
-    unsigned char res;
-    unsigned char vin;
-
-    // wait for DCLK to go low
-    do {
-        vin = gpio_get(N64_CIC_DCLK);
-    } while (vin && check_running());
-
-    // Read the data bit
-    res = gpio_get(N64_CIC_DIO);
-
-    // wait for DCLK to go high
-    do {
-        vin = gpio_get(N64_CIC_DCLK);
-    } while ((!vin) && check_running());
-
-    return res ? 1 : 0;
+    cic_in_bits = 0;
+    cic_in_count = n;
+    while(cic_in_count && check_running()) {}
+    return cic_in_bits;
 }
 
-static void WriteBit(unsigned char b)
+static void WriteBits(unsigned char b, int n)
 {
-    unsigned char vin;
+    while(cic_out_count && check_running()) {}
+    cic_out_bits = b << (4 - n);
+    cic_out_count = n;
+}
 
-    // wait for DCLK to go low
-    do {
-        vin = gpio_get(N64_CIC_DCLK);
-    } while (vin && check_running());
+static inline unsigned char ReadBit(void)
+{
+    return ReadBits(1);
+}
 
-    if (b == 0)
-    {
-        // Drive low
-        gpio_set_dir(N64_CIC_DIO, GPIO_OUT);
-        gpio_put(N64_CIC_DIO, 0);
-    }
-
-    // wait for DCLK to go high
-    do {
-        vin = gpio_get(N64_CIC_DCLK);
-    } while ((!vin) && check_running());
-
-    // Disable output
-    gpio_set_dir(N64_CIC_DIO, GPIO_IN);
+static inline void WriteBit(unsigned char b)
+{
+    WriteBits(b, 1);
 }
 
 /* Writes the lowes 4 bits of the byte */
 static void WriteNibble(unsigned char n)
 {
-    WriteBit(n & 0x08);
-    WriteBit(n & 0x04);
-    WriteBit(n & 0x02);
-    WriteBit(n & 0x01);
+    WriteBits(n, 4);
 }
 
 // Write RAM nibbles until index hits a 16 Byte border
@@ -213,15 +214,7 @@ static void WriteRamNibbles(unsigned char index)
 /* Reads 4 bits and returns them in the lowes 4 bits of a byte */
 static unsigned char ReadNibble(void)
 {
-    unsigned char res = 0;
-    unsigned char i;
-    for (i = 0; i < 4; i++)
-    {
-        res <<= 1;
-        res |= ReadBit();
-    }
-
-    return res;
+    return ReadBits(4);
 }
 
 /* Encrypt and output the seed */
@@ -591,6 +584,8 @@ static void cic_run(void)
 
 void cic_main(void)
 {
+    gpio_set_irq_enabled_with_callback(N64_CIC_DCLK, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &cic_dclk_callback);
+
     while (1) {
 	int cic_cfg = 0;
 	_CicSeed = cic_data[cic_cfg].CicSeed;
