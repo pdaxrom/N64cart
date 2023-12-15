@@ -501,6 +501,9 @@ static void cic_run(void)
 {
     unsigned char isPal;
 
+    cic_in_count = 0;
+    cic_out_count = 0;
+
     // Reset the state
     memset(_CicMem, 0, sizeof(_CicMem));
     memset(_6105Mem, 0, sizeof(_6105Mem));
