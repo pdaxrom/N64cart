@@ -129,13 +129,10 @@ static int cic_in_count;
 static unsigned char cic_out_bits;
 static int cic_out_count;
 
-static int si_skip_pulses;
 static int si_pulse_counter;
-static int si_bits_counter;
-static int si_bytes_counter;
-static int si_out_bytes_counter;
-static unsigned char si_data_byte[12];
-static unsigned char si_data_pulse[4];
+static int si_out_pulses;
+static unsigned char si_data_bits[128];
+static unsigned char si_data_byte[16];
 
 static uint8_t eeprom_data[2048];
 
@@ -148,118 +145,113 @@ static void cic_dclk_callback(void) {
     uint events = (*status_reg >> 4 * (gpio % 8)) & 0xf;
 
     if (events & GPIO_IRQ_EDGE_RISE) {
-        static bool si_out = false;
-        static bool skip_pulse = true;
-        skip_pulse = !skip_pulse;
-        if (!skip_pulse) {
-//            if (si_skip_pulses) {
-//                si_skip_pulses--;
-//                iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
-//                return;
-//            }
-            if (si_out) {
-                if (si_pulse_counter == 0) {
-                    if (si_bytes_counter > si_out_bytes_counter) {
-                        gpio_set_dir(N64_SI_DATA, GPIO_IN);
-                        si_out = false;
-                        si_bits_counter = 0;
-                        si_bytes_counter = 0;
-                    } else if (si_bytes_counter == si_out_bytes_counter) {
-                        *((uint32_t *)si_data_pulse) = 0x01010000;
-                        si_bytes_counter++;
-                    } else {
-                        if (si_data_byte[si_bytes_counter] & 0x80) {
-                            *((uint32_t *)si_data_pulse) = 0x01010100;
-                        } else {
-                            *((uint32_t *)si_data_pulse) = 0x01000000;
-                        }
-                        si_data_byte[si_bytes_counter] <<= 1;
-                        si_bits_counter++;
-                        if (si_bits_counter == 8) {
-                            si_bits_counter = 0;
-                            si_bytes_counter++;
-                        }
-                    }
-                }
-                if (si_out) {
-                    if (si_data_pulse[si_pulse_counter]) {
-                        gpio_set_dir(N64_SI_DATA, GPIO_IN);
-                    } else {
-                        gpio_set_dir(N64_SI_DATA, GPIO_OUT);
-                        gpio_put(N64_SI_DATA, 0);
-                    }
-                    si_pulse_counter++;
-                    if (si_pulse_counter == 4) {
-                        si_pulse_counter = 0;
-                    }
-                }
-            } else {
-                si_data_pulse[si_pulse_counter++] = (gpio_get(N64_SI_DATA) ? 1 : 0);
-                if (si_pulse_counter == 1 && si_data_pulse[si_pulse_counter - 1] == 1) {
-                    if (si_bytes_counter) {
-                        printf("SI read %d bytes\n", si_bytes_counter);
-                        for (int i = 0; i < si_bytes_counter; i++) {
-                            printf("%02X ", si_data_byte[i]);
-                        }
+	    static bool skip_pulse = true;
+	    skip_pulse = !skip_pulse;
+	    if (!skip_pulse) {
+		si_data_bits[si_pulse_counter++] = gpio_get(N64_SI_DATA) ? 1 : 0;
+		if (si_pulse_counter % 4 == 1 && si_data_bits[si_pulse_counter - 1] == 1) {
+		    if (si_pulse_counter > 1) {
+			si_pulse_counter--;
+#if 0
+			printf("%d -- %d\n", si_pulse_counter, si_pulse_counter % 32);
+			for (int i = 0; i < si_pulse_counter; i++) {
+			    if (i % 4 == 0) {
+				printf(".");
+			    }
+			    if (si_data_bits[i]) {
+				printf("-");
+			    } else {
+				printf("_");
+			    }
+			}
+			printf("\n");
+#endif
+			if (si_pulse_counter % 32 == 4) {
+			    if (*((uint32_t *)&si_data_bits[si_pulse_counter - 4]) == 0x01010100) {
+//				printf("Stop bit detected\n");
+				int bit_counter = 0;
+				int byte_counter = 0;
+				unsigned char byte = 0;
+				for (int i = 0; i < si_pulse_counter - 4; i += 4) {
+				    switch (*((uint32_t *)&si_data_bits[i])) {
+				    case 0x01000000: byte <<= 1; break;
+				    case 0x01010100: byte = (byte << 1) | 1; break;
+				    }
+				    bit_counter++;
+				    if (bit_counter == 8) {
+					si_data_byte[byte_counter++] = byte;
+					bit_counter = 0;
+				    }
+				}
+//				for (int i = 0; i < byte_counter; i++) {
+//				    printf("%02X", si_data_byte[i]);
+//				}
+//				printf("\n");
+				if (si_data_byte[0] == 0x00 || si_data_byte[0] == 0xff) {
+				    si_data_byte[0] = 0x00;
+				    si_data_byte[1] = 0xc0;
+				    si_data_byte[2] = 0x00;
+				    byte_counter = 3;
+				} else if (si_data_byte[0] == 0x04) {
+//				    uint32_t offset = si_data_byte[1] << 3;
+//				    *((uint32_t *)&si_data_byte[0]) = *((uint32_t *)&eeprom_data[offset]);
+//				    *((uint32_t *)&si_data_byte[4]) = *((uint32_t *)&eeprom_data[offset + 4]);
+				    memmove(&si_data_byte[0], &eeprom_data[si_data_byte[1] << 3], 8);
+				    byte_counter = 8;
+				} else if (si_data_byte[0] == 0x05) {
+//				    uint32_t offset = si_data_byte[1] << 3;
+//				    *((uint32_t *)&eeprom_data[offset]) = *((uint32_t *)&si_data_byte[2]);
+//				    *((uint32_t *)&eeprom_data[offset + 4]) = *((uint32_t *)&si_data_byte[6]);
+				    memmove(&eeprom_data[si_data_byte[1] << 3], &si_data_byte[2], 8);
+				    si_data_byte[0] = 0x00;
+				    byte_counter = 1;
+				}
 
-                        si_bytes_counter = 0;
+				si_out_pulses = 0;
+				for (int i = 0; i < byte_counter; i++) {
+				    for (int j = 0; j < 8; j++) {
+					if (si_data_byte[i] & 0x80) {
+					    *((uint32_t *)&si_data_bits[si_out_pulses]) = 0x01010100;
+					} else {
+					    *((uint32_t *)&si_data_bits[si_out_pulses]) = 0x01000000;
+					}
+					si_out_pulses += 4;
+					si_data_byte[i] <<= 1;
+				    }
+				}
+				*((uint32_t *)&si_data_bits[si_out_pulses]) = 0x01010000;
+				si_out_pulses += 4;
 
-                        uint32_t offset;
-                        switch(si_data_byte[0]) {
-                        case 0x00:
-                        case 0xff:
-                            si_data_byte[0] = 0x00;
-                            si_data_byte[1] = 0xc0;
-                            si_data_byte[2] = 0x00;
-                            si_out_bytes_counter = 3;
-                            si_out = true;
-                            break;
-                        case 0x04:
-                            offset = si_data_byte[1];
-                            memmove(&si_data_byte[0], &eeprom_data[offset << 3], 8);
-                            si_out_bytes_counter = 8;
-                            si_out = true;
-                            break;
-                        case 0x05:
-                            offset = si_data_byte[1];
-                            memmove(&eeprom_data[offset << 3], &si_data_byte[2], 8);
-                            si_data_byte[0] = 0x00;
-                            si_out_bytes_counter = 1;
-                            si_out = true;
-                            break;
-                        }
-                    }
-                    si_bits_counter = 0;
-                    si_pulse_counter = 0;
-                    iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
-                    return;
-                }
+				gpio_set_irq_enabled(N64_SI_CLK, GPIO_IRQ_EDGE_RISE, false);
+				gpio_set_irq_enabled(N64_SI_CLK, GPIO_IRQ_EDGE_FALL, true);
 
-                if (si_pulse_counter == 4) {
-                    si_pulse_counter = 0;
-                    if (*((uint32_t *)si_data_pulse) == 0x01010100) {
-                        si_data_byte[si_bytes_counter] <<= 1;
-                        si_data_byte[si_bytes_counter] |= 1;
-                        si_bits_counter++;
-                    } else if (*((uint32_t *)si_data_pulse) == 0x01000000) {
-                        si_data_byte[si_bytes_counter] <<= 1;
-                        si_bits_counter++;
-                    } else {
-                        printf("SI wrong bit\n");
-                        si_bits_counter = 0;
-                        si_bytes_counter = 0;
-                        si_pulse_counter = 0;
-                    }
+			    }
+			}
+		    }
+		    si_pulse_counter = 0;
+		}
+	}
 
-                    if (si_bits_counter == 8) {
-                        si_bits_counter = 0;
-                        si_bytes_counter++;
-                    }
-                }
-            }
-        }
         iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
     }
+
+    if (events & GPIO_IRQ_EDGE_FALL) {
+        if (si_data_bits[si_pulse_counter++]) {
+            gpio_set_dir(N64_SI_DATA, GPIO_IN);
+        } else {
+            gpio_set_dir(N64_SI_DATA, GPIO_OUT);
+            gpio_put(N64_SI_DATA, 0);
+        }
+
+	si_out_pulses--;
+	if (!si_out_pulses) {
+	    gpio_set_irq_enabled(N64_SI_CLK, GPIO_IRQ_EDGE_FALL, false);
+	    gpio_set_irq_enabled(N64_SI_CLK, GPIO_IRQ_EDGE_RISE, true);
+	}
+
+        iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
+    }
+
 #ifdef USE_CIC_DCLK_IRQ
     gpio = N64_CIC_DCLK;
     status_reg = &irq_ctrl_base->ints[gpio / 8];
@@ -692,17 +684,12 @@ static void cic_run(void) {
 
 void cic_main(void) {
     // #ifdef USE_CIC_DCLK_IRQ
-    //     gpio_acknowledge_irq(N64_CIC_DCLK, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL);
     //     gpio_set_irq_enabled(N64_CIC_DCLK, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
     // #endif
 
-    si_skip_pulses = 0;
     si_pulse_counter = 0;
-    si_bits_counter = 0;
-    si_bytes_counter = 0;
-    si_out_bytes_counter = 0;
+    si_out_pulses = 0;
 
-    gpio_acknowledge_irq(N64_SI_CLK, GPIO_IRQ_EDGE_RISE);
     gpio_set_irq_enabled(N64_SI_CLK, GPIO_IRQ_EDGE_RISE, true);
 
     irq_set_exclusive_handler(IO_IRQ_BANK0, cic_dclk_callback);
