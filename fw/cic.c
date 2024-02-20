@@ -172,14 +172,12 @@ static void cic_dclk_callback(void) {
                                 int bit_counter = 0;
                                 int byte_counter = 0;
                                 unsigned char byte = 0;
+
                                 for (int i = 0; i < si_pulse_counter - 4; i += 4) {
-                                    switch (*((uint32_t *)&si_data_bits[i])) {
-                                        case 0x01000000:
-                                            byte <<= 1;
-                                            break;
-                                        case 0x01010100:
-                                            byte = (byte << 1) | 1;
-                                            break;
+                                    if (*((uint32_t *)&si_data_bits[i]) == 0x01000000) {
+                                        byte <<= 1;
+                                    } else if (*((uint32_t *)&si_data_bits[i]) == 0x01010100) {
+                                        byte = (byte << 1) | 1;
                                     }
                                     bit_counter++;
                                     if (bit_counter == 8) {
@@ -187,6 +185,9 @@ static void cic_dclk_callback(void) {
                                         bit_counter = 0;
                                     }
                                 }
+
+                                si_out_pulses = 0;
+
                                 if (si_data_byte[0] == 0x00 || si_data_byte[0] == 0xff) {
                                     si_data_byte[0] = 0x00;
                                     si_data_byte[1] = 0xc0;
@@ -199,9 +200,10 @@ static void cic_dclk_callback(void) {
                                     memmove(&si_eeprom[si_data_byte[1] << 3], &si_data_byte[2], 8);
                                     si_data_byte[0] = 0x00;
                                     byte_counter = 1;
+                                } else {
+                                    goto cmd_error;
                                 }
 
-                                si_out_pulses = 0;
                                 for (int i = 0; i < byte_counter; i++) {
                                     for (int j = 0; j < 8; j++) {
                                         if (si_data_byte[i] & 0x80) {
@@ -215,6 +217,7 @@ static void cic_dclk_callback(void) {
                                 }
                                 *((uint32_t *)&si_data_bits[si_out_pulses]) = 0x01010000;
                                 si_out_pulses += 4;
+                            cmd_error:
                             }
                         }
                     }
