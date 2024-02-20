@@ -134,8 +134,6 @@ static int si_out_pulses;
 static unsigned char si_data_bits[324];
 static unsigned char si_data_byte[16];
 
-static uint8_t eeprom_data[2048];
-
 static void cic_dclk_callback(void) {
     //    io_irq_ctrl_hw_t *irq_ctrl_base = &iobank0_hw->proc0_irq_ctrl;
     io_irq_ctrl_hw_t *irq_ctrl_base = get_core_num() ? &iobank0_hw->proc1_irq_ctrl : &iobank0_hw->proc0_irq_ctrl;
@@ -183,10 +181,10 @@ static void cic_dclk_callback(void) {
                                 si_data_byte[2] = 0x00;
                                 byte_counter = 3;
                             } else if (si_data_byte[0] == 0x04) {
-                                memmove(&si_data_byte[0], &eeprom_data[si_data_byte[1] << 3], 8);
+                                memmove(&si_data_byte[0], &si_eeprom[si_data_byte[1] << 3], 8);
                                 byte_counter = 8;
                             } else if (si_data_byte[0] == 0x05) {
-                                memmove(&eeprom_data[si_data_byte[1] << 3], &si_data_byte[2], 8);
+                                memmove(&si_eeprom[si_data_byte[1] << 3], &si_data_byte[2], 8);
                                 si_data_byte[0] = 0x00;
                                 byte_counter = 1;
                             }

@@ -28,6 +28,7 @@ struct flash_chip {
 
 extern uint8_t pi_sram[];
 extern uint16_t *pi_rom_lookup;
+extern uint8_t *si_eeprom;
 
 extern char __flash_binary_end;
 
