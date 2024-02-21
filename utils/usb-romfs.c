@@ -326,10 +326,10 @@ int main(int argc, char *argv[]) {
                 if (argc > 2 && !strncmp(param, "--fix-pi-bus-speed", 18)) {
                     fix_pi_freq = true;
                     if (param[18] == '=') {
-                        pi_freq = strtoimax(&param[19], NULL, 16) & 0xff;
-                        if (pi_freq < 0x12) {
-                            pi_freq = 0x12;
-                        }
+                        pi_freq = strtoimax(&param[19], NULL, 16);
+//                        if (pi_freq < 0x12) {
+//                            pi_freq = 0x12;
+//                        }
                     }
                     argv++;
                     argc--;
@@ -398,8 +398,10 @@ int main(int argc, char *argv[]) {
                                 }
 
                                 if (fix_pi_freq) {
-                                    if (buffer[0] == 0x80 && buffer[1] == 0x37 && buffer[3] == 0x40) {
-                                        buffer[2] = pi_freq;
+                                    if (buffer[0] == 0x80 && buffer[1] == 0x37) {
+                                        printf("PI bus freq set to %04X\n", pi_freq);
+                                        buffer[2] = pi_freq >> 8;
+                                        buffer[3] = pi_freq & 0xff;
                                     } else {
                                         fprintf(stderr, "Rom type is not Z64, use --fix-rom to convert to Z64 type!\n");
                                         break;
