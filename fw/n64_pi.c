@@ -72,93 +72,111 @@ void n64_pi(void) {
     uint32_t word;
 
     uint32_t mapped_addr;
+    uint32_t sram_address;
 
-    uint32_t addr = pio_sm_get_blocking(pio, 0);
+    // uint32_t addr = pio_sm_get_blocking(pio, 0);
+    while ((pio->fstat & 0x100) != 0) {
+    }
+    uint32_t addr = pio->rxf[0];
+
     do {
-        if (addr == 0) {
-            // READ
-            if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
-                do {
-                    mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
-                    word = flash_quad_read16_EC(mapped_addr);
-                    pio_sm_put(pio, 0, word);
-                    last_addr += 2;
-                    addr = pio_sm_get_blocking(pio, 0);
-                } while (addr == 0);
+        last_addr = addr;
 
-                continue;
-#if PI_SRAM
-            } else if (last_addr >= 0x08000000 && last_addr <= 0x0FFFFFFF) {
-                do {
-                    word = sram_16[resolve_sram_address(last_addr) >> 1];
+        if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
+            do {
+                mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
+                word = flash_quad_read16_EC(mapped_addr);
 
-                    pio_sm_put(pio, 0, word);
-                    last_addr += 2;
-                    addr = pio_sm_get_blocking(pio, 0);
-                } while (addr == 0);
-
-                continue;
-#endif
-            } else if (last_addr == 0x1fd01002) {
-                word = ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02) |
-                       ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01) | 0x00f0;
-            } else if (last_addr == 0x1fd01006) {
-                word = uart_get_hw(UART_ID)->dr;
-            } else if (last_addr == 0x1fd0100e) {
-                word = flash_ctrl_reg;
-            } else if (last_addr == 0x1fd01012) {
-                uint32_t flags = ssi_hw->sr;
-                word = ((flags & SSI_SR_TFNF_BITS) ? 0x01 : 0x00) | ((flags & SSI_SR_RFNE_BITS) ? 0x02 : 0x00);
-            } else if (last_addr == 0x1fd01016) {
-                uint8_t byte = (uint8_t)ssi_hw->dr0;
-                word = byte;
-            } else if (last_addr == 0x1fd0101a) {
-                uintptr_t fw_binary_end = (uintptr_t)&__flash_binary_end;
-                word = (((fw_binary_end - XIP_BASE) + 4095) & ~4095) >> 12;
-            } else {
-                word = 0xdead;
-            }
-            pio_sm_put(pio, 0, word);
-            last_addr += 2;
-        } else if (addr & 0x1) {
-            // WRITE
-#if PI_SRAM
-            if (last_addr >= 0x08000000 && last_addr <= 0x0FFFFFFF) {
-                do {
-                    sram_16[resolve_sram_address(last_addr) >> 1] = addr >> 16;
-
-                    last_addr += 2;
-                    addr = pio_sm_get_blocking(pio, 0);
-                } while (addr & 0x01);
-
-                continue;
-            } else
-#endif
-                if (last_addr == 0x1fd01006) {
-                uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
-            } else if (last_addr == 0x1fd0100a) {
-                gpio_put(LED_PIN, (addr >> 16) & 0x01);
-            } else if (last_addr == 0x1fd0100e) {
-                uint16_t ctrl_reg = addr >> 16;
-                if (ctrl_reg & 0x10) {
-                    flash_quad_cont_read_mode();
-                } else {
-                    if (flash_ctrl_reg & 0x10) {
-                        flash_quad_exit_cont_read_mode();
-                        flash_spi_mode();
-                    }
-                    flash_cs_force(ctrl_reg & 0x01);
+                // addr = pio_sm_get_blocking(pio, 0);
+                while ((pio->fstat & 0x100) != 0) {
                 }
-                flash_ctrl_reg = ctrl_reg;
-            } else if (last_addr == 0x1fd01016) {
-                uint8_t byte = (addr >> 16) & 0xff;
-                ssi_hw->dr0 = byte;
-            }
+                addr = pio->rxf[0];
 
-            last_addr += 2;
+                if (addr == 0) {
+                    // pio_sm_put(pio, 0, word);
+                    pio->txf[0] = word;
+                } else if (!(addr & 1)) {
+                    break;
+                }
+                last_addr += 2;
+            } while (true);
+#if PI_SRAM
+        } else if (last_addr >= 0x08000000 && last_addr <= 0x0FFFFFFF) {
+            sram_address = resolve_sram_address(last_addr) >> 1;
+            do {
+                // addr = pio_sm_get_blocking(pio, 0);
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    // pio_sm_put(pio, 0, sram_16[sram_address++]);
+                    pio->txf[0] = sram_16[sram_address++];
+                } else if (addr & 1) {
+                    sram_16[sram_address++] = addr >> 16;
+                } else {
+                    break;
+                }
+                last_addr += 2;
+            } while (true);
+#endif
         } else {
-            last_addr = addr;
+            do {
+                // addr = pio_sm_get_blocking(pio, 0);
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    if (last_addr == 0x1fd01002) {
+                        word = ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02) |
+                               ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01) | 0x00f0;
+                    } else if (last_addr == 0x1fd01006) {
+                        word = uart_get_hw(UART_ID)->dr;
+                    } else if (last_addr == 0x1fd0100e) {
+                        word = flash_ctrl_reg;
+                    } else if (last_addr == 0x1fd01012) {
+                        uint32_t flags = ssi_hw->sr;
+                        word = ((flags & SSI_SR_TFNF_BITS) ? 0x01 : 0x00) | ((flags & SSI_SR_RFNE_BITS) ? 0x02 : 0x00);
+                    } else if (last_addr == 0x1fd01016) {
+                        uint8_t byte = (uint8_t)ssi_hw->dr0;
+                        word = byte;
+                    } else if (last_addr == 0x1fd0101a) {
+                        uintptr_t fw_binary_end = (uintptr_t)&__flash_binary_end;
+                        word = (((fw_binary_end - XIP_BASE) + 4095) & ~4095) >> 12;
+                    } else {
+                        word = 0xdead;
+                    }
+                    // pio_sm_put(pio, 0, word);
+                    pio->txf[0] = word;
+                    last_addr += 2;
+                } else if (addr & 1) {
+                    if (last_addr == 0x1fd01006) {
+                        uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
+                    } else if (last_addr == 0x1fd0100a) {
+                        gpio_put(LED_PIN, (addr >> 16) & 0x01);
+                    } else if (last_addr == 0x1fd0100e) {
+                        uint16_t ctrl_reg = addr >> 16;
+                        if (ctrl_reg & 0x10) {
+                            flash_quad_cont_read_mode();
+                        } else {
+                            if (flash_ctrl_reg & 0x10) {
+                                flash_quad_exit_cont_read_mode();
+                                flash_spi_mode();
+                            }
+                            flash_cs_force(ctrl_reg & 0x01);
+                        }
+                        flash_ctrl_reg = ctrl_reg;
+                    } else if (last_addr == 0x1fd01016) {
+                        uint8_t byte = (addr >> 16) & 0xff;
+                        ssi_hw->dr0 = byte;
+                    }
+
+                    last_addr += 2;
+                } else {
+                    break;
+                }
+            } while (true);
         }
-        addr = pio_sm_get_blocking(pio, 0);
     } while (1);
 }
