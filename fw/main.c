@@ -12,6 +12,7 @@
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
 #include "hardware/flash.h"
+#include "hardware/vreg.h"
 #include "flashrom.h"
 #include "romfs/romfs.h"
 
@@ -22,12 +23,22 @@
 #include "n64.h"
 
 static const struct flash_chip flash_chip[] = {
-    { 0xef, 0x4020, 4, 16, 266000, "W25Q512" },
-    { 0xef, 0x4019, 2, 16, 266000, "W25Q256" },
-    { 0xef, 0x4018, 1, 16, 266000, "W25Q128" },
-    { 0xef, 0x4017, 1, 8 , 266000, "W25Q64"  },
-    { 0xef, 0x4016, 1, 4 , 266000, "W25Q32"  },
-    { 0xef, 0x4015, 1, 2 , 266000, "W25Q16"  }
+    { 0xef, 0x4020, 4, 16, 340000, VREG_VOLTAGE_1_20, "W25Q512" },
+    { 0xef, 0x4019, 2, 16, 340000, VREG_VOLTAGE_1_20, "W25Q256" },
+    { 0xef, 0x4018, 1, 16, 340000, VREG_VOLTAGE_1_20, "W25Q128" },
+    { 0xef, 0x4017, 1, 8 , 340000, VREG_VOLTAGE_1_20, "W25Q64"  },
+    { 0xef, 0x4016, 1, 4 , 340000, VREG_VOLTAGE_1_20, "W25Q32"  },
+    { 0xef, 0x4015, 1, 2 , 340000, VREG_VOLTAGE_1_20, "W25Q16"  }
+//    { 0xef, 0x4020, 4, 16, 330000, VREG_VOLTAGE_1_20, "W25Q512" },
+//    { 0xef, 0x4020, 4, 16, 328000, VREG_VOLTAGE_1_15, "W25Q512" },
+//    { 0xef, 0x4020, 4, 16, 318000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
+//    { 0xef, 0x4020, 4, 16, 300000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
+//    { 0xef, 0x4020, 4, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
+//    { 0xef, 0x4019, 2, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q256" },
+//    { 0xef, 0x4018, 1, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q128" },
+//    { 0xef, 0x4017, 1, 8 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q64"  },
+//    { 0xef, 0x4016, 1, 4 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q32"  },
+//    { 0xef, 0x4015, 1, 2 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q16"  }
 };
 
 static const struct flash_chip *used_flash_chip;
@@ -94,7 +105,11 @@ static void setup_sysconfig(void)
     used_flash_chip = NULL;
     for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
 	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
-	    set_sys_clock_khz(flash_chip[i].sys_freq, true);
+	    vreg_set_voltage(flash_chip[i].voltage);
+	    if (!set_sys_clock_khz(flash_chip[i].sys_freq, true)) {
+		printf("Can't set sys clock %dKHz\n", flash_chip[i].sys_freq);
+		vreg_set_voltage(VREG_VOLTAGE_DEFAULT);
+	    }
 	    used_flash_chip = &flash_chip[i];
 	    break;
 	}

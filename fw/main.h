@@ -23,6 +23,7 @@ struct flash_chip {
     uint8_t rom_pages;
     uint8_t rom_size;
     uint32_t sys_freq;
+    uint8_t voltage;
     const char *name;
 };
 
