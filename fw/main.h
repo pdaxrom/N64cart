@@ -27,6 +27,8 @@ struct flash_chip {
     const char *name;
 };
 
+extern uint16_t flash_ctrl_reg;
+
 extern uint8_t pi_sram[];
 extern uint16_t *pi_rom_lookup;
 extern uint8_t *si_eeprom;

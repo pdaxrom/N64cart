@@ -188,9 +188,10 @@ static void cic_dclk_callback(void) {
 
                                 si_out_pulses = 0;
 
+//printf("%02X\n", si_data_byte[0]);
                                 if (si_data_byte[0] == 0x00 || si_data_byte[0] == 0xff) {
                                     si_data_byte[0] = 0x00;
-                                    si_data_byte[1] = 0xc0;
+                                    si_data_byte[1] = (flash_ctrl_reg & 0x1000) ? 0xc0 : 0x80;
                                     si_data_byte[2] = 0x00;
                                     byte_counter = 3;
                                 } else if (si_data_byte[0] == 0x04) {

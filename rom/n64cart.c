@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022 sashz /pdaXrom.org/
+ * Copyright (c) 2022-2024 sashz /pdaXrom.org/
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -217,16 +217,32 @@ uint32_t n64cart_fw_size(void)
     return (io_read(N64CART_FW_SIZE) & 0xffff) << 12;
 }
 
-void n64cart_sram_lock()
+void n64cart_sram_lock(void)
 {
     uint32_t ctrl = io_read(N64CART_SYS_CTRL);
     ctrl &= ~N64CART_SRAM_UNLOCK;
     io_write(N64CART_SYS_CTRL, ctrl);
 }
 
-void n64cart_sram_unlock()
+void n64cart_sram_unlock(void)
 {
     uint32_t ctrl = io_read(N64CART_SYS_CTRL);
     ctrl |= N64CART_SRAM_UNLOCK;
     io_write(N64CART_SYS_CTRL, ctrl);
+}
+
+void n64cart_eeprom_16kbit(bool enable)
+{
+    uint32_t ctrl = io_read(N64CART_SYS_CTRL);
+    if (enable) {
+	ctrl |= N64CART_EEPROM_16KBIT;
+    } else {
+	ctrl &= ~N64CART_EEPROM_16KBIT;
+    }
+    io_write(N64CART_SYS_CTRL, ctrl);
+}
+
+bool n64cart_is_eeprom_16kbit(void)
+{
+    return io_read(N64CART_SYS_CTRL) & N64CART_EEPROM_16KBIT;
 }

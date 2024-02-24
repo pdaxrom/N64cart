@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022 sashz /pdaXrom.org/
+ * Copyright (c) 2022-2024 sashz /pdaXrom.org/
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -18,6 +18,7 @@
 #define N64CART_SSI_SR		0x1fd01010
 #define N64CART_SSI_DR0		0x1fd01014
 
+#define N64CART_EEPROM_16KBIT	0x1000
 #define N64CART_SRAM_UNLOCK	0x100
 #define N64CART_FLASH_MODE_QUAD	0x10
 #define N64CART_FLASH_CS_HIGH	0x01
@@ -29,6 +30,8 @@
 
 #define N64CART_SRAM		0x08000000
 #define N64CART_ROM_LOOKUP	0x08020000
+#define N64CART_EEPROM		(0x08020000 + 4096 * 4 * 2 * 2)
+#define N64CART_RMRAM		(0x08020000 + 4096 * 4 * 2 * 2 + 2048)
 
 uint8_t n64cart_uart_getc(void);
 void n64cart_uart_putc(uint8_t data);
@@ -46,7 +49,10 @@ uint32_t flash_read32_0C(uint32_t addr);
 
 uint32_t n64cart_fw_size(void);
 
-void n64cart_sram_lock();
-void n64cart_sram_unlock();
+void n64cart_sram_lock(void);
+void n64cart_sram_unlock(void);
+
+void n64cart_eeprom_16kbit(bool enable);
+bool n64cart_is_eeprom_16kbit(void);
 
 #endif

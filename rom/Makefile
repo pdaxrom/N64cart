@@ -13,7 +13,7 @@ endif
 ASFLAGS += -x assembler-with-cpp
 CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function
 
-SRC = main.c n64cart.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c
+SRC = main.c n64cart.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c ext/shell_utils.c
 ASMSRC = ext/reboot.S
 
 OBJS = $(SRC:%.c=$(BUILD_DIR)/%.o)
