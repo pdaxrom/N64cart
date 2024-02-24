@@ -23,12 +23,12 @@
 #include "n64.h"
 
 static const struct flash_chip flash_chip[] = {
-    { 0xef, 0x4020, 4, 16, 348000, VREG_VOLTAGE_1_20, "W25Q512" },
-    { 0xef, 0x4019, 2, 16, 348000, VREG_VOLTAGE_1_20, "W25Q256" },
-    { 0xef, 0x4018, 1, 16, 348000, VREG_VOLTAGE_1_20, "W25Q128" },
-    { 0xef, 0x4017, 1, 8 , 348000, VREG_VOLTAGE_1_20, "W25Q64"  },
-    { 0xef, 0x4016, 1, 4 , 348000, VREG_VOLTAGE_1_20, "W25Q32"  },
-    { 0xef, 0x4015, 1, 2 , 348000, VREG_VOLTAGE_1_20, "W25Q16"  }
+    { 0xef, 0x4020, 4, 16, 342000, VREG_VOLTAGE_1_20, "W25Q512" },
+    { 0xef, 0x4019, 2, 16, 342000, VREG_VOLTAGE_1_20, "W25Q256" },
+    { 0xef, 0x4018, 1, 16, 342000, VREG_VOLTAGE_1_20, "W25Q128" },
+    { 0xef, 0x4017, 1, 8 , 342000, VREG_VOLTAGE_1_20, "W25Q64"  },
+    { 0xef, 0x4016, 1, 4 , 342000, VREG_VOLTAGE_1_20, "W25Q32"  },
+    { 0xef, 0x4015, 1, 2 , 342000, VREG_VOLTAGE_1_20, "W25Q16"  },
 //    { 0xef, 0x4020, 4, 16, 330000, VREG_VOLTAGE_1_20, "W25Q512" },
 //    { 0xef, 0x4020, 4, 16, 328000, VREG_VOLTAGE_1_15, "W25Q512" },
 //    { 0xef, 0x4020, 4, 16, 318000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
