@@ -251,4 +251,4 @@ So, the total cost of the pcb and components is approximately $9.
 
 <img src="pics/IMG_20220826_213833.jpg" width="480" />
 
-<img src="pics/IMG_20220826_213916.jpg" width="480" />
+<img src="pics/IMG_20240225_124908.jpg" width="480" />
