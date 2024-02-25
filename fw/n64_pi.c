@@ -20,7 +20,7 @@
 
 uint16_t flash_ctrl_reg = 0x11;
 
-uint8_t pi_sram[SRAM_1MBIT_SIZE + ROMFS_FLASH_SECTOR * 4 * 2 * 2 + 2048];
+uint8_t pi_sram[SRAM_1MBIT_SIZE + ROMFS_FLASH_SECTOR * 4 * 2 * 2 + 2048 + 512];
 uint16_t *pi_rom_lookup = (uint16_t *)&pi_sram[SRAM_1MBIT_SIZE];
 uint8_t *si_eeprom = &pi_sram[SRAM_1MBIT_SIZE + ROMFS_FLASH_SECTOR * 4 * 2 * 2];
 
