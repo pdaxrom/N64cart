@@ -599,9 +599,9 @@ int main(void)
 
 	for (int i = first_file; i < total_files_to_show; i++) {
 	    if (i == menu_sel) {
-		sprintf(tStr, "%02d: *%s", i, files[i]);
+		sprintf(tStr, "%02d: *%.24s", i, files[i]);
 	    } else {
-		sprintf(tStr, "%02d:  %s", i, files[i]);
+		sprintf(tStr, "%02d:  %.24s", i, files[i]);
 	    }
 	    graphics_draw_text(disp, 40 * scr_scale, (120 + (i - first_file) * 10) * scr_scale, tStr);
 	}
