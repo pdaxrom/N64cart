@@ -40,7 +40,6 @@ add_executable(
     flashrom.c
     romfs/romfs.c
     usb/dev_lowlevel.c
-    usb/crc32.c
 )
 
 # pull in common dependencies

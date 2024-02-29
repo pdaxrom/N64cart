@@ -39,15 +39,15 @@ enum {
 };
 
 typedef struct __attribute__((packed)) {
-    uint16_t mode: 3;
-    uint16_t type: 13;
+    uint16_t mode:3;
+    uint16_t type:13;
 } attr_by_names;
 
 typedef struct __attribute__((packed)) {
-    char     name[ROMFS_MAX_NAME_LEN];
+    char name[ROMFS_MAX_NAME_LEN];
     union {
-	attr_by_names names;
-	uint16_t raw;
+        attr_by_names names;
+        uint16_t raw;
     } attr;
     uint32_t start;
     uint32_t size;
@@ -65,25 +65,25 @@ typedef struct {
 } romfs_file;
 
 bool romfs_flash_sector_erase(uint32_t offset);
-bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer);
-bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need);
+bool romfs_flash_sector_write(uint32_t offset, uint8_t * buffer);
+bool romfs_flash_sector_read(uint32_t offset, uint8_t * buffer, uint32_t need);
 
 #ifdef ROMFS_NO_INTERNAL_BUFFERS
-void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t *map_size, uint32_t *list_size);
-bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t *flash_list);
+void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t * map_size, uint32_t * list_size);
+bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t * flash_map, uint8_t * flash_list);
 #else
 bool romfs_start(uint32_t start, uint32_t rom_size);
 #endif
 bool romfs_format(void);
 uint32_t romfs_free(void);
-uint32_t romfs_list(romfs_file *entry, bool first);
+uint32_t romfs_list(romfs_file * entry, bool first);
 uint32_t romfs_delete(const char *name);
-uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer);
-uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file *file);
-uint32_t romfs_close_file(romfs_file *file);
-uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer);
-bool romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_file *file);
-uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file);
+uint32_t romfs_create_file(char *name, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer);
+uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file * file);
+uint32_t romfs_close_file(romfs_file * file);
+uint32_t romfs_open_file(char *name, romfs_file * file, uint8_t * io_buffer);
+bool romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);
+uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file * file);
 const char *romfs_strerror(uint32_t err);
 
 #endif

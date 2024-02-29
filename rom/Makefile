@@ -11,9 +11,11 @@ SED = sed
 endif
 
 ASFLAGS += -x assembler-with-cpp
-CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function
+CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb
 
-SRC = main.c n64cart.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c ext/shell_utils.c
+CFLAGS += -DFIRMWARE_VERSION=$(shell sed -n 's/.*FIRMWARE_VERSION.*\(0x[0-9a-fA-F]*\).*/\1/p' ../fw/CMakeLists.txt)
+
+SRC = main.c n64cart.c syslog.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c ext/shell_utils.c usb/dev_lowlevel.c
 ASMSRC = ext/reboot.S
 
 OBJS = $(SRC:%.c=$(BUILD_DIR)/%.o)

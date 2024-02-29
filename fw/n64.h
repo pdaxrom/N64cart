@@ -1,5 +1,7 @@
 /**
- * Copyright (c) 2022-2023 sashz /pdaXrom.org/
+ * Copyright (c) 2022 Konrad Beckmann
+ * 
+ * Copyright (c) 2022-2024 sashz /pdaXrom.org/
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */

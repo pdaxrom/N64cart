@@ -1,49 +1,50 @@
 /**
- * Copyright (c) 2022-2023 sashz /pdaXrom.org/
+ * Copyright (c) 2022-2024 sashz /pdaXrom.org/
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include "main.h"
+
 #include <stdio.h>
 #include <string.h>
 
-#include "pico/stdlib.h"
-#include "pico/stdio.h"
-#include "pico/multicore.h"
+#include "cic.h"
+#include "flashrom.h"
 #include "hardware/clocks.h"
 #include "hardware/flash.h"
 #include "hardware/vreg.h"
-#include "flashrom.h"
-#include "romfs/romfs.h"
-
-#include "main.h"
-#include "cic.h"
-#include "usb/usbd.h"
-#include "n64_pi.h"
+#include "hardware/structs/xip_ctrl.h"
 #include "n64.h"
+#include "n64_pi.h"
+#include "pico/multicore.h"
+#include "pico/stdio.h"
+#include "pico/stdlib.h"
+#include "romfs/romfs.h"
+#include "usb/usbd.h"
 
 static const struct flash_chip flash_chip[] = {
     { 0xef, 0x4020, 4, 16, 342000, VREG_VOLTAGE_1_20, "W25Q512" },
     { 0xef, 0x4019, 2, 16, 342000, VREG_VOLTAGE_1_20, "W25Q256" },
     { 0xef, 0x4018, 1, 16, 342000, VREG_VOLTAGE_1_20, "W25Q128" },
-    { 0xef, 0x4017, 1, 8 , 342000, VREG_VOLTAGE_1_20, "W25Q64"  },
-    { 0xef, 0x4016, 1, 4 , 342000, VREG_VOLTAGE_1_20, "W25Q32"  },
-    { 0xef, 0x4015, 1, 2 , 342000, VREG_VOLTAGE_1_20, "W25Q16"  },
-//    { 0xef, 0x4020, 4, 16, 330000, VREG_VOLTAGE_1_20, "W25Q512" },
-//    { 0xef, 0x4020, 4, 16, 328000, VREG_VOLTAGE_1_15, "W25Q512" },
-//    { 0xef, 0x4020, 4, 16, 318000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
-//    { 0xef, 0x4020, 4, 16, 300000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
-//    { 0xef, 0x4020, 4, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
-//    { 0xef, 0x4019, 2, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q256" },
-//    { 0xef, 0x4018, 1, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q128" },
-//    { 0xef, 0x4017, 1, 8 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q64"  },
-//    { 0xef, 0x4016, 1, 4 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q32"  },
-//    { 0xef, 0x4015, 1, 2 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q16"  }
+    { 0xef, 0x4017, 1, 8, 342000, VREG_VOLTAGE_1_20, "W25Q64" },
+    { 0xef, 0x4016, 1, 4, 342000, VREG_VOLTAGE_1_20, "W25Q32" },
+    { 0xef, 0x4015, 1, 2, 342000, VREG_VOLTAGE_1_20, "W25Q16" },
+    //    { 0xef, 0x4020, 4, 16, 330000, VREG_VOLTAGE_1_20, "W25Q512" },
+    //    { 0xef, 0x4020, 4, 16, 328000, VREG_VOLTAGE_1_15, "W25Q512" },
+    //    { 0xef, 0x4020, 4, 16, 318000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
+    //    { 0xef, 0x4020, 4, 16, 300000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
+    //    { 0xef, 0x4020, 4, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
+    //    { 0xef, 0x4019, 2, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q256" },
+    //    { 0xef, 0x4018, 1, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q128" },
+    //    { 0xef, 0x4017, 1, 8 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q64"  },
+    //    { 0xef, 0x4016, 1, 4 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q32"  },
+    //    { 0xef, 0x4015, 1, 2 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q16"  }
 };
 
 static const struct flash_chip *used_flash_chip;
 
-//#define DEBUG_FS 1
+// #define DEBUG_FS 1
 
 bool romfs_flash_sector_erase(uint32_t offset)
 {
@@ -80,9 +81,9 @@ static void flash_ls()
     romfs_file file;
     printf("File list:\n");
     if (romfs_list(&file, true) == ROMFS_NOERR) {
-	do {
-	    printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
-	} while (romfs_list(&file, false) == ROMFS_NOERR);
+        do {
+            printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
+        } while (romfs_list(&file, false) == ROMFS_NOERR);
     }
 }
 
@@ -93,26 +94,26 @@ static void setup_sysconfig(void)
 
     txbuf[0] = 0x9f;
 
-//    printf("Detect ROM chip\n");
+    //    printf("Detect ROM chip\n");
 
     flash_do_cmd(txbuf, rxbuf, 4);
 
-//    printf("Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
+    //    printf("Flash jedec id %02X %02X %02X\n", rxbuf[1], rxbuf[2], rxbuf[3]);
 
     uint8_t mf = rxbuf[1];
     uint16_t id = (rxbuf[2] << 8) | rxbuf[3];
 
     used_flash_chip = NULL;
     for (int i = 0; i < sizeof(flash_chip) / sizeof(struct flash_chip); i++) {
-	if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
-	    vreg_set_voltage(flash_chip[i].voltage);
-	    if (!set_sys_clock_khz(flash_chip[i].sys_freq, true)) {
-		printf("Can't set sys clock %dKHz\n", flash_chip[i].sys_freq);
-		vreg_set_voltage(VREG_VOLTAGE_DEFAULT);
-	    }
-	    used_flash_chip = &flash_chip[i];
-	    break;
-	}
+        if (flash_chip[i].mf == mf && flash_chip[i].id == id) {
+            vreg_set_voltage(flash_chip[i].voltage);
+            if (!set_sys_clock_khz(flash_chip[i].sys_freq, true)) {
+                printf("Can't set sys clock %dKHz\n", flash_chip[i].sys_freq);
+                vreg_set_voltage(VREG_VOLTAGE_DEFAULT);
+            }
+            used_flash_chip = &flash_chip[i];
+            break;
+        }
     }
 }
 
@@ -137,9 +138,9 @@ void n64_pi_restart(void)
 int main(void)
 {
     for (int i = 0; i <= 27; i++) {
-	gpio_init(i);
-	gpio_set_dir(i, GPIO_IN);
-	gpio_set_pulls(i, false, false);
+        gpio_init(i);
+        gpio_set_dir(i, GPIO_IN);
+        gpio_set_pulls(i, false, false);
     }
 
     gpio_init(N64_CIC_DCLK);
@@ -168,20 +169,23 @@ int main(void)
     printf("N64cart by pdaXrom!\n");
 
     if (used_flash_chip == NULL) {
-	printf("Unknown ROM chip, system stopped!\n");
-	while(true) {
-	    tight_loop_contents();
-	}
+        printf("Unknown ROM chip, system stopped!\n");
+        while (true) {
+            tight_loop_contents();
+        }
     }
-
 #ifdef DEBUG_INFO
     show_sysinfo();
 #endif
 
-    uintptr_t fw_binary_end = (uintptr_t) &__flash_binary_end;
+    // disable XIP cache SRAM
+    hw_clear_bits(&xip_ctrl_hw->ctrl, XIP_CTRL_EN_BITS);
 
     flash_quad_exit_cont_read_mode();
     flash_spi_mode();
+    flash_config();
+
+    uintptr_t fw_binary_end = (uintptr_t) & __flash_binary_end;
 
     uint32_t flash_map_size, flash_list_size;
 
@@ -192,30 +196,29 @@ int main(void)
     uint8_t *romfs_flash_buffer = &pi_sram[flash_map_size + flash_list_size];
 
     if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
-	printf("Cannot start romfs!\n");
-	while(true) {
-	    tight_loop_contents();
-	}
+        printf("Cannot start romfs!\n");
+        while (true) {
+            tight_loop_contents();
+        }
     }
 
     romfs_file file;
     if (romfs_open_file("n64cart-manager.z64", &file, romfs_flash_buffer) == ROMFS_NOERR) {
-	romfs_read_map_table(pi_rom_lookup, 16384, &file);
+        romfs_read_map_table(pi_rom_lookup, 16384, &file);
 
-	backup_rom_lookup();
+        backup_rom_lookup();
     } else {
-	printf("romfs error: %s\n", romfs_strerror(file.err));
-	usbd_main();
-	while(true) {
-	    tight_loop_contents();
-	}
+        printf("romfs error: %s\n", romfs_strerror(file.err));
+        usbd_start();
+        while (true) {
+            tight_loop_contents();
+        }
     }
 
     flash_quad_cont_read_mode();
 
     multicore_launch_core1(n64_pi);
 
-    usbd_main();
     cic_main();
 
     return 0;

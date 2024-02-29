@@ -1,15 +1,18 @@
 /**
- * Copyright (c) 2022-2023 sashz /pdaXrom.org/
+ * Copyright (c) 2022-2024 sashz /pdaXrom.org/
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #pragma once
 
+#include <stdint.h>
+
 #define PI_SRAM 1
+#define PI_USBCTRL  1
 
 #define UART_TX_PIN (28)
-#define UART_RX_PIN (29)	/* not available on the pico */
+#define UART_RX_PIN (29)        /* not available on the pico */
 #define UART_ID     uart0
 #define BAUD_RATE   115200
 
@@ -27,7 +30,8 @@ struct flash_chip {
     const char *name;
 };
 
-extern uint16_t flash_ctrl_reg;
+extern uint16_t sys64_ctrl_reg;
+extern uint16_t usb64_ctrl_reg;
 
 extern uint8_t pi_sram[];
 extern uint16_t *pi_rom_lookup;

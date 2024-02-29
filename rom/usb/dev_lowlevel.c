@@ -6,37 +6,35 @@
 
 #include "dev_lowlevel.h"
 
+#include <libdragon.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "../../fw/romfs/romfs.h"
 #include "../../utils/utils2.h"
 #include "../main.h"
-#include "../n64.h"
-#include "../romfs/romfs.h"
-#include "flashrom.h"
-#include "hardware/flash.h"
-#include "hardware/irq.h"
-#include "hardware/regs/usb.h"
-#include "hardware/resets.h"
-#include "hardware/structs/usb.h"
-#include "hardware/sync.h"
-#include "hardware/watchdog.h"
-#include "pico/bootrom.h"
-#include "pico/stdlib.h"
+#include "../n64cart.h"
+#include "../syslog.h"
 #include "usb_common.h"
 
-//#define USB_DEBUG
+// #define USB_DEBUG 1
 
 #define usb_hw_set hw_set_alias(usb_hw)
 #define usb_hw_clear hw_clear_alias(usb_hw)
 
 // Function prototypes for our device specific endpoint handlers defined
 // later on
-void ep0_in_handler(uint8_t * buf, uint16_t len);
-void ep0_out_handler(uint8_t * buf, uint16_t len);
-void ep1_out_handler(uint8_t * buf, uint16_t len);
-void ep2_in_handler(uint8_t * buf, uint16_t len);
+static void ep0_in_handler(uint8_t * buf, uint16_t len);
+static void ep0_out_handler(uint8_t * buf, uint16_t len);
+static void ep1_out_handler(uint8_t * buf, uint16_t len);
+static void ep2_in_handler(uint8_t * buf, uint16_t len);
+
+//
+static void isr_usbctrl(void);
+
+//
+static bool usbd_enabled = false;
 
 // Global device address
 static bool should_set_address = false;
@@ -88,13 +86,49 @@ static struct usb_device_configuration dev_config = {.device_descriptor = &devic
 };
 
 /**
+ *
+ */
+static inline uint32_t reverser32(uint32_t x)
+{
+    return REVERSER32(x);
+}
+
+static inline uint16_t reverser16(uint16_t x)
+{
+    return REVERSER16(x);
+}
+
+static inline void pi_io_write_buf(uint32_t pi_address, void *buf, size_t len)
+{
+    volatile uint32_t *uncached_address = (uint32_t *) (pi_address | 0xa0000000);
+
+    for (size_t i = 0; i < len; i++) {
+        dma_wait();
+        MEMORY_BARRIER();
+        uncached_address[i] = ((uint32_t *) buf)[i];
+        MEMORY_BARRIER();
+    }
+}
+
+static inline void pi_io_read_buf(uint32_t pi_address, void *buf, size_t len)
+{
+    volatile uint32_t *uncached_address = (uint32_t *) (pi_address | 0xa0000000);
+
+    for (size_t i = 0; i < len; i++) {
+        dma_wait();
+        MEMORY_BARRIER();
+        ((uint32_t *) buf)[i] = uncached_address[i];
+    }
+}
+
+/**
  * @brief Given an endpoint address, return the usb_endpoint_configuration of that endpoint. Returns NULL
  * if an endpoint of that address is not found.
  *
  * @param addr
  * @return struct usb_endpoint_configuration*
  */
-struct usb_endpoint_configuration *usb_get_endpoint_configuration(uint8_t addr)
+static struct usb_endpoint_configuration *usb_get_endpoint_configuration(uint8_t addr)
 {
     struct usb_endpoint_configuration *endpoints = dev_config.endpoints;
     for (int i = 0; i < USB_NUM_ENDPOINTS; i++) {
@@ -111,7 +145,7 @@ struct usb_endpoint_configuration *usb_get_endpoint_configuration(uint8_t addr)
  * @param C string you would like to send to the USB host
  * @return the length of the string descriptor in EP0 buf
  */
-uint8_t usb_prepare_string_descriptor(const unsigned char *str)
+static uint8_t usb_prepare_string_descriptor(const unsigned char *str)
 {
     // 2 for bLength + bDescriptorType + strlen * 2 because string is unicode. i.e. other byte will be 0
     uint8_t bLength = 2 + (strlen((const char *)str) * 2);
@@ -148,10 +182,10 @@ static inline uint32_t usb_buffer_offset(volatile uint8_t *buf)
  *
  * @param ep
  */
-void usb_setup_endpoint(const struct usb_endpoint_configuration *ep)
+static void usb_setup_endpoint(const struct usb_endpoint_configuration *ep)
 {
 #ifdef USB_DEBUG
-    printf("Set up endpoint 0x%x with buffer address 0x%p\n", ep->descriptor->bEndpointAddress, ep->data_buffer);
+    syslog(LOG_DEBUG, "Set up endpoint 0x%x with buffer address 0x%p", ep->descriptor->bEndpointAddress, ep->data_buffer);
 #endif
 
     // EP0 doesn't have one so return if that is the case
@@ -161,14 +195,14 @@ void usb_setup_endpoint(const struct usb_endpoint_configuration *ep)
     // Get the data buffer as an offset of the USB controller's DPRAM
     uint32_t dpram_offset = usb_buffer_offset(ep->data_buffer);
     uint32_t reg = EP_CTRL_ENABLE_BITS | EP_CTRL_INTERRUPT_PER_BUFFER | (ep->descriptor->bmAttributes << EP_CTRL_BUFFER_TYPE_LSB) | dpram_offset;
-    *ep->endpoint_control = reg;
+    pi_io_write((uintptr_t) ep->endpoint_control, reg);
 }
 
 /**
  * @brief Set up the endpoint control register for each endpoint.
  *
  */
-void usb_setup_endpoints()
+static void usb_setup_endpoints()
 {
     const struct usb_endpoint_configuration *endpoints = dev_config.endpoints;
     for (int i = 0; i < USB_NUM_ENDPOINTS; i++) {
@@ -182,57 +216,68 @@ void usb_setup_endpoints()
  * @brief Set up the USB controller in device mode, clearing any previous state.
  *
  */
-void usb_device_init()
+static void usb_device_init()
 {
-    // Disable USB interrupt at processor
-    irq_set_enabled(USBCTRL_IRQ, false);
-
     // Reset usb controller
-    reset_block(RESETS_RESET_USBCTRL_BITS);
-    unreset_block_wait(RESETS_RESET_USBCTRL_BITS);
+    io_write(N64CART_USBCFG, 0);
+    io_write(N64CART_USBCFG, N64CART_USB_RESET);
+    io_write(N64CART_USBCFG, 0);
 
-    // Clear any previous state in dpram just in case
-    memset(usb_dpram, 0, sizeof(*usb_dpram));   // <1>
+    for (int i = 0; i < sizeof(*usb_dpram); i += 4) {
+        io_write(((uintptr_t) usb_dpram) + i, 0);
+    }
 
     // Enable USB interrupt at processor
-    irq_set_enabled(USBCTRL_IRQ, true);
+    disable_interrupts();
+    set_CART_interrupt(1);
+    register_CART_handler(isr_usbctrl);
+    enable_interrupts();
 
     // Mux the controller to the onboard usb phy
-    usb_hw->muxing = USB_USB_MUXING_TO_PHY_BITS | USB_USB_MUXING_SOFTCON_BITS;
+    io_write((uintptr_t) & usb_hw->muxing, USB_USB_MUXING_TO_PHY_BITS | USB_USB_MUXING_SOFTCON_BITS);
 
     // Force VBUS detect so the device thinks it is plugged into a host
-    usb_hw->pwr = USB_USB_PWR_VBUS_DETECT_BITS | USB_USB_PWR_VBUS_DETECT_OVERRIDE_EN_BITS;
+    io_write((uintptr_t) & usb_hw->pwr, USB_USB_PWR_VBUS_DETECT_BITS | USB_USB_PWR_VBUS_DETECT_OVERRIDE_EN_BITS);
 
     // Enable the USB controller in device mode.
-    usb_hw->main_ctrl = USB_MAIN_CTRL_CONTROLLER_EN_BITS;
+    io_write((uintptr_t) & usb_hw->main_ctrl, USB_MAIN_CTRL_CONTROLLER_EN_BITS);
 
     // Enable an interrupt per EP0 transaction
-    usb_hw->sie_ctrl = USB_SIE_CTRL_EP0_INT_1BUF_BITS;  // <2>
+    io_write((uintptr_t) & usb_hw->sie_ctrl, USB_SIE_CTRL_EP0_INT_1BUF_BITS);   // <2>
 
     // Enable interrupts for when a buffer is done, when the bus is reset,
     // and when a setup packet is received
-    usb_hw->inte = USB_INTS_BUFF_STATUS_BITS | USB_INTS_BUS_RESET_BITS | USB_INTS_SETUP_REQ_BITS;
+    io_write((uintptr_t) & usb_hw->inte, USB_INTS_BUFF_STATUS_BITS | USB_INTS_BUS_RESET_BITS | USB_INTS_SETUP_REQ_BITS);
 
     // Set up endpoints (endpoint control registers)
     // described by device configuration
+    disable_interrupts();
     usb_setup_endpoints();
+    enable_interrupts();
 
     // Present full speed device by enabling pull up on DP
-    usb_hw_set->sie_ctrl = USB_SIE_CTRL_PULLUP_EN_BITS;
+    io_write((uintptr_t) & usb_hw_set->sie_ctrl, USB_SIE_CTRL_PULLUP_EN_BITS);
+
+    io_write(N64CART_USBCFG, N64CART_USB_IRQ_ENABLE);
 }
 
 /**
  * @brief Disable the USB controller.
  *
  */
-void usb_device_finish(void)
+static void usb_device_finish(void)
 {
-    // Disable USB interrupt at processor
-    irq_set_enabled(USBCTRL_IRQ, false);
+    // Enable USB interrupt at processor
+    disable_interrupts();
 
-    // Reset usb controller
-    reset_block(RESETS_RESET_USBCTRL_BITS);
-    unreset_block_wait(RESETS_RESET_USBCTRL_BITS);
+    pi_io_write(N64CART_USBCFG, 0);
+    pi_io_write(N64CART_USBCFG, N64CART_USB_RESET);
+    pi_io_write(N64CART_USBCFG, 0);
+
+    set_CART_interrupt(0);
+    unregister_CART_handler(isr_usbctrl);
+
+    enable_interrupts();
 }
 
 /**
@@ -255,22 +300,25 @@ static inline bool ep_is_tx(struct usb_endpoint_configuration *ep)
  * @param buf, the data buffer to send. Only applicable if the endpoint is TX
  * @param len, the length of the data in buf (this example limits max len to one packet - 64 bytes)
  */
-void usb_start_transfer(struct usb_endpoint_configuration *ep, uint8_t *buf, uint16_t len)
+static void usb_start_transfer(struct usb_endpoint_configuration *ep, uint8_t *buf, uint16_t len)
 {
     // We are asserting that the length is <= 64 bytes for simplicity of the example.
     // For multi packet transfers see the tinyusb port.
     assert(len <= 64);
 
 #ifdef USB_DEBUG
-    printf("Start transfer of len %d on ep addr 0x%x\n", len, ep->descriptor->bEndpointAddress);
+    syslog(LOG_DEBUG, "Start transfer of len %d on ep addr 0x%x", len, ep->descriptor->bEndpointAddress);
 #endif
 
     // Prepare buffer control register value
     uint32_t val = len | USB_BUF_CTRL_AVAIL;
 
     if (ep_is_tx(ep)) {
-        // Need to copy the data from the user buffer to the usb memory
-        memcpy((void *)ep->data_buffer, (void *)buf, len);
+        if (len > 0) {
+            pi_io_write(N64CART_USBCFG, N64CART_USB_BSWAP32 | N64CART_USB_IRQ_ENABLE);
+            pi_io_write_buf((uint32_t) ep->data_buffer, buf, (len + 3) >> 2);
+            pi_io_write(N64CART_USBCFG, N64CART_USB_IRQ_ENABLE);
+        }
         // Mark as full
         val |= USB_BUF_CTRL_FULL;
     }
@@ -278,14 +326,14 @@ void usb_start_transfer(struct usb_endpoint_configuration *ep, uint8_t *buf, uin
     val |= ep->next_pid ? USB_BUF_CTRL_DATA1_PID : USB_BUF_CTRL_DATA0_PID;
     ep->next_pid ^= 1u;
 
-    *ep->buffer_control = val;
+    pi_io_write((uintptr_t) ep->buffer_control, val);
 }
 
 /**
  * @brief Send device descriptor to host
  *
  */
-void usb_handle_device_descriptor(volatile struct usb_setup_packet *pkt)
+static void usb_handle_device_descriptor(volatile struct usb_setup_packet *pkt)
 {
     const struct usb_device_descriptor *d = dev_config.device_descriptor;
     // EP0 in
@@ -300,7 +348,7 @@ void usb_handle_device_descriptor(volatile struct usb_setup_packet *pkt)
  *
  * @param pkt, the setup packet received from the host.
  */
-void usb_handle_config_descriptor(volatile struct usb_setup_packet *pkt)
+static void usb_handle_config_descriptor(volatile struct usb_setup_packet *pkt)
 {
     uint8_t *buf = &ep0_buf[0];
 
@@ -310,7 +358,7 @@ void usb_handle_config_descriptor(volatile struct usb_setup_packet *pkt)
     buf += sizeof(struct usb_configuration_descriptor);
 
     // If we more than just the config descriptor copy it all
-    if (pkt->wLength >= d->wTotalLength) {
+    if (pkt->wLength >= reverser16(d->wTotalLength)) {
         memcpy((void *)buf, dev_config.interface_descriptor, sizeof(struct usb_interface_descriptor));
         buf += sizeof(struct usb_interface_descriptor);
         const struct usb_endpoint_configuration *ep = dev_config.endpoints;
@@ -333,12 +381,12 @@ void usb_handle_config_descriptor(volatile struct usb_setup_packet *pkt)
  * @brief Handle a BUS RESET from the host by setting the device address back to 0.
  *
  */
-void usb_bus_reset(void)
+static void usb_bus_reset(void)
 {
     // Set address back to 0
     dev_addr = 0;
     should_set_address = false;
-    usb_hw->dev_addr_ctrl = 0;
+    pi_io_write((uintptr_t) & usb_hw->dev_addr_ctrl, 0);
     configured = false;
 }
 
@@ -347,7 +395,7 @@ void usb_bus_reset(void)
  *
  * @param pkt, the setup packet from the host.
  */
-void usb_handle_string_descriptor(volatile struct usb_setup_packet *pkt)
+static void usb_handle_string_descriptor(volatile struct usb_setup_packet *pkt)
 {
     uint8_t i = pkt->wValue & 0xff;
     uint8_t len = 0;
@@ -366,7 +414,7 @@ void usb_handle_string_descriptor(volatile struct usb_setup_packet *pkt)
 /**
  * @brief Sends a zero length status packet back to the host.
  */
-void usb_acknowledge_out_request(void)
+static void usb_acknowledge_out_request(void)
 {
     usb_start_transfer(usb_get_endpoint_configuration(EP0_IN_ADDR), NULL, 0);
 }
@@ -378,13 +426,13 @@ void usb_acknowledge_out_request(void)
  *
  * @param pkt, the setup packet from the host.
  */
-void usb_set_device_address(volatile struct usb_setup_packet *pkt)
+static void usb_set_device_address(volatile struct usb_setup_packet *pkt)
 {
     // Set address is a bit of a strange case because we have to send a 0 length status packet first with
     // address 0
     dev_addr = (pkt->wValue & 0xff);
 #ifdef USB_DEBUG
-    printf("Set address %d\r\n", dev_addr);
+    syslog(LOG_DEBUG, "Set address %d", dev_addr);
 #endif
     // Will set address in the callback phase
     should_set_address = true;
@@ -397,18 +445,18 @@ void usb_set_device_address(volatile struct usb_setup_packet *pkt)
  *
  * @param pkt, the setup packet from the host.
  */
-void usb_set_device_configuration(volatile struct usb_setup_packet *pkt)
+static void usb_set_device_configuration(volatile struct usb_setup_packet *pkt)
 {
     // Only one configuration so just acknowledge the request
 #ifdef USB_DEBUG
-    printf("Device Enumerated\r\n");
+    syslog(LOG_DEBUG, "Device Enumerated");
 #endif
     usb_acknowledge_out_request();
     configured = true;
 
     // Get ready to rx from host
 #ifdef DEBUG_INFO
-    printf("USB Device configured\n");
+    syslog(LOG_DEBUG, "USB Device configured");
 #endif
     usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 }
@@ -417,16 +465,28 @@ void usb_set_device_configuration(volatile struct usb_setup_packet *pkt)
  * @brief Respond to a setup packet from the host.
  *
  */
-void usb_handle_setup_packet(void)
+static void usb_handle_setup_packet(void)
 {
-    volatile struct usb_setup_packet *pkt = (volatile struct usb_setup_packet *)&usb_dpram->setup_packet;
+    // volatile struct usb_setup_packet *pkt = (volatile struct usb_setup_packet *)&usb_dpram->setup_packet;
+    struct usb_setup_packet pkt_buf;
+    struct usb_setup_packet *pkt = &pkt_buf;
+
+    pi_io_write(N64CART_USBCFG, N64CART_USB_BSWAP32 | N64CART_USB_IRQ_ENABLE);
+    pi_io_read_buf((uint32_t) usb_dpram->setup_packet, pkt, 2);
+    pi_io_write(N64CART_USBCFG, N64CART_USB_IRQ_ENABLE);
+
+    pkt->wIndex = reverser16(pkt->wIndex);
+    pkt->wLength = reverser16(pkt->wLength);
+    pkt->wValue = reverser16(pkt->wValue);
+
     uint8_t req_direction = pkt->bmRequestType;
     uint8_t req = pkt->bRequest;
 
 #ifdef USB_DEBUG
     uint8_t *tp = (uint8_t *) pkt;
-    printf("pkt: %02X %02X %02X %02X %02X %02X %02X %02X\n", tp[0], tp[1], tp[2], tp[3], tp[4], tp[5], tp[6], tp[7]);
-    printf("req_direction %d, req %d\n", req_direction, req);
+    syslog(LOG_DEBUG, "pkt: %02X %02X %02X %02X %02X %02X %02X %02X", tp[0], tp[1], tp[2], tp[3], tp[4], tp[5], tp[6], tp[7]);
+    syslog(LOG_DEBUG, "%08X %08X", ((uint32_t *) pkt)[0], ((uint32_t *) pkt)[1]);
+    syslog(LOG_DEBUG, "req_direction %d, req %d", req_direction, req);
 #endif
 
     // Reset PID to 1 for EP0 IN
@@ -440,7 +500,7 @@ void usb_handle_setup_packet(void)
         } else {
             usb_acknowledge_out_request();
 #ifdef USB_DEBUG
-            printf("Other OUT request (0x%x)\r\n", pkt->bRequest);
+            syslog(LOG_DEBUG, "Other OUT request (0x%x)", pkt->bRequest);
 #endif
         }
     } else if (req_direction == USB_DIR_IN) {
@@ -451,32 +511,32 @@ void usb_handle_setup_packet(void)
             case USB_DT_DEVICE:
                 usb_handle_device_descriptor(pkt);
 #ifdef USB_DEBUG
-                printf("GET DEVICE DESCRIPTOR (len = %d)\r\n", pkt->wLength);
+                syslog(LOG_DEBUG, "GET DEVICE DESCRIPTOR (len = %d)", pkt->wLength);
 #endif
                 break;
 
             case USB_DT_CONFIG:
                 usb_handle_config_descriptor(pkt);
 #ifdef USB_DEBUG
-                printf("GET CONFIG DESCRIPTOR (len = %d)\r\n", pkt->wLength);
+                syslog(LOG_DEBUG, "GET CONFIG DESCRIPTOR (len = %d)", pkt->wLength);
 #endif
                 break;
 
             case USB_DT_STRING:
                 usb_handle_string_descriptor(pkt);
 #ifdef USB_DEBUG
-                printf("GET STRING DESCRIPTOR (len = %d)\r\n", pkt->wLength);
+                syslog(LOG_DEBUG, "GET STRING DESCRIPTOR (len = %d)", pkt->wLength);
 #endif
                 break;
 
 #ifdef USB_DEBUG
             default:
-                printf("Unhandled GET_DESCRIPTOR type 0x%x\r\n", descriptor_type);
+                syslog(LOG_DEBUG, "Unhandled GET_DESCRIPTOR type 0x%x", descriptor_type);
 #endif
             }
         } else {
 #ifdef USB_DEBUG
-            printf("Other IN request (0x%x)\r\n", pkt->bRequest);
+            syslog(LOG_DEBUG, "Other IN request (0x%x)", pkt->bRequest);
 #endif
         }
     }
@@ -489,12 +549,18 @@ void usb_handle_setup_packet(void)
  */
 static void usb_handle_ep_buff_done(struct usb_endpoint_configuration *ep)
 {
-    uint32_t buffer_control = *ep->buffer_control;
+    uint32_t buffer_control = pi_io_read((uintptr_t) ep->buffer_control);
     // Get the transfer length for this endpoint
     uint16_t len = buffer_control & USB_BUF_CTRL_LEN_MASK;
 
+    uint8_t buf[((len + 3) >> 2) << 2];
+    if (len > 0) {
+        pi_io_write(N64CART_USBCFG, N64CART_USB_BSWAP32 | N64CART_USB_IRQ_ENABLE);
+        pi_io_read_buf((uint32_t) ep->data_buffer, buf, (len + 3) >> 2);
+        pi_io_write(N64CART_USBCFG, N64CART_USB_IRQ_ENABLE);
+    }
     // Call that endpoints buffer done handler
-    ep->handler((uint8_t *) ep->data_buffer, len);
+    ep->handler(buf, len);
 }
 
 /**
@@ -508,7 +574,7 @@ static void usb_handle_buff_done(uint ep_num, bool in)
 {
     uint8_t ep_addr = ep_num | (in ? USB_DIR_IN : 0);
 #ifdef USB_DEBUG
-    printf("EP %d (in = %d) done\n", ep_num, in);
+    syslog(LOG_DEBUG, "EP %d (in = %d) done", ep_num, in);
 #endif
     for (uint i = 0; i < USB_NUM_ENDPOINTS; i++) {
         struct usb_endpoint_configuration *ep = &dev_config.endpoints[i];
@@ -528,14 +594,14 @@ static void usb_handle_buff_done(uint ep_num, bool in)
  */
 static void usb_handle_buff_status()
 {
-    uint32_t buffers = usb_hw->buf_status;
+    uint32_t buffers = pi_io_read((uintptr_t) & usb_hw->buf_status);
     uint32_t remaining_buffers = buffers;
 
     uint bit = 1u;
     for (uint i = 0; remaining_buffers && i < USB_NUM_ENDPOINTS * 2; i++) {
         if (remaining_buffers & bit) {
             // clear this in advance
-            usb_hw_clear->buf_status = bit;
+            pi_io_write((uintptr_t) & usb_hw_clear->buf_status, bit);
             // IN transfer for even i, OUT transfer for odd i
             usb_handle_buff_done(i >> 1u, !(i & 1u));
             remaining_buffers &= ~bit;
@@ -549,33 +615,20 @@ static void usb_handle_buff_status()
  *
  */
 /// \tag::isr_setup_packet[]
-void isr_usbctrl(void)
+static void isr_usbctrl(void)
 {
-#ifdef PI_USBCTRL
-    if (gpio_get(N64_COLD_RESET)) {
-        *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ICER_OFFSET)) = 1 << USBCTRL_IRQ;
-
-        usb64_ctrl_reg |= 0x8000;
-        if (usb64_ctrl_reg & 0x0010) {
-            gpio_put(N64_INT, 0);
-        }
-
-        return;
-    }
-#endif
-
     // USB interrupt handler
-    uint32_t status = usb_hw->ints;
+    uint32_t status = pi_io_read((uintptr_t) & usb_hw->ints);
     uint32_t handled = 0;
 
 #ifdef USB_DEBUG
-    printf("usb irq status %08lx\n", status);
+    syslog(LOG_INFO, "usb irq status %08lx", status);
 #endif
 
     // Setup packet received
     if (status & USB_INTS_SETUP_REQ_BITS) {
         handled |= USB_INTS_SETUP_REQ_BITS;
-        usb_hw_clear->sie_status = USB_SIE_STATUS_SETUP_REC_BITS;
+        pi_io_write((uintptr_t) & usb_hw_clear->sie_status, USB_SIE_STATUS_SETUP_REC_BITS);
         usb_handle_setup_packet();
     }
     /// \end::isr_setup_packet[]
@@ -588,16 +641,18 @@ void isr_usbctrl(void)
     // Bus is reset
     if (status & USB_INTS_BUS_RESET_BITS) {
 #ifdef USB_DEBUG
-        printf("BUS RESET\n");
+        syslog(LOG_DEBUG, "BUS RESET");
 #endif
         handled |= USB_INTS_BUS_RESET_BITS;
-        usb_hw_clear->sie_status = USB_SIE_STATUS_BUS_RESET_BITS;
+        pi_io_write((uintptr_t) & usb_hw_clear->sie_status, USB_SIE_STATUS_BUS_RESET_BITS);
         usb_bus_reset();
     }
 
     if (status ^ handled) {
-        panic("Unhandled IRQ 0x%x\n", (uint) (status ^ handled));
+        syslog(LOG_ERR, "Unhandled IRQ 0x%x", (uint) (status ^ handled));
     }
+
+    (void)pi_io_read(N64CART_USBCFG);
 }
 
 /**
@@ -607,11 +662,11 @@ void isr_usbctrl(void)
  * @param buf the data that was sent
  * @param len the length that was sent
  */
-void ep0_in_handler(uint8_t *buf, uint16_t len)
+static void ep0_in_handler(uint8_t *buf, uint16_t len)
 {
     if (should_set_address) {
         // Set actual device address in hardware
-        usb_hw->dev_addr_ctrl = dev_addr;
+        pi_io_write((uintptr_t) & usb_hw->dev_addr_ctrl, dev_addr);
         should_set_address = false;
     } else {
         // Receive a zero length status packet from the host on EP0 OUT
@@ -620,11 +675,11 @@ void ep0_in_handler(uint8_t *buf, uint16_t len)
     }
 }
 
-void ep0_out_handler(uint8_t *buf, uint16_t len)
+static void ep0_out_handler(uint8_t *buf, uint16_t len)
 {;
 }
 
-static uint8_t *sector_buffer = pi_sram;
+static uint8_t sector_buffer[ROMFS_FLASH_SECTOR];
 static int sector_buffer_pos;
 static uint32_t rw_sector_offset;
 
@@ -634,75 +689,69 @@ static int current_req;
 static int flash_stage;
 
 // Device specific functions
-void ep1_out_handler(uint8_t *buf, uint16_t len)
+static void ep1_out_handler(uint8_t *buf, uint16_t len)
 {
     struct usb_endpoint_configuration *ep_out = usb_get_endpoint_configuration(EP2_IN_ADDR);
-    //    printf("RX %d bytes from host\n", len);
+    // syslog(LOG_DEBUG, "RX %d bytes from host", len);
     ackn.type = ACK_ERROR;
 
     struct req_header *req = (struct req_header *)buf;
     if (current_req != CART_WRITE_SEC) {
         if (len != sizeof(struct req_header)) {
-            printf("Wrong header size %d, must be %d\n", len, sizeof(struct req_header));
+            syslog(LOG_ERR, "Wrong header size %d, must be %d", len, sizeof(struct req_header));
             usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
             return;
         }
     }
-    // printf("flash_stage = %d, req->type = %04X\n", flash_stage, req->type);
+    // syslog(LOG_DEBUG, "flash_stage = %d, req->type = %04X", flash_stage, req->type);
 
     if (flash_stage == 0) {
-        current_req = req->type;
-        if (req->type == CART_INFO) {
-            uintptr_t fw_binary_end = (uintptr_t) & __flash_binary_end;
+        current_req = reverser16(req->type);
+        if (current_req == CART_INFO) {
             const struct flash_chip *flash_chip = get_flash_info();
-            ackn.type = ACK_NOERROR;
-            ackn.info.start = ((fw_binary_end - XIP_BASE) + 4095) & ~4095;
-            ackn.info.size = flash_chip->rom_pages * flash_chip->rom_size * 1024 * 1024;
-            ackn.info.vers = FIRMWARE_VERSION;
+            ackn.type = reverser16(ACK_NOERROR);
+            ackn.info.start = reverser32((pi_io_read(N64CART_FW_SIZE) & 0xffff) << 12);
+            ackn.info.size = reverser32(flash_chip->rom_pages * flash_chip->rom_size * 1024 * 1024);
+            ackn.info.vers = reverser32(FIRMWARE_VERSION);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
-        } else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == BOOTLOADER_MODE || req->type == CART_REBOOT) {
-            if (req->type == FLASH_SPI_MODE) {
-                flash_quad_exit_cont_read_mode();
-                flash_spi_mode();
-            } else if (req->type == FLASH_QUAD_MODE) {
-                flash_quad_cont_read_mode();
+        } else if (current_req == FLASH_SPI_MODE || current_req == FLASH_QUAD_MODE || current_req == BOOTLOADER_MODE || current_req == CART_REBOOT) {
+            if (current_req == FLASH_SPI_MODE) {
+                flash_mode(false);
+            } else if (current_req == FLASH_QUAD_MODE) {
+                flash_mode(true);
             }
-            ackn.type = ACK_NOERROR;
+            ackn.type = reverser16(ACK_NOERROR);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
 
-            if (req->type == BOOTLOADER_MODE) {
-                printf("reset to bootloader ...\n");
-                reset_usb_boot(1 << PICO_DEFAULT_LED_PIN, 0);
-            } else if (req->type == CART_REBOOT) {
-                printf("reboot ...\n");
-                watchdog_reboot(0, 0, 100);
+            if (current_req == BOOTLOADER_MODE) {
+                syslog(LOG_ERR, "Unsupported command: reset to bootloader ...");
+            } else if (current_req == CART_REBOOT) {
+                syslog(LOG_ERR, "Unsupported command: reboot ...");
             }
             return;
-        } else if (req->type == CART_READ_SEC || req->type == CART_READ_SEC_CONT) {
+        } else if (current_req == CART_READ_SEC || current_req == CART_READ_SEC_CONT) {
             uint8_t tmp[64];
-            if (req->type == CART_READ_SEC) {
-                rw_sector_offset = req->offset;
-//                flash_read_0C(rw_sector_offset, tmp, 64);
+            if (current_req == CART_READ_SEC) {
+                rw_sector_offset = reverser32(req->offset);
+                flash_read_0C(rw_sector_offset, sector_buffer, ROMFS_FLASH_SECTOR);
                 req->offset = 0;
             }
-            flash_read_0C(rw_sector_offset + req->offset, tmp, 64);
-
-            //memmove(tmp, &sector_buffer[req->offset], 64);
-            //      printf("read offset = %08X\n", req->offset);
+            memmove(tmp, &sector_buffer[reverser32(req->offset)], 64);
+            // syslog(LOG_DEBUG, "read offset = %08X", req->offset);
 
             usb_start_transfer(ep_out, tmp, sizeof(tmp));
             return;
-        } else if (req->type == CART_WRITE_SEC) {
+        } else if (current_req == CART_WRITE_SEC) {
             flash_stage = 1;
             sector_buffer_pos = 0;
-            rw_sector_offset = req->offset;
-            ackn.type = ACK_NOERROR;
+            rw_sector_offset = reverser32(req->offset);
+            ackn.type = reverser16(ACK_NOERROR);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
-        } else if (req->type == CART_ERASE_SEC) {
-            romfs_flash_sector_erase(req->offset);
-            ackn.type = ACK_NOERROR;
+        } else if (current_req == CART_ERASE_SEC) {
+            romfs_flash_sector_erase(reverser32(req->offset));
+            ackn.type = reverser16(ACK_NOERROR);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         }
@@ -710,7 +759,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
     } else if (flash_stage == 1) {
         if (current_req == CART_WRITE_SEC) {
             if (len != 64) {
-                printf("write transfer size error\n");
+                syslog(LOG_ERR, "write transfer checksum error");
             } else {
                 memmove(&sector_buffer[sector_buffer_pos], buf, 64);
                 sector_buffer_pos += 64;
@@ -719,7 +768,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
                     flash_stage = 0;
                     current_req = 0;
                 }
-                ackn.type = ACK_NOERROR;
+                ackn.type = reverser16(ACK_NOERROR);
                 usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
                 return;
             }
@@ -731,9 +780,9 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
     usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
 }
 
-void ep2_in_handler(uint8_t *buf, uint16_t len)
+static void ep2_in_handler(uint8_t *buf, uint16_t len)
 {
-    //    printf("Sent %d bytes to host\n", len);
+    // syslog(LOG_DEBUG, "Sent %d bytes to host", len);
     // Get ready to rx again from host
     usb_start_transfer(usb_get_endpoint_configuration(EP1_OUT_ADDR), NULL, 64);
 }
@@ -741,8 +790,10 @@ void ep2_in_handler(uint8_t *buf, uint16_t len)
 void usbd_start(void)
 {
 #ifdef DEBUG_INFO
-    printf("USB Device Low-Level hardware example\n");
+    syslog(LOG_DEBUG, "USB Device Low-Level hardware example");
 #endif
+    usbd_enabled = true;
+
     usb_device_init();
 
     current_req = 0;
@@ -752,4 +803,6 @@ void usbd_start(void)
 void usbd_finish(void)
 {
     usb_device_finish();
+
+    usbd_enabled = false;
 }

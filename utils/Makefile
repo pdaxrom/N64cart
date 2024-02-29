@@ -2,7 +2,7 @@ TARGET = usb-romfs
 
 all: $(TARGET)
 
-OBJS = $(TARGET).o crc32.o ../fw/romfs/romfs.o
+OBJS = $(TARGET).o ../fw/romfs/romfs.o
 
 ifeq (Windows,$(SYSTEM))
 CC = i686-w64-mingw32-gcc

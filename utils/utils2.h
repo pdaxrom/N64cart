@@ -29,16 +29,11 @@ struct __attribute__((__packed__)) cart_info {
 };
 
 struct __attribute__((__packed__)) req_header {
-    uint32_t chksum;
     uint16_t type;
     uint32_t offset;
 };
 
 struct __attribute__((__packed__)) ack_header {
-    uint32_t chksum;
     uint16_t type;
-    union {
-        struct cart_info info;
-        uint32_t chksum;
-    } data;
+    struct cart_info info;
 };

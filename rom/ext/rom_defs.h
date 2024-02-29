@@ -59,7 +59,6 @@ typedef uint64_t sim_u64;
 #define PI_BASE_REG		0x04600000
 #define PIF_RAM_START		0x1FC007C0
 
-
 /*
  * PI status register has 3 bits active when read from (PI_STATUS_REG - read)
  *	Bit 0: DMA busy - set when DMA is in progress
@@ -70,7 +69,7 @@ typedef uint64_t sim_u64;
 #define PI_STATUS_REG		(PI_BASE_REG+0x10)
 
 /* PI DRAM address (R/W): starting RDRAM address */
-#define PI_DRAM_ADDR_REG	(PI_BASE_REG+0x00)	/* DRAM address */
+#define PI_DRAM_ADDR_REG	(PI_BASE_REG+0x00)      /* DRAM address */
 
 /* PI pbus (cartridge) address (R/W): starting AD16 address */
 #define PI_CART_ADDR_REG	(PI_BASE_REG+0x04)
@@ -92,26 +91,24 @@ typedef uint64_t sim_u64;
 #define PI_BSD_DOM1_PWD_REG	(PI_BASE_REG+0x18)
 
 /* PI dom1 page size (R/W): [3:0] domain 1 device page size */
-#define PI_BSD_DOM1_PGS_REG	(PI_BASE_REG+0x1C)    /*   page size */
+#define PI_BSD_DOM1_PGS_REG	(PI_BASE_REG+0x1C)      /*   page size */
 
 /* PI dom1 release (R/W): [1:0] domain 1 device R/W release duration */
 #define PI_BSD_DOM1_RLS_REG	(PI_BASE_REG+0x20)
 /* PI dom2 latency (R/W): [7:0] domain 2 device latency */
-#define PI_BSD_DOM2_LAT_REG	(PI_BASE_REG+0x24)    /* Domain 2 latency */
+#define PI_BSD_DOM2_LAT_REG	(PI_BASE_REG+0x24)      /* Domain 2 latency */
 
 /* PI dom2 pulse width (R/W): [7:0] domain 2 device R/W strobe pulse width */
-#define PI_BSD_DOM2_PWD_REG	(PI_BASE_REG+0x28)    /*   pulse width */
+#define PI_BSD_DOM2_PWD_REG	(PI_BASE_REG+0x28)      /*   pulse width */
 
 /* PI dom2 page size (R/W): [3:0] domain 2 device page size */
-#define PI_BSD_DOM2_PGS_REG	(PI_BASE_REG+0x2C)    /*   page size */
+#define PI_BSD_DOM2_PGS_REG	(PI_BASE_REG+0x2C)      /*   page size */
 
 /* PI dom2 release (R/W): [1:0] domain 2 device R/W release duration */
-#define PI_BSD_DOM2_RLS_REG	(PI_BASE_REG+0x30)    /*   release duration */
-
+#define PI_BSD_DOM2_RLS_REG	(PI_BASE_REG+0x30)      /*   release duration */
 
 #define	PI_DOMAIN1_REG		PI_BSD_DOM1_LAT_REG
 #define	PI_DOMAIN2_REG		PI_BSD_DOM2_LAT_REG
-
 
 #define	PI_STATUS_ERROR		0x04
 #define	PI_STATUS_IO_BUSY	0x02
@@ -140,22 +137,21 @@ typedef uint64_t sim_u64;
 #define	VI_H_SCALE	(VI_BASE_REG + 0x2C)
 #define	VI_VSCALE	(VI_BASE_REG + 0x30)
 
-#define	PHYS_TO_K0(x)	((u32)(x)|0x80000000)	/* physical to kseg0 */
-#define	K0_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)	/* kseg0 to physical */
-#define	PHYS_TO_K1(x)	((u32)(x)|0xA0000000)	/* physical to kseg1 */
-#define	K1_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)	/* kseg1 to physical */
+#define	PHYS_TO_K0(x)	((u32)(x)|0x80000000)   /* physical to kseg0 */
+#define	K0_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)   /* kseg0 to physical */
+#define	PHYS_TO_K1(x)	((u32)(x)|0xA0000000)   /* physical to kseg1 */
+#define	K1_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)   /* kseg1 to physical */
 
 #define	IO_READ(addr)		(*(volatile u32*)PHYS_TO_K1(addr))
 #define	IO_WRITE(addr,data)	(*(volatile u32*)PHYS_TO_K1(addr)=(u32)(data))
 
 #define SAVE_SIZE_SRAM 		32768
-#define SAVE_SIZE_SRAM96 	131072 //TODO: or should this be 98304
+#define SAVE_SIZE_SRAM96 	131072  //TODO: or should this be 98304
 #define SAVE_SIZE_EEP4k 	512
 #define SAVE_SIZE_EEP16k 	2048
 #define SAVE_SIZE_FLASH 	131072
 
 #define ROM_ADDR 		0xb0000000
-
 
 #define FRAM_EXECUTE_CMD		0xD2000000
 #define FRAM_STATUS_MODE_CMD	0xE1000000
@@ -175,7 +171,7 @@ extern short int force_tv;
 void pif_boot();
 
 int is_valid_rom(unsigned char *buffer);
-void swap_header(unsigned char* header, int loadlength);
+void swap_header(unsigned char *header, int loadlength);
 
 int get_cic_save(char *cartid, int *cic, int *save);
 
