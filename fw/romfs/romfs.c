@@ -180,12 +180,13 @@ static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_dele
     }
 
     if (!with_deleted) {
-	while (((romfs_entry *)flash_list_int)[file->nentry].name[0] == ROMFS_DELETED_ENTRY) {
+	while ((((romfs_entry *)flash_list_int)[file->nentry].name[0] == ROMFS_DELETED_ENTRY) &&
+		(file->nentry < flash_list_size / sizeof(romfs_entry))) {
 	    file->nentry++;
 	}
     }
 
-    if (file->nentry > flash_list_size / sizeof(romfs_entry)) {
+    if (file->nentry >= flash_list_size / sizeof(romfs_entry)) {
 	return (file->err = ROMFS_ERR_NO_FREE_ENTRIES);
     }
 
@@ -218,6 +219,17 @@ static uint32_t romfs_find_internal(romfs_file *file, const char *name)
 		return (file->err = ROMFS_NOERR);
 	    }
 	} while (romfs_list(file, false) == ROMFS_NOERR);
+    }
+
+    if (file->err == ROMFS_ERR_NO_FREE_ENTRIES) {
+	if (romfs_list_internal(file, true, true) == ROMFS_NOERR) {
+	    do {
+		if (file->entry.name[0] == ROMFS_DELETED_ENTRY) {
+		    file->nentry--;
+		    return (file->err = ROMFS_NOERR);
+		}
+	    } while (romfs_list_internal(file, false, true) == ROMFS_NOERR);
+	}
     }
 
     return file->err;
