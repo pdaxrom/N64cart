@@ -20,6 +20,13 @@ endif()
 # Initialize the SDK
 pico_sdk_init()
 
+execute_process(
+    COMMAND git log -1 --format=%h
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 set(FIRMWARE_VERSION 0x010a)
 
 add_compile_options(
@@ -29,6 +36,7 @@ add_compile_options(
     -Wno-maybe-uninitialized
     -fomit-frame-pointer
     -DFIRMWARE_VERSION=${FIRMWARE_VERSION}
+    -DGIT_HASH=\"${GIT_HASH}\"
     -DROMFS_NO_INTERNAL_BUFFERS
 )
 

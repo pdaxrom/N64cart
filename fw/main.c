@@ -166,7 +166,7 @@ int main(void)
     stdio_init_all();
     stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
 
-    printf("N64cart by pdaXrom!\n");
+    printf("N64cart (" GIT_HASH ") by pdaXrom!\n");
 
     if (used_flash_chip == NULL) {
         printf("Unknown ROM chip, system stopped!\n");

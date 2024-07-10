@@ -194,10 +194,10 @@ int main(void)
         char tmp[256];
         romfs_file file;
 
-        sprintf(tmp, "reset type %d\n", (int)OS_INFO->reset_type);
+        sprintf(tmp, "reset type %d\n", sys_reset_type());
         n64cart_uart_puts(tmp);
 
-        if (OS_INFO->reset_type == OS_INFO_RESET_TYPE_NMI) {
+        if (sys_reset_type() == RESET_WARM) {
             char save_name[64];
             char tStr[256];
 
@@ -337,6 +337,10 @@ int main(void)
         strncpy(txt_rom_info, "Unknown flash chip", sizeof(txt_rom_info) - 1);
     }
 
+    static const char *tv_type_str[] = { "PAL", "NTSC", "M-PAL" };
+    static char txt_tv_type_msg[64];
+    snprintf(txt_tv_type_msg, sizeof(txt_tv_type_msg), "%s mode", tv_type_str[get_tv_type()]);
+
     static display_context_t disp = 0;
 
     bool hide_menu = false;
@@ -378,6 +382,7 @@ int main(void)
         graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
 
         graphics_draw_text(disp, valign(txt_rom_info), 30 * scr_scale, txt_rom_info);
+        graphics_draw_text(disp, valign(txt_tv_type_msg), 40 * scr_scale, txt_tv_type_msg);
 
         graphics_draw_text(disp, valign(txt_menu_info_1), 90 * scr_scale, txt_menu_info_1);
         graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);
@@ -506,6 +511,10 @@ int main(void)
                     n64cart_sram_lock();
                 }
 
+                OS_INFO->tv_type = get_tv_type();
+                OS_INFO->reset_type = RESET_COLD;
+                OS_INFO->mem_size = get_memory_size();
+
                 sprintf(tStr, "cic_id %d\n", cic_id);
                 n64cart_uart_puts(tStr);
                 sprintf(tStr, "tv_type %ld\n", OS_INFO->tv_type);
@@ -526,17 +535,19 @@ int main(void)
                 joypad_close();
                 display_close();
 
-                boot_params_t params;
-                params.device_type = BOOT_DEVICE_TYPE_ROM;
-                params.tv_type = BOOT_TV_TYPE_NTSC;
-                params.detect_cic_seed = true;
+
+//                boot_params_t params;
+//                params.device_type = BOOT_DEVICE_TYPE_ROM;
+//                params.tv_type = get_tv_type(); //BOOT_TV_TYPE_NTSC;
+//                params.detect_cic_seed = true;
 
                 usbd_finish();
 
                 disable_interrupts();
 
-                //              boot(&params);
+//                boot(&params);
 
+//                set_force_tv(get_tv_type());
                 simulate_boot(cic_id, 2);
             } else {
                 static const char *fopen_error_1 = "File open error!";

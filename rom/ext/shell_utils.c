@@ -174,6 +174,11 @@ short int force_tv = 0;
     })
 #endif
 
+void set_force_tv(short int tv_type)
+{
+    force_tv = tv_type;
+}
+
 // void simulate_boot(u32 cic_chip, u8 gBootCic, u32 *cheat_lists[2])
 void simulate_boot(uint32_t cic_chip, uint8_t gBootCic)
 {
