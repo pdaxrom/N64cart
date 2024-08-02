@@ -1,0 +1,29 @@
+diff --git a/src/rp2_common/boot_stage2/include/boot_stage2/config.h b/src/rp2_common/boot_stage2/include/boot_stage2/config.h
+index e4d3262..e08ffec 100644
+--- a/src/rp2_common/boot_stage2/include/boot_stage2/config.h
++++ b/src/rp2_common/boot_stage2/include/boot_stage2/config.h
+@@ -53,6 +53,15 @@
+     #endif
+     #define _BOOT_STAGE2_SELECTED
+ #endif
++// PICO_CONFIG: PICO_BOOT_STAGE2_CHOOSE_MX66L, Select boot2_mx66l as the boot stage 2 when no boot stage 2 selection is made by the CMake build, type=bool, default=0, group=boot_stage2
++#ifndef PICO_BOOT_STAGE2_CHOOSE_MX66L
++    #define PICO_BOOT_STAGE2_CHOOSE_MX66L 0
++#elif PICO_BOOT_STAGE2_CHOOSE_MX66L
++    #ifdef _BOOT_STAGE2_SELECTED
++        #error multiple boot stage 2 options chosen
++    #endif
++    #define _BOOT_STAGE2_SELECTED
++#endif
+ 
+ // PICO_CONFIG: PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H, Select boot2_generic_03h as the boot stage 2 when no boot stage 2 selection is made by the CMake build, type=bool, default=1, group=boot_stage2
+ #if defined(PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H) && PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H
+@@ -77,6 +86,8 @@
+         #define _BOOT_STAGE2 boot2_w25x10cl
+     #elif PICO_BOOT_STAGE2_CHOOSE_AT25SF128A
+         #define _BOOT_STAGE2 boot2_at25sf128a
++    #elif PICO_BOOT_STAGE2_CHOOSE_MX66L
++        #define _BOOT_STAGE2 boot2_mx66l
+     #elif !defined(PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H) || PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H
+         #undef PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H
+         #define PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H 1

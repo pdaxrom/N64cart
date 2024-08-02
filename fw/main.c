@@ -24,6 +24,8 @@
 #include "usb/usbd.h"
 
 static const struct flash_chip flash_chip[] = {
+    { 0xc2, 0x201b, 4, 16, 342000, VREG_VOLTAGE_1_20, "MX66L1G45G" },
+//    { 0xc2, 0x201b, 4, 16, 133000, VREG_VOLTAGE_DEFAULT, "MX66L1G45G" },
     { 0xef, 0x4020, 4, 16, 342000, VREG_VOLTAGE_1_20, "W25Q512" },
     { 0xef, 0x4019, 2, 16, 342000, VREG_VOLTAGE_1_20, "W25Q256" },
     { 0xef, 0x4018, 1, 16, 342000, VREG_VOLTAGE_1_20, "W25Q128" },
@@ -164,7 +166,6 @@ int main(void)
     setup_sysconfig();
 
     stdio_init_all();
-    stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
 
     printf("N64cart (" GIT_HASH ") by pdaXrom!\n");
 
@@ -180,6 +181,8 @@ int main(void)
 
     // disable XIP cache SRAM
     hw_clear_bits(&xip_ctrl_hw->ctrl, XIP_CTRL_EN_BITS);
+
+    flash_quad_gpio_init();
 
     flash_quad_exit_cont_read_mode();
     flash_spi_mode();

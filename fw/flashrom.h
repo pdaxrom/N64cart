@@ -38,12 +38,22 @@ uint16_t flash_read16_0C(uint32_t addr);
 
 uint32_t flash_read32_0C(uint32_t addr);
 
+#ifdef PICO_BOOT_STAGE2_CHOOSE_MX66L
+#define MODE_CONTINUOS_READ 0xf0
+#endif
+
+#ifndef MODE_CONTINUOS_READ
+#define MODE_CONTINUOS_READ 0xa0
+#endif
+
+void flash_quad_gpio_init(void);
+
 void flash_quad_cont_read_mode(void);
 
 uint16_t inline flash_quad_read16_EC(uint32_t addr)
 {
     ssi_hw->dr0 = addr;
-    ssi_hw->dr0 = 0xa0;
+    ssi_hw->dr0 = MODE_CONTINUOS_READ;
 
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {
     }

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 
 # Set the external flash to 16 MB
-add_definitions(-DPICO_FLASH_SIZE_BYTES=16777216)
+#add_definitions(-DPICO_FLASH_SIZE_BYTES=16777216)
 
 # Pull in SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -9,6 +9,10 @@ include(pico_sdk_import.cmake)
 project(picocart64 C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
+
+set(PICO_BOARD n64cart)
+set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/board)
+set(PICO_DEFAULT_BOOT_STAGE2_FILE ${CMAKE_CURRENT_LIST_DIR}/board/boot2_mx66l.S)
 
 # Copy program to ram during boot
 set(PICO_COPY_TO_RAM 1)
