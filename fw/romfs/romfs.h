@@ -7,6 +7,10 @@
 #ifndef __ROMFS_H__
 #define __ROMFS_H__
 
+#ifndef ROMFS_FLASH_SIZE
+#define ROMFS_FLASH_SIZE	(64)
+#endif
+
 #define ROMFS_FLASH_SECTOR (4096)
 
 #define ROMFS_MAX_NAME_LEN (54)

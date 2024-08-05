@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include "romfs.h"
 
-static uint8_t memory[64 * 1024 * 1024];
+static uint8_t memory[ROMFS_FLASH_SIZE * 1024 * 1024];
 
 static uint8_t *flash_base = NULL;
 
@@ -52,16 +52,24 @@ void save_romfs(char *name, uint8_t *mem, size_t len)
     }
 }
 
-bool load_romfs(char *name, uint8_t *mem, size_t len)
+bool load_romfs(char *name, uint8_t *mem, size_t len, size_t *read_len)
 {
     bool ret = true;
     FILE *out = fopen(name, "rb");
     if (out) {
-        if (fread(mem, 1, len, out) != len) {
+        int rlen;
+        if ((rlen = fread(mem, 1, len, out)) != len) {
             ret = false;
+        }
+        if (read_len) {
+            *read_len = rlen;
         }
         fclose(out);
         return ret;
+    }
+
+    if (read_len) {
+        *read_len = 0;
     }
 
     return false;
@@ -74,13 +82,19 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    if (!load_romfs(argv[1], memory, sizeof(memory))) {
-        fprintf(stderr, "Cannot read %s\n", argv[1]);
+    size_t read_len;
+    if (!load_romfs(argv[1], memory, sizeof(memory), &read_len)) {
+        if (read_len) {
+            fprintf(stderr, "Cannot read %s, wrong rom image size (%zu)\n", argv[1], read_len);
+            goto err;
+        } else {
+            fprintf(stderr, "Cannot open %s, create new image\n", argv[1]);
+        }
     }
 
     flash_base = memory;
 
-    if (!romfs_start(0x10D000, sizeof(memory))) {
+    if (!romfs_start(0x10000, sizeof(memory))) {
         printf("Cannot start romfs!\n");
         goto err;
     }
