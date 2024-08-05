@@ -30,7 +30,7 @@
 #include "stb/stb_image_resize2.h"
 
 static const struct flash_chip flash_chip[] = {
-    { 0xc2, 0x201b, 4, 16, "MX66L1G45G" },
+    { 0xc2, 0x201b, 8, 16, "MX66L1G45G" },
     { 0xef, 0x4020, 4, 16, "W25Q512" },
     { 0xef, 0x4019, 2, 16, "W25Q256" },
     { 0xef, 0x4018, 1, 16, "W25Q128" },
@@ -189,7 +189,13 @@ int main(void)
 
     usbd_start();
 
-    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024)) {
+    uint32_t flash_map_size, flash_list_size;
+    romfs_get_buffers_sizes(used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
+    uint16_t *romfs_flash_map = malloc(flash_map_size);
+    uint8_t *romfs_flash_list = malloc(flash_list_size);
+    uint8_t *romfs_flash_buffer = malloc(ROMFS_FLASH_SECTOR);
+
+    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
         n64cart_uart_puts("Cannot start romfs!\n");
     } else {
         char tmp[256];
@@ -233,7 +239,7 @@ int main(void)
                 for (int i = 0; i < save_file_size; i++) {
                     if (save_data[i] != 0) {
                         romfs_delete(save_name);
-                        if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) == ROMFS_NOERR) {
+                        if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) == ROMFS_NOERR) {
                             int bwrite = 0;
                             int ret = 0;
                             while (save_file_size > 0) {
@@ -275,7 +281,7 @@ int main(void)
             } while (romfs_list(&file, false) == ROMFS_NOERR);
         }
 
-        if (romfs_open_file("background.jpg", &file, NULL) == ROMFS_NOERR) {
+        if (romfs_open_file("background.jpg", &file, romfs_flash_buffer) == ROMFS_NOERR) {
             int ret;
             int pos = 0;
             picture_data_length = file.entry.size;
@@ -394,7 +400,7 @@ int main(void)
             graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
             graphics_draw_box(disp, 45 * scr_scale, 115 * scr_scale, (320 - 45 * 2) * scr_scale, 40 * scr_scale, 0x77777780);
 
-            if (romfs_open_file(files[menu_sel], &file, NULL) == ROMFS_NOERR) {
+            if (romfs_open_file(files[menu_sel], &file, romfs_flash_buffer) == ROMFS_NOERR) {
                 uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4];
 
                 memset(rom_lookup, 0, sizeof(rom_lookup));
@@ -474,7 +480,7 @@ int main(void)
                     }
                     n64cart_sram_lock();
 
-                    if (romfs_open_file(save_name, &save_file, NULL) == ROMFS_NOERR) {
+                    if (romfs_open_file(save_name, &save_file, romfs_flash_buffer) == ROMFS_NOERR) {
                         sprintf(tStr, "Load save data\n");
                         n64cart_uart_puts(tStr);
                         int rbytes = 0;

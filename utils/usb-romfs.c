@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <alloca.h>
 
 #include "romfs.h"
 #include "utils2.h"
@@ -259,7 +260,13 @@ int main(int argc, char *argv[])
                 goto err_io;
             }
 
-            if (!romfs_start(romfs_info.info.start, romfs_info.info.size)) {
+            uint32_t flash_map_size, flash_list_size;
+            romfs_get_buffers_sizes(romfs_info.info.size, &flash_map_size, &flash_list_size);
+            uint16_t *romfs_flash_map = alloca(flash_map_size);
+            uint8_t *romfs_flash_list = alloca(flash_list_size);
+            uint8_t *romfs_flash_buffer = alloca(ROMFS_FLASH_SECTOR);
+
+            if (!romfs_start(romfs_info.info.start, romfs_info.info.size, romfs_flash_map, romfs_flash_list)) {
                 printf("Cannot start romfs!\n");
                 goto err_io;
             }
@@ -315,7 +322,7 @@ int main(int argc, char *argv[])
                         uint8_t buffer[4096];
                         int ret;
                         romfs_file file;
-                        if (romfs_create_file((argc > 3) ? argv[3] : find_filename(argv[2]), &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) != ROMFS_NOERR) {
+                        if (romfs_create_file((argc > 3) ? argv[3] : find_filename(argv[2]), &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) != ROMFS_NOERR) {
                             fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
                         } else {
                             fseek(inf, 0, SEEK_END);
@@ -410,7 +417,7 @@ int main(int argc, char *argv[])
             } else if (!strcmp(argv[1], "pull")) {
                 if (argc > 2) {
                     romfs_file file;
-                    if (romfs_open_file(argv[2], &file, NULL) == ROMFS_NOERR) {
+                    if (romfs_open_file(argv[2], &file, romfs_flash_buffer) == ROMFS_NOERR) {
                         FILE *outf = fopen((argc > 3) ? argv[3] : find_filename(argv[2]), "wb");
                         if (outf) {
                             uint8_t buffer[4096];

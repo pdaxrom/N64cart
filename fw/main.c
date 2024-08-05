@@ -24,8 +24,7 @@
 #include "usb/usbd.h"
 
 static const struct flash_chip flash_chip[] = {
-    { 0xc2, 0x201b, 4, 16, 342000, VREG_VOLTAGE_1_20, "MX66L1G45G" },
-//    { 0xc2, 0x201b, 4, 16, 133000, VREG_VOLTAGE_DEFAULT, "MX66L1G45G" },
+    { 0xc2, 0x201b, 8, 16, 342000, VREG_VOLTAGE_1_20, "MX66L1G45G" },
     { 0xef, 0x4020, 4, 16, 342000, VREG_VOLTAGE_1_20, "W25Q512" },
     { 0xef, 0x4019, 2, 16, 342000, VREG_VOLTAGE_1_20, "W25Q256" },
     { 0xef, 0x4018, 1, 16, 342000, VREG_VOLTAGE_1_20, "W25Q128" },

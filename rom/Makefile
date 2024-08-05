@@ -11,7 +11,7 @@ SED = sed
 endif
 
 ASFLAGS += -x assembler-with-cpp
-CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb
+CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb -DROMFS_NO_INTERNAL_BUFFERS
 
 CFLAGS += -DFIRMWARE_VERSION=$(shell sed -n 's/.*FIRMWARE_VERSION.*\(0x[0-9a-fA-F]*\).*/\1/p' ../fw/CMakeLists.txt)
 
