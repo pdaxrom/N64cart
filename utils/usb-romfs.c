@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 #include <alloca.h>
 #endif
 
