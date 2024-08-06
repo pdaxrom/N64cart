@@ -30,13 +30,13 @@
 #include "stb/stb_image_resize2.h"
 
 static const struct flash_chip flash_chip[] = {
-    { 0xc2, 0x201b, 8, 16, "MX66L1G45G" },
-    { 0xef, 0x4020, 4, 16, "W25Q512" },
-    { 0xef, 0x4019, 2, 16, "W25Q256" },
-    { 0xef, 0x4018, 1, 16, "W25Q128" },
-    { 0xef, 0x4017, 1, 8, "W25Q64" },
-    { 0xef, 0x4016, 1, 4, "W25Q32" },
-    { 0xef, 0x4015, 1, 2, "W25Q16" }
+    { 0xc2, 0x201b, 128, "MX66L1G45G" },
+    { 0xef, 0x4020, 64, "W25Q512" },
+    { 0xef, 0x4019, 32, "W25Q256" },
+    { 0xef, 0x4018, 16, "W25Q128" },
+    { 0xef, 0x4017, 8, "W25Q64" },
+    { 0xef, 0x4016, 4, "W25Q32" },
+    { 0xef, 0x4015, 2, "W25Q16" }
 };
 
 static const struct flash_chip *used_flash_chip = NULL;
@@ -179,7 +179,7 @@ int main(void)
 
     if (used_flash_chip) {
         char tmp[256];
-        snprintf(tmp, sizeof(tmp) - 1, "Flash chip: %s (%d MB)\n", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
+        snprintf(tmp, sizeof(tmp) - 1, "Flash chip: %s (%d MB)\n", used_flash_chip->name, used_flash_chip->rom_size);
         n64cart_uart_puts(tmp);
     }
 
@@ -192,12 +192,12 @@ int main(void)
     usbd_start();
 
     uint32_t flash_map_size, flash_list_size;
-    romfs_get_buffers_sizes(used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
+    romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
     uint16_t *romfs_flash_map = malloc(flash_map_size);
     uint8_t *romfs_flash_list = malloc(flash_list_size);
     uint8_t *romfs_flash_buffer = malloc(ROMFS_FLASH_SECTOR);
 
-    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
+    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
         n64cart_uart_puts("Cannot start romfs!\n");
     } else {
         char tmp[256];
@@ -341,7 +341,7 @@ int main(void)
     static const char *txt_menu_info_2 = "[A]-Run, [C-L]-Delete";
 
     if (used_flash_chip) {
-        snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
+        snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_size);
     } else {
         strncpy(txt_rom_info, "Unknown flash chip", sizeof(txt_rom_info) - 1);
     }

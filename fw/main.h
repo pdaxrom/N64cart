@@ -23,7 +23,6 @@
 struct flash_chip {
     uint8_t mf;
     uint16_t id;
-    uint8_t rom_pages;
     uint8_t rom_size;
     uint32_t sys_freq;
     uint8_t voltage;
