@@ -183,6 +183,8 @@ int main(void)
     show_sysinfo();
 #endif
 
+    usbd_start();
+
     // disable XIP cache SRAM
     hw_clear_bits(&xip_ctrl_hw->ctrl, XIP_CTRL_EN_BITS);
 
@@ -216,7 +218,6 @@ int main(void)
         backup_rom_lookup();
     } else {
         printf("romfs error: %s\n", romfs_strerror(file.err));
-        usbd_start();
         while (true) {
             tight_loop_contents();
         }
@@ -227,7 +228,6 @@ int main(void)
     multicore_launch_core1(n64_pi);
 
     si_main();
-    usbd_start();
     cic_main();
 
     return 0;
