@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "cic.h"
 #include "flashrom.h"
 #include "hardware/clocks.h"
 #include "hardware/flash.h"
@@ -22,6 +21,11 @@
 #include "pico/stdlib.h"
 #include "romfs/romfs.h"
 #include "usb/usbd.h"
+#include "n64_cic.h"
+#include "n64_si.h"
+#ifdef RGB_LED
+#include "rgb_led.h"
+#endif
 
 static const struct flash_chip flash_chip[] = {
     { 0xc2, 0x201b, 8, 16, 342000, VREG_VOLTAGE_1_20, "MX66L1G45G" },
@@ -154,9 +158,6 @@ int main(void)
     gpio_pull_up(N64_CIC_DIO);
     gpio_pull_up(N64_SI_DATA);
 
-    gpio_init(LED_PIN);
-    gpio_set_dir(LED_PIN, GPIO_OUT);
-
     gpio_init(N64_INT);
     gpio_pull_up(N64_INT);
     gpio_put(N64_INT, 1);
@@ -165,6 +166,10 @@ int main(void)
     setup_sysconfig();
 
     stdio_init_all();
+
+#ifdef RGB_LED
+    init_rgb_led();
+#endif
 
     printf("N64cart (" GIT_HASH ") by pdaXrom!\n");
 
@@ -221,6 +226,8 @@ int main(void)
 
     multicore_launch_core1(n64_pi);
 
+    si_main();
+    usbd_start();
     cic_main();
 
     return 0;

@@ -3,7 +3,9 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef __APPLE__
 #include <alloca.h>
+#endif
 
 #include "romfs.h"
 #include "utils2.h"

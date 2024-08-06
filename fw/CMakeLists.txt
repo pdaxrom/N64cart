@@ -42,16 +42,19 @@ add_compile_options(
     -DFIRMWARE_VERSION=${FIRMWARE_VERSION}
     -DGIT_HASH=\"${GIT_HASH}\"
     -DROMFS_NO_INTERNAL_BUFFERS
+    -DRGB_LED
 )
 
 add_executable(
     n64cart
     main.c
     n64_pi.c
-    cic.c
+    n64_cic.c
+    n64_si.c
     flashrom.c
     romfs/romfs.c
     usb/dev_lowlevel.c
+    rgb_led.c
 )
 
 # pull in common dependencies
@@ -64,6 +67,8 @@ target_link_libraries(
     hardware_irq
     hardware_flash
     hardware_clocks
+    hardware_dma
+    hardware_pwm
 )
 
 # Build pio

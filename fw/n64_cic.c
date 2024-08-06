@@ -26,7 +26,7 @@ Data Line, Bidir (DIO):  CIC Pin 15
 
 */
 
-#include "cic.h"
+#include "n64_cic.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -37,7 +37,6 @@ Data Line, Bidir (DIO):  CIC Pin 15
 #include "n64.h"
 #include "n64_pi.h"
 #include "pico/stdlib.h"
-#include "usb/usbd.h"
 
 // #define DEBUG
 
@@ -133,139 +132,10 @@ static unsigned char _6105Mem[32];
 
 /* YOU HAVE TO IMPLEMENT THE LOW LEVEL GPIO FUNCTIONS ReadBit() and WriteBit() */
 
-// #define USE_CIC_DCLK_IRQ
-
 static unsigned char cic_in_bits;
 static int cic_in_count;
 static unsigned char cic_out_bits;
 static int cic_out_count;
-
-static int si_pulse_counter;
-static int si_out_pulses;
-static unsigned char si_data_bits[324];
-static unsigned char si_data_byte[16];
-
-static void cic_dclk_callback(void)
-{
-    io_irq_ctrl_hw_t *irq_ctrl_base = get_core_num()? &iobank0_hw->proc1_irq_ctrl : &iobank0_hw->proc0_irq_ctrl;
-
-    uint gpio = N64_SI_CLK;
-    io_ro_32 *status_reg = &irq_ctrl_base->ints[gpio / 8];
-    uint events = (*status_reg >> 4 * (gpio % 8)) & 0xf;
-
-    if (events) {
-        static bool skip_pulse = true;
-        skip_pulse = !skip_pulse;
-
-        if (si_out_pulses) {
-            if (!skip_pulse) {
-                if (si_data_bits[si_pulse_counter++]) {
-                    gpio_set_dir(N64_SI_DATA, GPIO_IN);
-                } else {
-                    gpio_set_dir(N64_SI_DATA, GPIO_OUT);
-                    gpio_put(N64_SI_DATA, 0);
-                }
-
-                si_out_pulses--;
-                if (!si_out_pulses) {
-                    si_pulse_counter = 0;
-                    gpio_set_dir(N64_SI_DATA, GPIO_IN);
-                }
-            }
-        } else {
-            if (!skip_pulse) {
-                si_data_bits[si_pulse_counter++] = gpio_get(N64_SI_DATA) ? 1 : 0;
-                if (si_pulse_counter % 4 == 1 && si_data_bits[si_pulse_counter - 1] == 1) {
-                    if (si_pulse_counter > 1) {
-                        si_pulse_counter--;
-                        if (si_pulse_counter % 32 == 4) {
-                            if (*((uint32_t *) & si_data_bits[si_pulse_counter - 4]) == 0x01010100) {
-                                //                              printf("Stop bit detected\n");
-                                int bit_counter = 0;
-                                int byte_counter = 0;
-                                unsigned char byte = 0;
-
-                                for (int i = 0; i < si_pulse_counter - 4; i += 4) {
-                                    if (*((uint32_t *) & si_data_bits[i]) == 0x01000000) {
-                                        byte <<= 1;
-                                    } else if (*((uint32_t *) & si_data_bits[i]) == 0x01010100) {
-                                        byte = (byte << 1) | 1;
-                                    }
-                                    bit_counter++;
-                                    if (bit_counter == 8) {
-                                        si_data_byte[byte_counter++] = byte;
-                                        bit_counter = 0;
-                                    }
-                                }
-
-                                si_out_pulses = 0;
-
-                                // printf("%02X\n", si_data_byte[0]);
-                                if (si_data_byte[0] == 0x00 || si_data_byte[0] == 0xff) {
-                                    si_data_byte[0] = 0x00;
-                                    si_data_byte[1] = (sys64_ctrl_reg & 0x1000) ? 0xc0 : 0x80;
-                                    si_data_byte[2] = 0x00;
-                                    byte_counter = 3;
-                                } else if (si_data_byte[0] == 0x04) {
-                                    memmove(&si_data_byte[0], &si_eeprom[si_data_byte[1] << 3], 8);
-                                    byte_counter = 8;
-                                } else if (si_data_byte[0] == 0x05) {
-                                    memmove(&si_eeprom[si_data_byte[1] << 3], &si_data_byte[2], 8);
-                                    si_data_byte[0] = 0x00;
-                                    byte_counter = 1;
-                                } else {
-                                    goto cmd_error;
-                                }
-
-                                for (int i = 0; i < byte_counter; i++) {
-                                    for (int j = 0; j < 8; j++) {
-                                        if (si_data_byte[i] & 0x80) {
-                                            *((uint32_t *) & si_data_bits[si_out_pulses]) = 0x01010100;
-                                        } else {
-                                            *((uint32_t *) & si_data_bits[si_out_pulses]) = 0x01000000;
-                                        }
-                                        si_out_pulses += 4;
-                                        si_data_byte[i] <<= 1;
-                                    }
-                                }
-                                *((uint32_t *) & si_data_bits[si_out_pulses]) = 0x01010000;
-                                si_out_pulses += 4;
- cmd_error:
-                            }
-                        }
-                    }
-                    si_pulse_counter = 0;
-                }
-            }
-        }
-
-        iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
-    }
-#ifdef USE_CIC_DCLK_IRQ
-    gpio = N64_CIC_DCLK;
-    status_reg = &irq_ctrl_base->ints[gpio / 8];
-    events = (*status_reg >> 4 * (gpio % 8)) & 0xf;
-
-    if (events & GPIO_IRQ_EDGE_FALL) {
-        if (cic_out_count) {
-            if (!(cic_out_bits & 0x08)) {
-                gpio_set_dir(N64_CIC_DIO, GPIO_OUT);
-                gpio_put(N64_CIC_DIO, 0);
-            }
-            cic_out_bits <<= 1;
-            cic_out_count--;
-        } else if (cic_in_count) {
-            cic_in_bits <<= 1;
-            cic_in_bits |= gpio_get(N64_CIC_DIO) ? 1 : 0;
-            cic_in_count--;
-        }
-        iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
-    } else if (events & GPIO_IRQ_EDGE_RISE) {
-        gpio_set_dir(N64_CIC_DIO, GPIO_IN);
-        iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
-    }
-#endif
-}
 
 static bool check_running(void)
 {
@@ -290,29 +160,19 @@ static unsigned char ReadBits(int n)
 {
     cic_in_bits = 0;
     cic_in_count = n;
-#ifdef USE_CIC_DCLK_IRQ
-    while (cic_in_count && check_running()) {
-    }
-#else
     while (cic_in_count--) {
         while (gpio_get(N64_CIC_DCLK) && check_running()) ;
         cic_in_bits <<= 1;
         cic_in_bits |= gpio_get(N64_CIC_DIO) ? 1 : 0;
         while (!gpio_get(N64_CIC_DCLK) && check_running()) ;
     }
-#endif
     return cic_in_bits;
 }
 
 static void WriteBits(unsigned char b, int n)
 {
-#ifdef USE_CIC_DCLK_IRQ
-    while (cic_out_count && check_running()) {
-    }
-#endif
     cic_out_bits = b << (4 - n);
     cic_out_count = n;
-#ifndef USE_CIC_DCLK_IRQ
     while (cic_out_count--) {
         while (gpio_get(N64_CIC_DCLK) && check_running()) ;
         if (!(cic_out_bits & 0x08)) {
@@ -323,7 +183,6 @@ static void WriteBits(unsigned char b, int n)
         while (!gpio_get(N64_CIC_DCLK) && check_running()) ;
         gpio_set_dir(N64_CIC_DIO, GPIO_IN);
     }
-#endif
 }
 
 static inline unsigned char ReadBit(void)
@@ -707,20 +566,6 @@ static void cic_run(void)
 
 void cic_main(void)
 {
-#ifdef USE_CIC_DCLK_IRQ
-    gpio_set_irq_enabled(N64_CIC_DCLK, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
-#endif
-
-    si_pulse_counter = 0;
-    si_out_pulses = 0;
-
-    gpio_set_irq_enabled(N64_SI_CLK, GPIO_IRQ_EDGE_RISE, true);
-
-    irq_set_exclusive_handler(IO_IRQ_BANK0, cic_dclk_callback);
-    irq_set_enabled(IO_IRQ_BANK0, true);
-
-    usbd_start();
-
     while (1) {
         int cic_cfg = 0;
         _CicSeed = cic_data[cic_cfg].CicSeed;

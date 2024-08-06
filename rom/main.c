@@ -173,6 +173,8 @@ int main(void)
 
     dma_wait();
 
+    io_write(N64CART_LED_CTRL, 0);
+
     detect_flash_chip();
 
     if (used_flash_chip) {
@@ -631,6 +633,7 @@ int main(void)
         }
 
         if (pressed.start) {
+#ifdef DISABLE_RGB_LED
             static int led_on = 0;
             led_on = !led_on;
             if (led_on) {
@@ -639,6 +642,13 @@ int main(void)
                 n64cart_uart_puts("led off\n");
             }
             io_write(N64CART_LED_CTRL, led_on);
+#else
+            static int led_cnt = 0;
+            static uint32_t led_colors[] = { 0xff0000, 0x00ff00, 0x0000ff, 0x000000 };
+            n64cart_uart_puts("led\n");
+            io_write(N64CART_LED_CTRL, led_colors[led_cnt++]);
+            led_cnt &= 0x03;
+#endif
         }
 
         display_show(disp);
