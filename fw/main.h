@@ -11,10 +11,7 @@
 #define PI_SRAM 1
 #define PI_USBCTRL  1
 
-#define UART_TX_PIN (28)
-#define UART_RX_PIN (29)        /* not available on the pico */
 #define UART_ID     uart0
-#define BAUD_RATE   115200
 
 #define SRAM_256KBIT_SIZE         0x00008000
 #define SRAM_768KBIT_SIZE         0x00018000
