@@ -18,9 +18,9 @@
 #define N64CART_RP2040
 
 // On some samples, the xosc can take longer to stabilize than is usual
-#ifndef PICO_XOSC_STARTUP_DELAY_MULTIPLIER
-#define PICO_XOSC_STARTUP_DELAY_MULTIPLIER 64
-#endif
+//#ifndef PICO_XOSC_STARTUP_DELAY_MULTIPLIER
+//#define PICO_XOSC_STARTUP_DELAY_MULTIPLIER 64
+//#endif
 
 // --- UART ---
 #ifndef PICO_DEFAULT_UART
