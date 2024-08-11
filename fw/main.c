@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "cic.h"
 #include "flashrom.h"
 #include "hardware/clocks.h"
 #include "hardware/flash.h"
@@ -22,14 +21,20 @@
 #include "pico/stdlib.h"
 #include "romfs/romfs.h"
 #include "usb/usbd.h"
+#include "n64_cic.h"
+#include "n64_si.h"
+#ifdef RGB_LED
+#include "rgb_led.h"
+#endif
 
 static const struct flash_chip flash_chip[] = {
-    { 0xef, 0x4020, 4, 16, 342000, VREG_VOLTAGE_1_20, "W25Q512" },
-    { 0xef, 0x4019, 2, 16, 342000, VREG_VOLTAGE_1_20, "W25Q256" },
-    { 0xef, 0x4018, 1, 16, 342000, VREG_VOLTAGE_1_20, "W25Q128" },
-    { 0xef, 0x4017, 1, 8, 342000, VREG_VOLTAGE_1_20, "W25Q64" },
-    { 0xef, 0x4016, 1, 4, 342000, VREG_VOLTAGE_1_20, "W25Q32" },
-    { 0xef, 0x4015, 1, 2, 342000, VREG_VOLTAGE_1_20, "W25Q16" },
+    { 0xc2, 0x201b, 128, 342000, VREG_VOLTAGE_1_20, "MX66L1G45G" },
+    { 0xef, 0x4020, 64, 342000, VREG_VOLTAGE_1_20, "W25Q512" },
+    { 0xef, 0x4019, 32, 342000, VREG_VOLTAGE_1_20, "W25Q256" },
+    { 0xef, 0x4018, 16, 342000, VREG_VOLTAGE_1_20, "W25Q128" },
+    { 0xef, 0x4017, 8, 342000, VREG_VOLTAGE_1_20, "W25Q64" },
+    { 0xef, 0x4016, 4, 342000, VREG_VOLTAGE_1_20, "W25Q32" },
+    { 0xef, 0x4015, 2, 342000, VREG_VOLTAGE_1_20, "W25Q16" },
     //    { 0xef, 0x4020, 4, 16, 330000, VREG_VOLTAGE_1_20, "W25Q512" },
     //    { 0xef, 0x4020, 4, 16, 328000, VREG_VOLTAGE_1_15, "W25Q512" },
     //    { 0xef, 0x4020, 4, 16, 318000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
@@ -121,7 +126,7 @@ static void show_sysinfo(void)
 {
     printf("ROM chip           : %s\n", used_flash_chip->name);
     printf("System frequency   : %d\n", clock_get_hz(clk_sys) / 1000);
-    printf("ROM size           : %d MB\n", used_flash_chip->rom_pages * used_flash_chip->rom_size);
+    printf("ROM size           : %d MB\n", used_flash_chip->rom_size);
 }
 
 const struct flash_chip *get_flash_info(void)
@@ -153,9 +158,6 @@ int main(void)
     gpio_pull_up(N64_CIC_DIO);
     gpio_pull_up(N64_SI_DATA);
 
-    gpio_init(LED_PIN);
-    gpio_set_dir(LED_PIN, GPIO_OUT);
-
     gpio_init(N64_INT);
     gpio_pull_up(N64_INT);
     gpio_put(N64_INT, 1);
@@ -164,7 +166,10 @@ int main(void)
     setup_sysconfig();
 
     stdio_init_all();
-    stdio_uart_init_full(UART_ID, BAUD_RATE, UART_TX_PIN, UART_RX_PIN);
+
+#ifdef RGB_LED
+    init_rgb_led();
+#endif
 
     printf("N64cart (" GIT_HASH ") by pdaXrom!\n");
 
@@ -178,8 +183,12 @@ int main(void)
     show_sysinfo();
 #endif
 
+    usbd_start();
+
     // disable XIP cache SRAM
     hw_clear_bits(&xip_ctrl_hw->ctrl, XIP_CTRL_EN_BITS);
+
+    flash_quad_gpio_init();
 
     flash_quad_exit_cont_read_mode();
     flash_spi_mode();
@@ -189,13 +198,13 @@ int main(void)
 
     uint32_t flash_map_size, flash_list_size;
 
-    romfs_get_buffers_sizes(used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
+    romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
 
     uint16_t *romfs_flash_map = (uint16_t *) pi_sram;
     uint8_t *romfs_flash_list = &pi_sram[flash_map_size];
     uint8_t *romfs_flash_buffer = &pi_sram[flash_map_size + flash_list_size];
 
-    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
+    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
         printf("Cannot start romfs!\n");
         while (true) {
             tight_loop_contents();
@@ -209,7 +218,6 @@ int main(void)
         backup_rom_lookup();
     } else {
         printf("romfs error: %s\n", romfs_strerror(file.err));
-        usbd_start();
         while (true) {
             tight_loop_contents();
         }
@@ -219,6 +227,7 @@ int main(void)
 
     multicore_launch_core1(n64_pi);
 
+    si_main();
     cic_main();
 
     return 0;

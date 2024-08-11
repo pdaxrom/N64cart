@@ -12,7 +12,9 @@
   * [Build](#build)
   * [How to use](#how-to-use)
 * [Total cartridge cost (32MB version)](#total-cartridge-cost-32mb-version)
-* [Photos](#photos)
+* [Photos version 2](#photos-version-2)
+* [BOM list for version 3](#bom-list-for-version-3)
+* [Photos version 3](#photos-version-3)
 
 ## Intro
 
@@ -27,17 +29,23 @@ N64 ROM boot code derived from [N64FlashcartMenu](https://github.com/Polprzewodn
 ## Concept
 
 The main idea is to make the cartridge as simple and cheap as possible. Contrary to Konrad's idea of multiplexed PSRAM chips and two RP2040, I decided to use one SPI flash memory chip and one RP2040. Modern flash chips allow to erase and flash data more than 100,000 times, which is more than enough for home use for many years. Since the RP2040 does not support SPI flash chips larger than 16MB, it was decided to use page mode with page switching through the Extended Address register (EA register). Unfortunately, this method has a problem with long switching of 16MB pages, because need to disable the XIP mode, enable the SPI mode to change the page and enable the XIP back. Therefore, it was decided to use QSPI with 32-bit addressing mode without XIP.
-To effectively work with cartridge flash chip, a special version of the filesystem was created - romfs, which allows to map sectors of saved files as a continuous data area, to which the N64 has access via the PI bus. At the moment, romfs does not support directories, is limited to 64 files and a maximum flash chip size of 64MB.
+To effectively work with cartridge flash chip, a special version of the filesystem was created - romfs, which allows to map sectors of saved files as a continuous data area, to which the N64 has access via the PI bus. At the moment, romfs does not support directories, is limited to 64 files and a maximum flash chip size of 64MB for cartridge version 2. Cartridge version 3 supports 128MB chips.
 
-Cartridge [schematic](hw/n64cart_2022-08-16.pdf)
+- Cartridge version 2 [schematic](hw/n64cart_2022-08-16.pdf)
+
+- Cartridge version 3 [schematic](hw/n64cart-1G_2024-08-11.pdf)
 
 ### Features
 
-- The PCB and firmware supports 2, 4, 8, 16, 32 and 64 MB SPI flash chips
+- The PCB version 2 supports 2, 4, 8, 16, 32 and 64 MB SPI flash chips
 
-- One user controllable LED (accessible from N64 side)
+- The PCB version 3 supports 128 MB SPI flash chips (SOIC-16)
 
-- UART port (accessible from N64 side)
+- One user controllable LED, accessible from N64 side (RGB WS2812 for PCB version 3)
+
+- UART port, accessible from N64 side
+
+- USB passthrough to N64 side
 
 - USB utility to access to the cartridge flash chip as filesystem.
 
@@ -47,7 +55,7 @@ Cartridge [schematic](hw/n64cart_2022-08-16.pdf)
 
 ### Memory mapping
 
-Registers:
+#### Registers:
 
 Register|Address|Mode
 --------|-------|----
@@ -59,26 +67,27 @@ SSI_SR|0x1fd01010|RW
 SSI_DR0|0x1fd01014|RW
 FW_SIZE|0x1fd01018|R-
 
-UART_CTRL bits:
+#### UART_CTRL bits:
 
 Function|Bit mask|Mode
 --------|--------|----
 UART_RX_AVAIL|0x01|R-
 UART_TX_FREE|0x02|R-
 
-UART_RXTX bits:
+#### UART_RXTX bits:
 
 Function|Bit mask|Mode
 --------|--------|----
 DATA|0xFF|RW
 
-LED control bits:
+#### LED control bits:
 
-Function|Bit mask|Mode
---------|--------|----
-LED_ONOFF|0x01|-W
+Function|Bit mask|Mode|Note
+--------|--------|----|---
+LED_ONOFF|0x01|-W|PCB v2 or PCB v3 without WS2812
+LED_RGB|0x00ffffff|-W|PCB v3 only
 
-SYS_CTRL bits:
+#### SYS_CTRL bits:
 
 Function|Bit mask|Mode
 --------|--------|----
@@ -87,14 +96,14 @@ SRAM_UNLOCK|0x100|RW
 FLASH_MODE_QUAD|0x10|RW
 FLASH_CS_HIGH|0x01|RW
 
-SSI_SR bits:
+#### SSI_SR bits:
 
 Function|Bit mask|Mode
 --------|--------|----
 SSI_SR_TFNF_BITS|0x01|R-
 SSI_SR_RFNE_BITS|0x02|R-
 
-SSI_DR0 bits:
+#### SSI_DR0 bits:
 
 Function|Bit mask|Mode
 --------|--------|----
@@ -110,15 +119,23 @@ Ordering a stencil will make it easier to apply solder paste, but will increase 
 
 ### Assembly notes
 
+After soldering, if you have used a flux when soldering a processor or a flash chip, wash it well from the board, otherwise unstable work with memory is possible or it will not work at all.
+
+#### for PCB version 2
+
 Do not solder Q1 if D2 is soldered. Use either D2 or Q1.
 
 Do not solder R1 and R6.
 
-After soldering, if you have used a flux when soldering a processor or a flash chip, wash it well from the board, otherwise unstable work with memory is possible or it will not work at all.
+#### for PCB version 3
+
+Do not solder R1 and D2 if LED3 is soldered.
 
 ## Build firmware
 
 To build, you will need an installed Pico SDK.
+
+By default, the firmware is compiled for cartridge version 3. Add to cmake ```-DBOARD=pico``` to build it for version 2 (or generic pico cartridge).
 
 Steps to build:
 ```
@@ -170,8 +187,6 @@ For windows, install mingw toolchain.
 ```
 
 ### How to use
-
-When using the utility, the console must be turned off, otherwise the cartridge memory may be corrupted and it must be formatted!
 
 The first time you use a cartridge, you must format it and write a file manager:
 
@@ -235,7 +250,7 @@ All other components (LEDs, resistors, capacitors) from home stock, total cost l
 
 So, the total cost of the pcb and components is approximately $9.
 
-## Photos
+## Photos version 2
 
 <img src="pics/jlpcb-order.png" width="480" />
 
@@ -252,3 +267,53 @@ So, the total cost of the pcb and components is approximately $9.
 <img src="pics/IMG_20220826_213833.jpg" width="480" />
 
 <img src="pics/IMG_20240225_124908.jpg" width="480" />
+
+## BOM list for version 3
+
+Part|Value|Device|Package
+----|-----|------|-------
+C1|100n|C-EUC0402|C0402
+C2|100n|C-EUC0402|C0402
+C3|100n|C-EUC0402|C0402
+C4|100n|C-EUC0603|C0603
+C5|100n|C-EUC0402|C0402
+C6|100n|C-EUC0402|C0402
+C7|100n|C-EUC0603|C0603
+C8|100n|C-EUC0402|C0402
+C9|100n|C-EUC0402|C0402
+C10|1uF|C-EUC0402|C0402
+C11|100n|C-EUC0402|C0402
+C12|100n|C-EUC0402|C0402
+C13|1uF|C-EUC0402|C0402
+C14|100n|C-EUC0402|C0402
+C15|27pF|C-EUC0402|C0402
+C16|27pF|C-EUC0402|C0402
+C22|10u|C-EUC0805|C0805
+D1|SL02-GS08|SL02-GS08|SOD-123
+D2|GREEN|LED0603|0603
+D3|RED|LED0603|0603
+IC1|RP2040-QFN56|RP2040-QFN56|QFN-56
+LED3|XL-5050RGBC-WS2812B|XL-5050RGBC-WS2812B|XL5050RGBCWS2812B
+Q1|BSS84|BSS84|SOT23
+R1|1K|R-EU_R0603|R0603
+R2|1K|R-EU_R0402|R0402
+R3|1K|R-EU_R0402|R0402
+R4|27|R-EU_R0402|R0402
+R5|27|R-EU_R0402|R0402
+R12|1K|R-EU_R0603|R0603
+S1||10-XX|B3F-10XX
+U$1|LDI1117-3.3U|LDI1117-3.3U|LDI1117-3.3U
+U2||USB|USB-MICRO-SMD
+U4|MX66L1G45GMI-08G|MX66L1G45GMI-08G|SOP_16
+XTAL1|ABLS-12.000MHZ-B4-T|ABLS-12.000MHZ-B4-T|XTAL_ABLS_ABR
+
+## Photos version 3
+
+<img src="pics/IMG_20240805_201003.jpg" width="480" />
+
+<img src="pics/IMG_20240806_203455.jpg" width="480" />
+
+<img src="pics/IMG_20240806_203527.jpg" width="480" />
+
+<img src="pics/IMG_20240811_110152.jpg" width="480" />
+

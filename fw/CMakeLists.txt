@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 
 # Set the external flash to 16 MB
-add_definitions(-DPICO_FLASH_SIZE_BYTES=16777216)
+#add_definitions(-DPICO_FLASH_SIZE_BYTES=16777216)
 
 # Pull in SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -10,8 +10,31 @@ project(picocart64 C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+if(NOT DEFINED BOARD)
+    set(BOARD "v3")
+endif()
+
+if (${BOARD} STREQUAL "pico")
+    set(PICO_BOARD n64cart)
+    set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/board)
+else()
+    set(PICO_BOARD n64cart)
+    set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/board-v3)
+    set(PICO_DEFAULT_BOOT_STAGE2_FILE ${CMAKE_CURRENT_LIST_DIR}/board-v3/boot2_mx66l.S)
+endif()
+
 # Copy program to ram during boot
 set(PICO_COPY_TO_RAM 1)
+
+if(NOT DEFINED REGION)
+    set(REGION "NTSC")
+endif()
+
+if(REGION STREQUAL "PAL")
+    set(CONFIG_REGION_PAL 1)
+else()
+    set(CONFIG_REGION_PAL 0)
+endif()
 
 if (PICO_SDK_VERSION_STRING VERSION_LESS "1.3.0")
     message(FATAL_ERROR "Raspberry Pi Pico SDK version 1.3.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
@@ -38,16 +61,20 @@ add_compile_options(
     -DFIRMWARE_VERSION=${FIRMWARE_VERSION}
     -DGIT_HASH=\"${GIT_HASH}\"
     -DROMFS_NO_INTERNAL_BUFFERS
+    -DRGB_LED
+    -DCONFIG_REGION_PAL=${CONFIG_REGION_PAL}
 )
 
 add_executable(
     n64cart
     main.c
     n64_pi.c
-    cic.c
+    n64_cic.c
+    n64_si.c
     flashrom.c
     romfs/romfs.c
     usb/dev_lowlevel.c
+    rgb_led.c
 )
 
 # pull in common dependencies
@@ -60,6 +87,8 @@ target_link_libraries(
     hardware_irq
     hardware_flash
     hardware_clocks
+    hardware_dma
+    hardware_pwm
 )
 
 # Build pio

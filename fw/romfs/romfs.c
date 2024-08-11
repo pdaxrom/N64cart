@@ -40,8 +40,8 @@ static uint32_t flash_list_size = 0;
 
 #ifndef ROMFS_NO_INTERNAL_BUFFERS
 
-static uint16_t flash_map_int[ROMFS_FLASH_SECTOR * 4];
-static uint8_t flash_list_int[ROMFS_FLASH_SECTOR];
+static uint16_t flash_map_int[(ROMFS_FLASH_SIZE * 1024 * 1024) / ROMFS_FLASH_SECTOR];
+static uint8_t flash_list_int[ROMFS_FLASH_SIZE * sizeof(romfs_entry)];
 static uint8_t flash_buffer_int[ROMFS_FLASH_SECTOR];
 
 bool romfs_start(uint32_t start, uint32_t rom_size)
@@ -53,14 +53,7 @@ static uint8_t *flash_list_int;
 void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t *map_size, uint32_t *list_size)
 {
     flash_map_size = ((rom_size / ROMFS_FLASH_SECTOR) * sizeof(uint16_t) + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1);
-    if (flash_map_size > ROMFS_FLASH_SECTOR * 4 * 2) {
-        flash_map_size = ROMFS_FLASH_SECTOR * 4 * 2;
-    }
-
     flash_list_size = ((rom_size / (1024 * 1024)) * sizeof(romfs_entry) + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1);
-    if (flash_list_size > ROMFS_FLASH_SECTOR) {
-        flash_list_size = ROMFS_FLASH_SECTOR;
-    }
 
     if (map_size) {
         *map_size = flash_map_size;

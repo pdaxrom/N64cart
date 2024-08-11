@@ -30,12 +30,13 @@
 #include "stb/stb_image_resize2.h"
 
 static const struct flash_chip flash_chip[] = {
-    { 0xef, 0x4020, 4, 16, "W25Q512" },
-    { 0xef, 0x4019, 2, 16, "W25Q256" },
-    { 0xef, 0x4018, 1, 16, "W25Q128" },
-    { 0xef, 0x4017, 1, 8, "W25Q64" },
-    { 0xef, 0x4016, 1, 4, "W25Q32" },
-    { 0xef, 0x4015, 1, 2, "W25Q16" }
+    { 0xc2, 0x201b, 128, "MX66L1G45G" },
+    { 0xef, 0x4020, 64, "W25Q512" },
+    { 0xef, 0x4019, 32, "W25Q256" },
+    { 0xef, 0x4018, 16, "W25Q128" },
+    { 0xef, 0x4017, 8, "W25Q64" },
+    { 0xef, 0x4016, 4, "W25Q32" },
+    { 0xef, 0x4015, 2, "W25Q16" }
 };
 
 static const struct flash_chip *used_flash_chip = NULL;
@@ -172,11 +173,13 @@ int main(void)
 
     dma_wait();
 
+    io_write(N64CART_LED_CTRL, 0);
+
     detect_flash_chip();
 
     if (used_flash_chip) {
         char tmp[256];
-        snprintf(tmp, sizeof(tmp) - 1, "Flash chip: %s (%d MB)\n", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
+        snprintf(tmp, sizeof(tmp) - 1, "Flash chip: %s (%d MB)\n", used_flash_chip->name, used_flash_chip->rom_size);
         n64cart_uart_puts(tmp);
     }
 
@@ -188,7 +191,13 @@ int main(void)
 
     usbd_start();
 
-    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_pages * used_flash_chip->rom_size * 1024 * 1024)) {
+    uint32_t flash_map_size, flash_list_size;
+    romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
+    uint16_t *romfs_flash_map = malloc(flash_map_size);
+    uint8_t *romfs_flash_list = malloc(flash_list_size);
+    uint8_t *romfs_flash_buffer = malloc(ROMFS_FLASH_SECTOR);
+
+    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
         n64cart_uart_puts("Cannot start romfs!\n");
     } else {
         char tmp[256];
@@ -232,7 +241,7 @@ int main(void)
                 for (int i = 0; i < save_file_size; i++) {
                     if (save_data[i] != 0) {
                         romfs_delete(save_name);
-                        if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) == ROMFS_NOERR) {
+                        if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) == ROMFS_NOERR) {
                             int bwrite = 0;
                             int ret = 0;
                             while (save_file_size > 0) {
@@ -274,7 +283,7 @@ int main(void)
             } while (romfs_list(&file, false) == ROMFS_NOERR);
         }
 
-        if (romfs_open_file("background.jpg", &file, NULL) == ROMFS_NOERR) {
+        if (romfs_open_file("background.jpg", &file, romfs_flash_buffer) == ROMFS_NOERR) {
             int ret;
             int pos = 0;
             picture_data_length = file.entry.size;
@@ -332,7 +341,7 @@ int main(void)
     static const char *txt_menu_info_2 = "[A]-Run, [C-L]-Delete";
 
     if (used_flash_chip) {
-        snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_pages * used_flash_chip->rom_size);
+        snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_size);
     } else {
         strncpy(txt_rom_info, "Unknown flash chip", sizeof(txt_rom_info) - 1);
     }
@@ -393,7 +402,7 @@ int main(void)
             graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
             graphics_draw_box(disp, 45 * scr_scale, 115 * scr_scale, (320 - 45 * 2) * scr_scale, 40 * scr_scale, 0x77777780);
 
-            if (romfs_open_file(files[menu_sel], &file, NULL) == ROMFS_NOERR) {
+            if (romfs_open_file(files[menu_sel], &file, romfs_flash_buffer) == ROMFS_NOERR) {
                 uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4];
 
                 memset(rom_lookup, 0, sizeof(rom_lookup));
@@ -473,7 +482,7 @@ int main(void)
                     }
                     n64cart_sram_lock();
 
-                    if (romfs_open_file(save_name, &save_file, NULL) == ROMFS_NOERR) {
+                    if (romfs_open_file(save_name, &save_file, romfs_flash_buffer) == ROMFS_NOERR) {
                         sprintf(tStr, "Load save data\n");
                         n64cart_uart_puts(tStr);
                         int rbytes = 0;
@@ -624,6 +633,7 @@ int main(void)
         }
 
         if (pressed.start) {
+#ifdef DISABLE_RGB_LED
             static int led_on = 0;
             led_on = !led_on;
             if (led_on) {
@@ -632,6 +642,13 @@ int main(void)
                 n64cart_uart_puts("led off\n");
             }
             io_write(N64CART_LED_CTRL, led_on);
+#else
+            static int led_cnt = 0;
+            static uint32_t led_colors[] = { 0xff0000, 0x00ff00, 0x0000ff, 0x000000 };
+            n64cart_uart_puts("led\n");
+            io_write(N64CART_LED_CTRL, led_colors[led_cnt++]);
+            led_cnt &= 0x03;
+#endif
         }
 
         display_show(disp);

@@ -711,7 +711,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             const struct flash_chip *flash_chip = get_flash_info();
             ackn.type = reverser16(ACK_NOERROR);
             ackn.info.start = reverser32((pi_io_read(N64CART_FW_SIZE) & 0xffff) << 12);
-            ackn.info.size = reverser32(flash_chip->rom_pages * flash_chip->rom_size * 1024 * 1024);
+            ackn.info.size = reverser32(flash_chip->rom_size * 1024 * 1024);
             ackn.info.vers = reverser32(FIRMWARE_VERSION);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;

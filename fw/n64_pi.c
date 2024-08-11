@@ -17,6 +17,9 @@
 #include "pico/stdio.h"
 #include "pico/stdlib.h"
 #include "romfs/romfs.h"
+#ifdef RGB_LED
+#include "rgb_led.h"
+#endif
 
 //
 // 0x0001 - force ssi cs
@@ -78,8 +81,6 @@ void n64_pi(void)
     uint offset = pio_add_program(pio, &pi_program);
     pi_program_init(pio, 0, offset);
     pio_sm_set_enabled(pio, 0, true);
-
-    gpio_put(LED_PIN, 0);
 
     // Wait for reset to be released
     while (gpio_get(N64_COLD_RESET) == 0) {
@@ -223,8 +224,15 @@ void n64_pi(void)
                 } else if (addr & 1) {
                     if (last_addr == 0x1fd01006) {
                         uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
+#ifdef RGB_LED
+                    } else if (last_addr == 0x1fd01008) {
+                        sram_address = addr & 0xffff0000;
+                    } else if (last_addr == 0x1fd0100a) {
+                        set_rgb_led(sram_address | (addr >> 16));
+#else
                     } else if (last_addr == 0x1fd0100a) {
                         gpio_put(LED_PIN, (addr >> 16) & 0x01);
+#endif
                     } else if (last_addr == 0x1fd0100e) {
                         ctrl_reg = addr >> 16;
 

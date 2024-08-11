@@ -227,6 +227,55 @@ uint32_t flash_read32_0C(uint32_t addr)
     return val;
 }
 
+void flash_quad_gpio_init(void)
+{
+#ifdef PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H
+    uint8_t buf_in[4];
+    uint8_t buf_out[4];
+
+    xflash_do_cmd(0x06, NULL, NULL, 0);
+
+    buf_in[0] = 0x40;
+    xflash_do_cmd(0x01, buf_in, NULL, 1);
+
+    xflash_do_cmd(0x05, NULL, buf_out, 2);
+
+    // Set pad configuration:
+    // - SCLK 8mA drive, no slew limiting
+    // - SDx disable input Schmitt to reduce delay
+
+    io_rw_32 *reg = (io_rw_32 *) (PADS_QSPI_BASE + PADS_QSPI_GPIO_QSPI_SCLK_OFFSET);
+    *reg = (2 << PADS_QSPI_GPIO_QSPI_SCLK_DRIVE_LSB | PADS_QSPI_GPIO_QSPI_SCLK_SLEWFAST_BITS);
+    (void)*reg;
+
+    reg = (io_rw_32 *) (PADS_QSPI_BASE + PADS_QSPI_GPIO_QSPI_SD0_OFFSET);
+    *reg = (*reg & ~PADS_QSPI_GPIO_QSPI_SD0_SCHMITT_BITS);
+    (void)*reg;
+    reg = (io_rw_32 *) (PADS_QSPI_BASE + PADS_QSPI_GPIO_QSPI_SD1_OFFSET);
+    *reg = (*reg & ~PADS_QSPI_GPIO_QSPI_SD1_SCHMITT_BITS);
+    (void)*reg;
+    reg = (io_rw_32 *) (PADS_QSPI_BASE + PADS_QSPI_GPIO_QSPI_SD2_OFFSET);
+    *reg = (*reg & ~PADS_QSPI_GPIO_QSPI_SD2_SCHMITT_BITS);
+    (void)*reg;
+    reg = (io_rw_32 *) (PADS_QSPI_BASE + PADS_QSPI_GPIO_QSPI_SD3_OFFSET);
+    *reg = (*reg & ~PADS_QSPI_GPIO_QSPI_SD3_SCHMITT_BITS);
+    (void)*reg;
+
+    reg = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SD0_CTRL_OFFSET);
+    *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SD0_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SD0_CTRL_OUTOVER_LSB);
+    (void)*reg;
+    reg = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SD1_CTRL_OFFSET);
+    *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SD1_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SD1_CTRL_OUTOVER_LSB);
+    (void)*reg;
+    reg = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SD2_CTRL_OFFSET);
+    *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SD2_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SD2_CTRL_OUTOVER_LSB);
+    (void)*reg;
+    reg = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SD3_CTRL_OFFSET);
+    *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SD3_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SD3_CTRL_OUTOVER_LSB);
+    (void)*reg;
+#endif
+}
+
 void flash_quad_cont_read_mode(void)
 {
     ssi_hw->ssienr = 0;
@@ -252,19 +301,18 @@ void flash_quad_cont_read_mode(void)
 
     io_rw_32 *reg = (io_rw_32 *) (IO_QSPI_BASE + IO_QSPI_GPIO_QSPI_SS_CTRL_OFFSET);
     *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_LSB);
-    // Read to flush async bridge
     (void)*reg;
 
     ssi_hw->dr0 = 0xec;
     ssi_hw->dr0 = 0;
-    ssi_hw->dr0 = 0xa0;
+    ssi_hw->dr0 = MODE_CONTINUOS_READ;
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS) && (ssi_hw->sr & SSI_SR_BUSY_BITS)) {
     }
     (void)ssi_hw->dr0;
 
     ssi_hw->ssienr = 0;
 
-    ssi_hw->spi_ctrlr0 = (0xa0 << SSI_SPI_CTRLR0_XIP_CMD_LSB) | /* Mode bits to keep flash in continuous read mode */
+    ssi_hw->spi_ctrlr0 = (MODE_CONTINUOS_READ << SSI_SPI_CTRLR0_XIP_CMD_LSB) | /* Mode bits to keep flash in continuous read mode */
         (10u << SSI_SPI_CTRLR0_ADDR_L_LSB) |    /* (Address + mode bits) / 4 */
         (4u << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |        /* Hi-Z dummy clocks following address + mode */
         (SSI_SPI_CTRLR0_INST_L_VALUE_NONE << SSI_SPI_CTRLR0_INST_L_LSB) |       /* Do not send a command, instead send XIP_CMD as mode bits after address */

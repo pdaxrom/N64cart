@@ -657,7 +657,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
             const struct flash_chip *flash_chip = get_flash_info();
             ackn.type = ACK_NOERROR;
             ackn.info.start = ((fw_binary_end - XIP_BASE) + 4095) & ~4095;
-            ackn.info.size = flash_chip->rom_pages * flash_chip->rom_size * 1024 * 1024;
+            ackn.info.size = flash_chip->rom_size * 1024 * 1024;
             ackn.info.vers = FIRMWARE_VERSION;
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;

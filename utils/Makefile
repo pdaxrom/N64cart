@@ -21,7 +21,7 @@ CFLAGS := $(shell $(PKG_CONFIG_PATH) pkg-config --cflags libusb-1.0) -Wall -Wped
 LIBS   := $(shell $(PKG_CONFIG_PATH) pkg-config --libs libusb-1.0) -g
 endif
 
-CFLAGS += -I../fw/romfs
+CFLAGS += -I../fw/romfs -DROMFS_NO_INTERNAL_BUFFERS
 
 $(TARGET): $(LIBUSB_DLL) $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LIBS)
