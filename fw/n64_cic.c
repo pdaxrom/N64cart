@@ -42,10 +42,14 @@ Data Line, Bidir (DIO):  CIC Pin 15
 
 // #define DEBUG_INFO
 
+#ifndef CONFIG_REGION_PAL
 #define REGION_NTSC (0)
 #define REGION_PAL (1)
 
 #define GET_REGION() (REGION_NTSC)
+#else
+#define GET_REGION() (CONFIG_REGION_PAL)
+#endif
 
 /* SEEDs */
 

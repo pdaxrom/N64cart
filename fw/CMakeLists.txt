@@ -62,6 +62,7 @@ add_compile_options(
     -DGIT_HASH=\"${GIT_HASH}\"
     -DROMFS_NO_INTERNAL_BUFFERS
     -DRGB_LED
+    -DCONFIG_REGION_PAL=${CONFIG_REGION_PAL}
 )
 
 add_executable(
