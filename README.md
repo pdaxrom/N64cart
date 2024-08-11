@@ -46,7 +46,7 @@ To effectively work with cartridge flash chip, a special version of the filesyst
 
 #### Cartridge board version 3 (soic-16 - 128MB max)
 
-Schematic in pdf [schematic](hw/n64cart-v3-soic-16.pdf)
+[Schematic pdf](hw/n64cart-v3-soic-16.pdf)
 
 [Schematic eagle cad](hw/n64cart-v3-soic-16.sch)
 
