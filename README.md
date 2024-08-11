@@ -2,6 +2,7 @@
 
 * [Intro](#intro)
 * [Concept](#concept)
+  * [Project files](#project-files)
   * [Features](#features)
   * [Memory mapping](#memory-mapping)
 * [PCB](#pcb)
@@ -29,29 +30,43 @@ N64 ROM boot code derived from [N64FlashcartMenu](https://github.com/Polprzewodn
 ## Concept
 
 The main idea is to make the cartridge as simple and cheap as possible. Contrary to Konrad's idea of multiplexed PSRAM chips and two RP2040, I decided to use one SPI flash memory chip and one RP2040. Modern flash chips allow to erase and flash data more than 100,000 times, which is more than enough for home use for many years. Since the RP2040 does not support SPI flash chips larger than 16MB, it was decided to use page mode with page switching through the Extended Address register (EA register). Unfortunately, this method has a problem with long switching of 16MB pages, because need to disable the XIP mode, enable the SPI mode to change the page and enable the XIP back. Therefore, it was decided to use QSPI with 32-bit addressing mode without XIP.
-To effectively work with cartridge flash chip, a special version of the filesystem was created - romfs, which allows to map sectors of saved files as a continuous data area, to which the N64 has access via the PI bus. At the moment, romfs does not support directories, is limited to 64 files and a maximum flash chip size of 64MB for cartridge version 2. Cartridge version 3 supports 128MB chips.
+To effectively work with cartridge flash chip, a special version of the filesystem was created - romfs, which allows to map sectors of saved files as a continuous data area, to which the N64 has access via the PI bus. At the moment, romfs does not support directories. The maximum memory size depends on the cartridge board version - 64 MB for version 2 with a soic-8/wson-8 8x6 flash chip package, 128 MB for version 3 with a soic-16 flash chip package.
 
-- Cartridge version 2 [schematic](hw/n64cart_2022-08-16.pdf)
+### Project files
 
-- Cartridge version 3 [schematic](hw/n64cart-1G_2024-08-11.pdf)
+#### Cartridge board version 2 (soic-8/wson-8 8x6 - 64MB max)
+
+[Schematic pdf](hw/n64cart-v2-soic-8.pdf)
+
+[Schematic eagle cad](hw/n64cart-v2-soic-8.sch)
+
+[PCB eagle cad](hw/n64cart-v2-soic-8.brd)
+
+[Gerber files](hw/n64cart-v2-soic-8_2024-08-11.zip)
+
+#### Cartridge board version 3 (soic-16 - 128MB max)
+
+Schematic in pdf [schematic](hw/n64cart-v3-soic-16.pdf)
+
+[Schematic eagle cad](hw/n64cart-v3-soic-16.sch)
+
+[PCB eagle cad](hw/n64cart-v3-soic-16.brd)
+
+[Gerber files](hw/n64cart-v3-soic-16_2024-08-11.zip)
 
 ### Features
 
-- The PCB version 2 supports 2, 4, 8, 16, 32 and 64 MB SPI flash chips
-
-- The PCB version 3 supports 128 MB SPI flash chips (SOIC-16)
-
-- One user controllable LED, accessible from N64 side (RGB WS2812 for PCB version 3)
+- One user controllable LED, accessible from N64 side, RGB WS2812 for PCB version 3
 
 - UART port, accessible from N64 side
 
 - USB passthrough to N64 side
 
-- USB utility to access to the cartridge flash chip as filesystem.
-
 - Emulation for EEPROM 4/16Kbit
 
 - Emulation for SRAM 256Kbit/1MBit
+
+- USB utility to access to the cartridge flash chip as filesystem.
 
 ### Memory mapping
 
