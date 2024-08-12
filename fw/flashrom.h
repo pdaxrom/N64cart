@@ -30,13 +30,13 @@ bool flash_erase_sector(uint32_t addr);
 
 bool flash_write_sector(uint32_t addr, uint8_t * buffer);
 
-bool flash_read_0C(uint32_t addr, uint8_t * buffer, uint32_t len);
+bool flash_read(uint32_t addr, uint8_t * buffer, uint32_t len);
 
-uint8_t flash_read8_0C(uint32_t addr);
+uint8_t flash_read8(uint32_t addr);
 
-uint16_t flash_read16_0C(uint32_t addr);
+uint16_t flash_read16(uint32_t addr);
 
-uint32_t flash_read32_0C(uint32_t addr);
+uint32_t flash_read32(uint32_t addr);
 
 #ifdef PICO_BOOT_STAGE2_CHOOSE_MX66L
 #define MODE_CONTINUOS_READ 0xf0
@@ -50,10 +50,14 @@ void flash_quad_gpio_init(void);
 
 void flash_quad_cont_read_mode(void);
 
-uint16_t inline flash_quad_read16_EC(uint32_t addr)
+uint16_t inline flash_quad_read16(uint32_t addr)
 {
+#ifdef DISABLE_FLASH_ADDR_32
+    ssi_hw->dr0 = (addr << 8) | MODE_CONTINUOS_READ;
+#else
     ssi_hw->dr0 = addr;
     ssi_hw->dr0 = MODE_CONTINUOS_READ;
+#endif
 
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {
     }
@@ -62,8 +66,12 @@ uint16_t inline flash_quad_read16_EC(uint32_t addr)
 
 void inline flash_quad_exit_cont_read_mode()
 {
+#ifdef DISABLE_FLASH_ADDR_32
+    ssi_hw->dr0 = 0x0;
+#else
     ssi_hw->dr0 = 0x0;
     ssi_hw->dr0 = 0x0;
+#endif
 
     while (!(ssi_hw->sr & SSI_SR_RFNE_BITS)) {
     }

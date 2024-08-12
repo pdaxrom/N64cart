@@ -683,14 +683,9 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
             uint8_t tmp[64];
             if (req->type == CART_READ_SEC) {
                 rw_sector_offset = req->offset;
-//                flash_read_0C(rw_sector_offset, tmp, 64);
                 req->offset = 0;
             }
-            flash_read_0C(rw_sector_offset + req->offset, tmp, 64);
-
-            //memmove(tmp, &sector_buffer[req->offset], 64);
-            //      printf("read offset = %08X\n", req->offset);
-
+            flash_read(rw_sector_offset + req->offset, tmp, 64);
             usb_start_transfer(ep_out, tmp, sizeof(tmp));
             return;
         } else if (req->type == CART_WRITE_SEC) {

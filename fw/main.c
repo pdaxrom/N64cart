@@ -35,16 +35,6 @@ static const struct flash_chip flash_chip[] = {
     { 0xef, 0x4017, 8, 342000, VREG_VOLTAGE_1_20, "W25Q64" },
     { 0xef, 0x4016, 4, 342000, VREG_VOLTAGE_1_20, "W25Q32" },
     { 0xef, 0x4015, 2, 342000, VREG_VOLTAGE_1_20, "W25Q16" },
-    //    { 0xef, 0x4020, 4, 16, 330000, VREG_VOLTAGE_1_20, "W25Q512" },
-    //    { 0xef, 0x4020, 4, 16, 328000, VREG_VOLTAGE_1_15, "W25Q512" },
-    //    { 0xef, 0x4020, 4, 16, 318000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
-    //    { 0xef, 0x4020, 4, 16, 300000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
-    //    { 0xef, 0x4020, 4, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q512" },
-    //    { 0xef, 0x4019, 2, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q256" },
-    //    { 0xef, 0x4018, 1, 16, 266000, VREG_VOLTAGE_DEFAULT, "W25Q128" },
-    //    { 0xef, 0x4017, 1, 8 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q64"  },
-    //    { 0xef, 0x4016, 1, 4 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q32"  },
-    //    { 0xef, 0x4015, 1, 2 , 266000, VREG_VOLTAGE_DEFAULT, "W25Q16"  }
 };
 
 static const struct flash_chip *used_flash_chip;
@@ -76,7 +66,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 #ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
 #endif
-    flash_read_0C(offset, buffer, need);
+    flash_read(offset, buffer, need);
 
     return true;
 }
@@ -150,8 +140,10 @@ int main(void)
 
     gpio_init(N64_CIC_DCLK);
     gpio_init(N64_CIC_DIO);
+#ifndef DISABLE_PINS_23_24
     gpio_init(N64_SI_CLK);
     gpio_init(N64_SI_DATA);
+#endif
     gpio_init(N64_COLD_RESET);
     gpio_init(N64_NMI);
 

@@ -91,7 +91,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 #endif
     disable_interrupts();
     flash_mode(0);
-    flash_read_0C(offset, buffer, need);
+    flash_read(offset, buffer, need);
     flash_mode(1);
     enable_interrupts();
 
@@ -139,7 +139,7 @@ static bool get_rom_name(char *name, int size)
     n64cart_sram_unlock();
     disable_interrupts();
     flash_mode(0);
-    flash_read_0C(((pi_io_read(N64CART_ROM_LOOKUP) >> 16) << 12) + 0x3b, (void *)name, 5);
+    flash_read(((pi_io_read(N64CART_ROM_LOOKUP) >> 16) << 12) + 0x3b, (void *)name, 5);
     flash_mode(1);
     enable_interrupts();
     n64cart_sram_lock();

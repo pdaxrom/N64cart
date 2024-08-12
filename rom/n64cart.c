@@ -8,6 +8,18 @@
 #include <libdragon.h>
 #include "n64cart.h"
 
+#ifdef DISABLE_FLASH_ADDR_32
+#define SECTOR_ERASE (0x20)
+#define SECTOR_WRITE (0x02)
+#define BYTE_READ (0x0b)
+#define CMD_ADDR_LEN (4)
+#else
+#define SECTOR_ERASE (0x21)
+#define SECTOR_WRITE (0x12)
+#define BYTE_READ (0x0c)
+#define CMD_ADDR_LEN (5)
+#endif
+
 uint8_t n64cart_uart_getc(void)
 {
     while (!(io_read(N64CART_UART_CTRL) & N64CART_UART_RX_AVAIL)) ;
@@ -104,11 +116,16 @@ static void flash_wait_ready(void)
     } while (stat & 0x1);
 }
 
-static inline void flash_put_cmd_addr32(uint8_t cmd, uint32_t addr)
+static inline void flash_put_cmd_addr(uint8_t cmd, uint32_t addr)
 {
     flash_cs_force(0);
     pi_io_write(N64CART_SSI_DR0, cmd);
+#ifdef DISABLE_FLASH_ADDR_32
+    addr <<= 8;
+    for (int i = 0; i < 3; ++i) {
+#else
     for (int i = 0; i < 4; ++i) {
+#endif
         pi_io_write(N64CART_SSI_DR0, addr >> 24);
         addr <<= 8;
     }
@@ -118,8 +135,8 @@ bool flash_erase_sector(uint32_t addr)
 {
     flash_do_cmd(0x06, NULL, NULL, 0);
 
-    flash_put_cmd_addr32(0x21, addr);
-    flash_put_get(NULL, NULL, 0, 5);
+    flash_put_cmd_addr(SECTOR_ERASE, addr);
+    flash_put_get(NULL, NULL, 0, CMD_ADDR_LEN);
 
     flash_wait_ready();
 
@@ -131,8 +148,8 @@ bool flash_write_sector(uint32_t addr, uint8_t *buffer)
     for (int i = 0; i < 4096; i += 256) {
         flash_do_cmd(0x06, NULL, NULL, 0);
 
-        flash_put_cmd_addr32(0x12, addr + i);
-        flash_put_get(&buffer[i], NULL, 256, 5);
+        flash_put_cmd_addr(SECTOR_WRITE, addr + i);
+        flash_put_get(&buffer[i], NULL, 256, CMD_ADDR_LEN);
 
         flash_wait_ready();
     }
@@ -140,50 +157,50 @@ bool flash_write_sector(uint32_t addr, uint8_t *buffer)
     return true;
 }
 
-bool flash_read_0C(uint32_t addr, uint8_t *buffer, uint32_t len)
+bool flash_read(uint32_t addr, uint8_t *buffer, uint32_t len)
 {
-    flash_put_cmd_addr32(0x0c, addr);
+    flash_put_cmd_addr(BYTE_READ, addr);
     pi_io_write(N64CART_SSI_DR0, 0);    // dummy
-    flash_put_get(NULL, buffer, len, 6);
+    flash_put_get(NULL, buffer, len, CMD_ADDR_LEN + 1);
 
     return true;
 }
 
-uint8_t flash_read8_0C(uint32_t addr)
+uint8_t flash_read8(uint32_t addr)
 {
     uint8_t val;
 
-    flash_put_cmd_addr32(0x0c, addr);
+    flash_put_cmd_addr(BYTE_READ, addr);
     pi_io_write(N64CART_SSI_DR0, 0);    // dummy
-    flash_put_get(NULL, &val, 1, 6);
+    flash_put_get(NULL, &val, 1, CMD_ADDR_LEN + 1);
 
     return val;
 }
 
-uint16_t flash_read16_0C(uint32_t addr)
+uint16_t flash_read16(uint32_t addr)
 {
     uint16_t val;
 
     uint8_t rxbuf[2];
 
-    flash_put_cmd_addr32(0x0c, addr);
+    flash_put_cmd_addr(BYTE_READ, addr);
     pi_io_write(N64CART_SSI_DR0, 0);    // dummy
-    flash_put_get(NULL, rxbuf, 2, 6);
+    flash_put_get(NULL, rxbuf, 2, CMD_ADDR_LEN + 1);
 
     val = *((uint16_t *) rxbuf);
 
     return val;
 }
 
-uint32_t flash_read32_0C(uint32_t addr)
+uint32_t flash_read32(uint32_t addr)
 {
     uint32_t val;
 
     uint8_t rxbuf[4];
 
-    flash_put_cmd_addr32(0x0c, addr);
+    flash_put_cmd_addr(BYTE_READ, addr);
     pi_io_write(N64CART_SSI_DR0, 0);    // dummy
-    flash_put_get(NULL, rxbuf, 4, 6);
+    flash_put_get(NULL, rxbuf, 4, CMD_ADDR_LEN + 1);
 
     val = *((uint32_t *) rxbuf);
 

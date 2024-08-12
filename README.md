@@ -150,7 +150,7 @@ Do not solder R1 and D2 if LED3 is soldered.
 
 To build, you will need an installed Pico SDK.
 
-By default, the firmware is compiled for cartridge version 3. Add to cmake ```-DBOARD=pico``` to build it for version 2 (or generic pico cartridge).
+By default, the firmware is compiled for cartridge version 3. Add to cmake ```-DBOARD=v2``` to build it for version 2 (flash chip 32/64 MB). Add to cmake ```-DBOARD=pico``` to build it for generic pico (flash chip 16 MB and less).
 
 Steps to build:
 ```
@@ -171,10 +171,12 @@ Press the cartridge button, connect the cartridge to USB and upload 'n64cart.uf2
 
 To build, you will need an installed N64 toolchain with [libdragon](https://github.com/DragonMinded/libdragon), compiled in opengl branch.
 
+Add to make ```BOARD=pico``` to build it for generic pico (flash chip 16 MB and less).
+
 Steps to build:
 
 ```
-  cd ../../rom  
+  cd ../../rom
 
   make
 ```

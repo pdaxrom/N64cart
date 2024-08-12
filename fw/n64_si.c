@@ -115,6 +115,7 @@ static void cic_dclk_callback(void)
 
 void si_main(void)
 {
+#ifndef DISABLE_PINS_23_24
     si_pulse_counter = 0;
     si_out_pulses = 0;
 
@@ -122,4 +123,5 @@ void si_main(void)
 
     irq_set_exclusive_handler(IO_IRQ_BANK0, cic_dclk_callback);
     irq_set_enabled(IO_IRQ_BANK0, true);
+#endif
 }

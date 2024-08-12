@@ -734,7 +734,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             uint8_t tmp[64];
             if (current_req == CART_READ_SEC) {
                 rw_sector_offset = reverser32(req->offset);
-                flash_read_0C(rw_sector_offset, sector_buffer, ROMFS_FLASH_SECTOR);
+                flash_read(rw_sector_offset, sector_buffer, ROMFS_FLASH_SECTOR);
                 req->offset = 0;
             }
             memmove(tmp, &sector_buffer[reverser32(req->offset)], 64);

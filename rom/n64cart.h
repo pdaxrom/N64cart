@@ -73,10 +73,10 @@ void flash_do_cmd(uint8_t cmd, const uint8_t * txbuf, uint8_t * rxbuf, size_t co
 void flash_mode(bool mode);
 bool flash_erase_sector(uint32_t addr);
 bool flash_write_sector(uint32_t addr, uint8_t * buffer);
-bool flash_read_0C(uint32_t addr, uint8_t * buffer, uint32_t len);
-uint8_t flash_read8_0C(uint32_t addr);
-uint16_t flash_read16_0C(uint32_t addr);
-uint32_t flash_read32_0C(uint32_t addr);
+bool flash_read(uint32_t addr, uint8_t * buffer, uint32_t len);
+uint8_t flash_read8(uint32_t addr);
+uint16_t flash_read16(uint32_t addr);
+uint32_t flash_read32(uint32_t addr);
 
 uint32_t n64cart_fw_size(void);
 

@@ -109,7 +109,7 @@ void n64_pi(void)
         if (last_addr >= 0x10000000 && last_addr <= 0x1FBFFFFF) {
             do {
                 mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
-                word = flash_quad_read16_EC(mapped_addr);
+                word = flash_quad_read16(mapped_addr);
 
                 // addr = pio_sm_get_blocking(pio, 0);
                 while ((pio->fstat & 0x100) != 0) {
