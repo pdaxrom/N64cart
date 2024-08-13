@@ -30,10 +30,10 @@ endif()
 set(PICO_COPY_TO_RAM 1)
 
 if(NOT DEFINED REGION)
-    set(REGION "NTSC")
+    set(REGION "ntsc")
 endif()
 
-if(REGION STREQUAL "PAL")
+if(REGION STREQUAL "pal")
     set(CONFIG_REGION_PAL 1)
 else()
     set(CONFIG_REGION_PAL 0)
