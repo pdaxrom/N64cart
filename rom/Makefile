@@ -16,7 +16,7 @@ CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb -D
 CFLAGS += -DFIRMWARE_VERSION=$(shell sed -n 's/.*FIRMWARE_VERSION.*\(0x[0-9a-fA-F]*\).*/\1/p' ../fw/CMakeLists.txt)
 
 ifeq (pico,$(BOARD))
-CFLAGS += -DDISABLE_FLASH_ADDR_32
+CFLAGS += -DDISABLE_FLASH_ADDR_32=1
 endif
 
 SRC = main.c n64cart.c syslog.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c ext/shell_utils.c usb/dev_lowlevel.c

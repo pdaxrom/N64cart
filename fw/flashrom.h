@@ -52,7 +52,7 @@ void flash_quad_cont_read_mode(void);
 
 uint16_t inline flash_quad_read16(uint32_t addr)
 {
-#ifdef DISABLE_FLASH_ADDR_32
+#if defined(DISABLE_FLASH_ADDR_32) && (DISABLE_FLASH_ADDR_32 == 1)
     ssi_hw->dr0 = (addr << 8) | MODE_CONTINUOS_READ;
 #else
     ssi_hw->dr0 = addr;
@@ -66,7 +66,7 @@ uint16_t inline flash_quad_read16(uint32_t addr)
 
 void inline flash_quad_exit_cont_read_mode()
 {
-#ifdef DISABLE_FLASH_ADDR_32
+#if defined(DISABLE_FLASH_ADDR_32) && (DISABLE_FLASH_ADDR_32 == 1)
     ssi_hw->dr0 = 0x0;
 #else
     ssi_hw->dr0 = 0x0;

@@ -15,12 +15,7 @@
 #define _BOARDS_N64CART_H
 
 // For board detection
-#define N64CART_RP2040
-
-// On some samples, the xosc can take longer to stabilize than is usual
-//#ifndef PICO_XOSC_STARTUP_DELAY_MULTIPLIER
-//#define PICO_XOSC_STARTUP_DELAY_MULTIPLIER 64
-//#endif
+#define N64CART_RP2040_V2
 
 // --- UART ---
 #ifndef PICO_DEFAULT_UART

@@ -12,7 +12,7 @@
 #include "hardware/structs/ioqspi.h"
 #include "hardware/structs/pads_qspi.h"
 
-#ifdef DISABLE_FLASH_ADDR_32
+#if defined(DISABLE_FLASH_ADDR_32) && (DISABLE_FLASH_ADDR_32 == 1)
 #define ADDR_L (8u)
 #define SECTOR_ERASE (0x20)
 #define SECTOR_WRITE (0x02)
@@ -102,7 +102,7 @@ static inline void xflash_put_cmd_addr(uint8_t cmd, uint32_t addr)
 {
     flash_cs_force(0);
     ssi_hw->dr0 = cmd;
-#ifdef DISABLE_FLASH_ADDR_32
+#if defined(DISABLE_FLASH_ADDR_32) && (DISABLE_FLASH_ADDR_32 == 1)
     addr <<= 8;
     for (int i = 0; i < 3; ++i) {
 #else
@@ -265,7 +265,7 @@ void flash_quad_cont_read_mode(void)
     *reg = (*reg & ~IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_BITS) | (0 << IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_LSB);
     (void)*reg;
 
-#ifdef DISABLE_FLASH_ADDR_32
+#if defined(DISABLE_FLASH_ADDR_32) && (DISABLE_FLASH_ADDR_32 == 1)
     ssi_hw->dr0 = 0xeb;
 #else
     ssi_hw->dr0 = 0xec;

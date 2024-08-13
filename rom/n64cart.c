@@ -8,7 +8,7 @@
 #include <libdragon.h>
 #include "n64cart.h"
 
-#ifdef DISABLE_FLASH_ADDR_32
+#if defined(DISABLE_FLASH_ADDR_32) && (DISABLE_FLASH_ADDR_32 == 1)
 #define SECTOR_ERASE (0x20)
 #define SECTOR_WRITE (0x02)
 #define BYTE_READ (0x0b)
@@ -120,7 +120,7 @@ static inline void flash_put_cmd_addr(uint8_t cmd, uint32_t addr)
 {
     flash_cs_force(0);
     pi_io_write(N64CART_SSI_DR0, cmd);
-#ifdef DISABLE_FLASH_ADDR_32
+#if defined(DISABLE_FLASH_ADDR_32) && (DISABLE_FLASH_ADDR_32 == 1)
     addr <<= 8;
     for (int i = 0; i < 3; ++i) {
 #else

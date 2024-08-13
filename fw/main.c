@@ -140,20 +140,22 @@ int main(void)
 
     gpio_init(N64_CIC_DCLK);
     gpio_init(N64_CIC_DIO);
-#ifndef DISABLE_PINS_23_24
-    gpio_init(N64_SI_CLK);
-    gpio_init(N64_SI_DATA);
-#endif
     gpio_init(N64_COLD_RESET);
-    gpio_init(N64_NMI);
 
     gpio_pull_up(N64_CIC_DIO);
     gpio_pull_up(N64_SI_DATA);
+
+#ifndef N64CART_RP2040_PICO
+    gpio_init(N64_SI_CLK);
+    gpio_init(N64_SI_DATA);
+
+    gpio_init(N64_NMI);
 
     gpio_init(N64_INT);
     gpio_pull_up(N64_INT);
     gpio_put(N64_INT, 1);
     gpio_set_dir(N64_INT, GPIO_OUT);
+#endif
 
     setup_sysconfig();
 

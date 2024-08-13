@@ -115,7 +115,7 @@ static void cic_dclk_callback(void)
 
 void si_main(void)
 {
-#ifndef DISABLE_PINS_23_24
+#ifndef N64CART_RP2040_PICO
     si_pulse_counter = 0;
     si_out_pulses = 0;
 

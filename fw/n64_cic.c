@@ -40,7 +40,7 @@ Data Line, Bidir (DIO):  CIC Pin 15
 
 // #define DEBUG
 
-// #define DEBUG_INFO
+//#define DEBUG_INFO
 
 #ifndef CONFIG_REGION_PAL
 #define REGION_NTSC (0)
@@ -143,12 +143,14 @@ static int cic_out_count;
 
 static bool check_running(void)
 {
+#ifndef N64CART_RP2040_PICO
     if (gpio_get(N64_NMI) == 0) {
 #ifdef DEBUG_INFO
         printf("N64 NMI\n");
 #endif
         restore_rom_lookup();
     }
+#endif
 
     if (gpio_get(N64_COLD_RESET) == 0) {
 #ifdef DEBUG_INFO
@@ -493,9 +495,11 @@ static void cic_run(void)
 #ifdef DEBUG_INFO
     printf("CIC Emulator core running!\r\n");
 
+#ifndef N64CART_RP2040_PICO
     if (gpio_get(N64_NMI) == 0) {
         printf("N64 NMI low\n");
     }
+#endif
 #endif
 
     // Wait for reset to be released
