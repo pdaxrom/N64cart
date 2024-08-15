@@ -3,12 +3,8 @@ cmake_minimum_required(VERSION 3.12)
 # Set the external flash to 16 MB
 #add_definitions(-DPICO_FLASH_SIZE_BYTES=16777216)
 
-# Pull in SDK (must be before project)
-include(pico_sdk_import.cmake)
-
-project(picocart64 C CXX ASM)
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 17)
+# Copy program to ram during boot
+set(PICO_COPY_TO_RAM 1)
 
 if(NOT DEFINED BOARD)
     set(BOARD "v3")
@@ -26,9 +22,6 @@ else()
     set(PICO_DEFAULT_BOOT_STAGE2_FILE ${CMAKE_CURRENT_LIST_DIR}/board-v3/boot2_mx66l.S)
 endif()
 
-# Copy program to ram during boot
-set(PICO_COPY_TO_RAM 1)
-
 if(NOT DEFINED REGION)
     set(REGION "ntsc")
 endif()
@@ -39,8 +32,15 @@ else()
     set(CONFIG_REGION_PAL 0)
 endif()
 
-if (PICO_SDK_VERSION_STRING VERSION_LESS "1.3.0")
-    message(FATAL_ERROR "Raspberry Pi Pico SDK version 1.3.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
+# Pull in SDK (must be before project)
+include(pico_sdk_import.cmake)
+
+project(picocart64 C CXX ASM)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+
+if (PICO_SDK_VERSION_STRING VERSION_LESS "2.0.0")
+    message(FATAL_ERROR "Raspberry Pi Pico SDK version 2.0.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
 endif()
 
 # Initialize the SDK
