@@ -17,7 +17,11 @@ static unsigned char si_data_byte[16];
 
 static void cic_dclk_callback(void)
 {
+#if PICO_SDK_VERSION_MAJOR == 2
     io_bank0_irq_ctrl_hw_t *irq_ctrl_base = get_core_num()? &io_bank0_hw->proc1_irq_ctrl : &io_bank0_hw->proc0_irq_ctrl;
+#else
+    io_irq_ctrl_hw_t *irq_ctrl_base = get_core_num()? &iobank0_hw->proc1_irq_ctrl : &iobank0_hw->proc0_irq_ctrl;
+#endif
 
     uint gpio = N64_SI_CLK;
     io_ro_32 *status_reg = &irq_ctrl_base->ints[gpio / 8];
@@ -109,7 +113,11 @@ static void cic_dclk_callback(void)
             }
         }
 
+#if PICO_SDK_VERSION_MAJOR == 2
         io_bank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
+#else
+        iobank0_hw->intr[gpio / 8] = events << (4 * (gpio % 8));
+#endif
     }
 }
 
