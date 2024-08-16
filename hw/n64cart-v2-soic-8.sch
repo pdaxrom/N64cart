@@ -12443,8 +12443,8 @@ Do not solder R1 and R6.</text>
 <attribute name="VALUE" x="218.44" y="251.46" size="1.778" layer="96"/>
 </instance>
 <instance part="Q1" gate="G$1" x="576.58" y="396.24" smashed="yes" rot="R90">
-<attribute name="NAME" x="576.58" y="398.78" size="1.778" layer="95" rot="R90"/>
-<attribute name="VALUE" x="579.12" y="398.78" size="1.778" layer="96" rot="R90"/>
+<attribute name="NAME" x="578.104" y="401.066" size="1.778" layer="95" rot="R180"/>
+<attribute name="VALUE" x="579.628" y="403.86" size="1.778" layer="96" rot="R180"/>
 </instance>
 <instance part="LED1" gate="G$1" x="601.98" y="325.12" smashed="yes" rot="MR0">
 <attribute name="NAME" x="598.424" y="320.548" size="1.778" layer="95" rot="MR90"/>
@@ -12459,7 +12459,7 @@ Do not solder R1 and R6.</text>
 </instance>
 <instance part="D2" gate="G$1" x="589.28" y="388.62" smashed="yes" rot="R180">
 <attribute name="NAME" x="586.74" y="391.16" size="1.778" layer="95"/>
-<attribute name="VALUE" x="589.28" y="386.08" size="1.778" layer="96" rot="R270"/>
+<attribute name="VALUE" x="589.28" y="383.54" size="1.778" layer="96"/>
 </instance>
 <instance part="C22" gate="G$1" x="581.66" y="381" smashed="yes">
 <attribute name="NAME" x="583.184" y="381.381" size="1.778" layer="95"/>
@@ -12470,7 +12470,7 @@ Do not solder R1 and R6.</text>
 </instance>
 <instance part="IC1" gate="IC$1" x="469.9" y="246.38" smashed="yes">
 <attribute name="NAME" x="441.96" y="195.58" size="2.1844" layer="95"/>
-<attribute name="VALUE" x="480.06" y="195.58" size="2.1844" layer="96"/>
+<attribute name="VALUE" x="459.74" y="248.92" size="2.1844" layer="96"/>
 </instance>
 <instance part="GND1" gate="1" x="454.66" y="187.96" smashed="yes">
 <attribute name="VALUE" x="452.12" y="185.42" size="1.778" layer="96"/>
@@ -12556,8 +12556,8 @@ Do not solder R1 and R6.</text>
 <attribute name="VALUE" x="416.56" y="330.2" size="1.778" layer="96"/>
 </instance>
 <instance part="U1" gate="A" x="358.14" y="274.32" smashed="yes">
-<attribute name="NAME" x="381.3556" y="283.4386" size="2.0828" layer="95" ratio="6" rot="SR0"/>
-<attribute name="VALUE" x="380.7206" y="280.8986" size="2.0828" layer="96" ratio="6" rot="SR0"/>
+<attribute name="NAME" x="383.8956" y="275.8186" size="2.0828" layer="95" ratio="6" rot="SR0"/>
+<attribute name="VALUE" x="375.6406" y="263.1186" size="2.0828" layer="96" ratio="6" rot="SR0"/>
 </instance>
 <instance part="GND18" gate="1" x="353.06" y="251.46" smashed="yes">
 <attribute name="VALUE" x="350.52" y="248.92" size="1.778" layer="96"/>
@@ -12585,8 +12585,8 @@ Do not solder R1 and R6.</text>
 <attribute name="VALUE" x="340.36" y="236.22" size="1.778" layer="96"/>
 </instance>
 <instance part="XTAL1" gate="A" x="398.78" y="233.68" smashed="yes" rot="R180">
-<attribute name="NAME" x="401.5994" y="230.9876" size="3.4798" layer="95" ratio="10" rot="SR180"/>
-<attribute name="VALUE" x="402.6662" y="239.8776" size="3.4798" layer="96" ratio="10" rot="SR180"/>
+<attribute name="NAME" x="397.7894" y="238.6076" size="2.0828" layer="95" ratio="10" rot="SR180"/>
+<attribute name="VALUE" x="410.2862" y="242.4176" size="2.0828" layer="96" ratio="10" rot="SR180"/>
 </instance>
 <instance part="C15" gate="G$1" x="386.08" y="226.06" smashed="yes">
 <attribute name="NAME" x="387.604" y="226.441" size="1.778" layer="95"/>
@@ -12615,8 +12615,8 @@ Do not solder R1 and R6.</text>
 <attribute name="VALUE" x="516.89" y="283.718" size="1.778" layer="96"/>
 </instance>
 <instance part="U2" gate="G$1" x="541.02" y="289.56" smashed="yes"/>
-<instance part="GND23" gate="1" x="525.78" y="297.18" smashed="yes">
-<attribute name="VALUE" x="523.24" y="294.64" size="1.778" layer="96"/>
+<instance part="GND23" gate="1" x="525.78" y="276.86" smashed="yes">
+<attribute name="VALUE" x="523.24" y="274.32" size="1.778" layer="96"/>
 </instance>
 <instance part="DEBUG" gate="A" x="617.22" y="208.28" smashed="yes">
 <attribute name="NAME" x="610.87" y="213.995" size="1.778" layer="95"/>
@@ -12644,8 +12644,8 @@ Do not solder R1 and R6.</text>
 <attribute name="VALUE" x="502.92" y="375.92" size="1.778" layer="96"/>
 </instance>
 <instance part="D1" gate="G$1" x="515.62" y="396.24" smashed="yes">
-<attribute name="NAME" x="518.16" y="393.7" size="1.778" layer="95" rot="R180"/>
-<attribute name="VALUE" x="515.62" y="398.78" size="1.778" layer="96" rot="R90"/>
+<attribute name="NAME" x="516.636" y="400.558" size="1.778" layer="95" rot="R180"/>
+<attribute name="VALUE" x="528.32" y="403.86" size="1.778" layer="96" rot="R180"/>
 </instance>
 <instance part="LED2" gate="G$1" x="614.68" y="325.12" smashed="yes" rot="MR0">
 <attribute name="NAME" x="611.124" y="320.548" size="1.778" layer="95" rot="MR90"/>
@@ -12660,7 +12660,7 @@ Do not solder R1 and R6.</text>
 </instance>
 <instance part="U3" gate="G$1" x="386.08" y="309.88" smashed="yes">
 <attribute name="NAME" x="375.9185" y="320.5495" size="2.540359375" layer="95"/>
-<attribute name="VALUE" x="375.9182" y="296.6696" size="2.540459375" layer="96"/>
+<attribute name="VALUE" x="370.8382" y="296.6696" size="2.0828" layer="96"/>
 </instance>
 <instance part="C4" gate="G$1" x="469.9" y="388.62" smashed="yes">
 <attribute name="NAME" x="471.424" y="389.001" size="1.778" layer="95"/>
@@ -12846,11 +12846,9 @@ Do not solder R1 and R6.</text>
 </segment>
 <segment>
 <pinref part="U2" gate="G$1" pin="GND"/>
-<wire x1="535.94" y1="294.64" x2="530.86" y2="294.64" width="0.1524" layer="91"/>
-<wire x1="530.86" y1="294.64" x2="530.86" y2="302.26" width="0.1524" layer="91"/>
-<wire x1="530.86" y1="302.26" x2="525.78" y2="302.26" width="0.1524" layer="91"/>
+<wire x1="535.94" y1="294.64" x2="525.78" y2="294.64" width="0.1524" layer="91"/>
 <pinref part="GND23" gate="1" pin="GND"/>
-<wire x1="525.78" y1="302.26" x2="525.78" y2="299.72" width="0.1524" layer="91"/>
+<wire x1="525.78" y1="294.64" x2="525.78" y2="279.4" width="0.1524" layer="91"/>
 </segment>
 <segment>
 <pinref part="GND24" gate="1" pin="GND"/>
