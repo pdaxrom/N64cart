@@ -7,6 +7,8 @@
 #include "n64.h"
 #include "rgb_led.h"
 
+#if defined(PICO_DEFAULT_LED_PIN) && (PICO_LED_WS2812 == 1)
+
 static uint32_t T0;
 static uint32_t T1;
 static uint32_t pwm_buffer[8 * 3 + 1];
@@ -26,10 +28,17 @@ static void rgb2pwm(uint32_t rgb)
     pwm_buffer[3 * 8] = 0;
 }
 
+void set_rgb_led(uint32_t rgb)
+{
+    rgb2pwm(rgb);
+    dma_channel_wait_for_finish_blocking(pwm_dma_chan);
+    dma_channel_set_read_addr(pwm_dma_chan, pwm_buffer, true);
+}
+
 void init_rgb_led(void)
 {
-    gpio_set_function(LED_PIN, GPIO_FUNC_PWM);
-    int led_pwm_slice_num = pwm_gpio_to_slice_num(LED_PIN);
+    gpio_set_function(PICO_DEFAULT_LED_PIN, GPIO_FUNC_PWM);
+    int led_pwm_slice_num = pwm_gpio_to_slice_num(PICO_DEFAULT_LED_PIN);
 
     float clk = clock_get_hz(clk_sys);
     uint32_t pwm_wrap = 71;
@@ -67,9 +76,14 @@ void init_rgb_led(void)
     );
 }
 
+#else
+
 void set_rgb_led(uint32_t rgb)
 {
-    rgb2pwm(rgb);
-    dma_channel_wait_for_finish_blocking(pwm_dma_chan);
-    dma_channel_set_read_addr(pwm_dma_chan, pwm_buffer, true);
 }
+
+void init_rgb_led(void)
+{
+}
+
+#endif

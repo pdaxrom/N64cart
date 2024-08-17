@@ -150,7 +150,10 @@ Do not solder R1 and D2 if LED3 is soldered.
 
 To build, you will need an installed Pico SDK.
 
-By default, the firmware is compiled for cartridge version 3 and NTSC. Add to cmake ```-DBOARD=v2``` to build it for version 2 (flash chip 32/64 MB). Add to cmake ```-DBOARD=pico``` to build it for generic pico (flash chip 16 MB and less). Add to cmake ```-DREGION=pal``` to build it for PAL.
+By default, the firmware is compiled for cartridge version 3 and NTSC. Add to cmake ```-DBOARD=v2``` to build it for version 2 (flash chip 32/64 MB). Add to cmake ```-DBOARD=pico``` to build it for generic pico cartridge (flash chip 16 MB or less) without SI_DAT, SI_CLK, NMI, INT lines.
+ Add to cmake ```-DBOARD=pico-lite``` to build it for PicoCart64-lite cartridge (flash chip 16 MB or less) with SI_DAT, SI_CLK, NMI, INT lines.
+
+Add to cmake ```-DREGION=pal``` to build it for PAL.
 
 Steps to build:
 ```

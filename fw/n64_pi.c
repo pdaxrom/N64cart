@@ -224,7 +224,8 @@ void n64_pi(void)
                 } else if (addr & 1) {
                     if (last_addr == 0x1fd01006) {
                         uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
-#ifdef RGB_LED
+#ifdef PICO_DEFAULT_LED_PIN
+#if PICO_LED_WS2812 == 1
                     } else if (last_addr == 0x1fd01008) {
                         sram_address = addr & 0xffff0000;
                     } else if (last_addr == 0x1fd0100a) {
@@ -232,6 +233,7 @@ void n64_pi(void)
 #else
                     } else if (last_addr == 0x1fd0100a) {
                         gpio_put(LED_PIN, (addr >> 16) & 0x01);
+#endif
 #endif
                     } else if (last_addr == 0x1fd0100e) {
                         ctrl_reg = addr >> 16;

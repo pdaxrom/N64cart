@@ -33,6 +33,10 @@
 #define PICO_DEFAULT_LED_PIN 25
 #endif
 
+#ifndef PICO_LED_WS2812
+#define PICO_LED_WS2812 1
+#endif
+
 // --- FLASH ---
 
 #define PICO_BOOT_STAGE2_CHOOSE_MX66L 1

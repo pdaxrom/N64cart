@@ -31,10 +31,19 @@
 #define N64_CIC_DCLK    (20)
 #define N64_CIC_DIO     (21)
 #define N64_COLD_RESET  (22)
+
+#ifdef N64CART_RP2040_PICO_LITE
+
+#define N64_SI_DATA (25)
+#define N64_SI_CLK (26)
+#define N64_NMI (27)
+#define N64_INT (28)
+
+#else
+
 #define N64_SI_DATA (23)
 #define N64_SI_CLK (24)
-
 #define N64_NMI (26)
 #define N64_INT (27)
 
-#define LED_PIN (25)
+#endif

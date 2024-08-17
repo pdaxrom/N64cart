@@ -673,7 +673,11 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
 
             if (req->type == BOOTLOADER_MODE) {
                 printf("reset to bootloader ...\n");
+#ifdef PICO_DEFAULT_LED_PIN
                 reset_usb_boot(1 << PICO_DEFAULT_LED_PIN, 0);
+#else
+                reset_usb_boot(0, 0);
+#endif
             } else if (req->type == CART_REBOOT) {
                 printf("reboot ...\n");
                 watchdog_reboot(0, 0, 100);
