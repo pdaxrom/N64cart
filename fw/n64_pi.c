@@ -17,7 +17,7 @@
 #include "pico/stdio.h"
 #include "pico/stdlib.h"
 #include "romfs/romfs.h"
-#ifdef RGB_LED
+#if defined(PICO_DEFAULT_LED_PIN) && (PICO_LED_WS2812 == 1)
 #include "rgb_led.h"
 #endif
 
@@ -232,7 +232,7 @@ void n64_pi(void)
                         set_rgb_led(sram_address | (addr >> 16));
 #else
                     } else if (last_addr == 0x1fd0100a) {
-                        gpio_put(LED_PIN, (addr >> 16) & 0x01);
+                        gpio_put(PICO_DEFAULT_LED_PIN, (addr >> 16) & 0x01);
 #endif
 #endif
                     } else if (last_addr == 0x1fd0100e) {

@@ -23,7 +23,7 @@
 #include "usb/usbd.h"
 #include "n64_cic.h"
 #include "n64_si.h"
-#ifdef RGB_LED
+#if defined(PICO_DEFAULT_LED_PIN) && (PICO_LED_WS2812 == 1)
 #include "rgb_led.h"
 #endif
 
@@ -161,8 +161,13 @@ int main(void)
 
     stdio_init_all();
 
-#ifdef RGB_LED
+#if defined(PICO_DEFAULT_LED_PIN)
+#if PICO_LED_WS2812 == 1
     init_rgb_led();
+#else
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+#endif
 #endif
 
     printf("N64cart (" GIT_HASH ") by pdaXrom!\n");
