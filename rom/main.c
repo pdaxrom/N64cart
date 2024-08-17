@@ -241,6 +241,11 @@ int main(void)
                 for (int i = 0; i < save_file_size; i++) {
                     if (save_data[i] != 0) {
                         romfs_delete(save_name);
+                        for (int i = 0; i < save_file_size; i += 2) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
+                        }
                         if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) == ROMFS_NOERR) {
                             int bwrite = 0;
                             int ret = 0;
@@ -496,6 +501,12 @@ int main(void)
 
                         sprintf(tStr, "read %d bytes\n", rbytes);
                         n64cart_uart_puts(tStr);
+
+                        for (int i = 0; i < rbytes; i += 2) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
+                        }
 
                         n64cart_sram_unlock();
                         // dma_wait();
