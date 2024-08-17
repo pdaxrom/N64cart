@@ -22,16 +22,22 @@
 
 uint8_t n64cart_uart_getc(void)
 {
+#ifndef DISABLE_UART
     while (!(io_read(N64CART_UART_CTRL) & N64CART_UART_RX_AVAIL)) ;
 
     return io_read(N64CART_UART_RXTX) & 0xff;
+#else
+    return 0;
+#endif
 }
 
 void n64cart_uart_putc(uint8_t data)
 {
+#ifndef DISABLE_UART
     while (!(io_read(N64CART_UART_CTRL) & N64CART_UART_TX_FREE)) ;
 
     io_write(N64CART_UART_RXTX, data);
+#endif
 }
 
 void n64cart_uart_puts(char *str)

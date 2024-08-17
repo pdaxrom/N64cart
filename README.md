@@ -56,9 +56,9 @@ To effectively work with cartridge flash chip, a special version of the filesyst
 
 ### Features
 
-- One user controllable LED, accessible from N64 side, RGB WS2812 for PCB version 3
+- One user controllable LED, accessible from N64 side, RGB WS2812 for PCB version 3 (all except PicoCart64-lite)
 
-- UART port, accessible from N64 side
+- UART port, accessible from N64 side (all except PicoCart64-lite)
 
 - USB passthrough to N64 side
 
@@ -174,7 +174,7 @@ Press the cartridge button, connect the cartridge to USB and upload 'n64cart.uf2
 
 To build, you will need an installed N64 toolchain with [libdragon](https://github.com/DragonMinded/libdragon), compiled in opengl branch.
 
-Add to make ```BOARD=pico``` to build it for generic pico (flash chip 16 MB and less).
+Add to make ```BOARD=pico``` to build it for generic pico (flash chip 16 MB and less). Add to make ```BOARD=pico-lite``` to build it for PicoCart64-lite (flash chip 16 MB and less).
 
 Steps to build:
 

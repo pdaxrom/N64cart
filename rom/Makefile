@@ -19,6 +19,10 @@ ifeq (pico,$(BOARD))
 CFLAGS += -DDISABLE_FLASH_ADDR_32=1
 endif
 
+ifeq (pico-lite,$(BOARD))
+CFLAGS += -DDISABLE_FLASH_ADDR_32=1 -DDISABLE_UART
+endif
+
 SRC = main.c n64cart.c syslog.c ../fw/romfs/romfs.c ext/cic.c ext/crc32.c ext/boot.c ext/shell_utils.c usb/dev_lowlevel.c
 ASMSRC = ext/reboot.S
 
