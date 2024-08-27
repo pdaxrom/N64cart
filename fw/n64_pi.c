@@ -95,8 +95,7 @@ void n64_pi(void)
 
     uint32_t flags;
     uint16_t ctrl_reg;
-    uint8_t byte;
-    uintptr_t fw_binary_end = (uintptr_t) & __flash_binary_end;
+    static const uintptr_t fw_binary_end = (uintptr_t) & __flash_binary_end;
 
     // uint32_t addr = pio_sm_get_blocking(pio, 0);
     while ((pio->fstat & 0x100) != 0) {
@@ -184,117 +183,306 @@ void n64_pi(void)
                 sram_address += 4;
             } while (true);
 #endif
-        } else {
+        } else if (last_addr == 0x1fd01000) {
             do {
-                // addr = pio_sm_get_blocking(pio, 0);
                 while ((pio->fstat & 0x100) != 0) {
                 }
                 addr = pio->rxf[0];
 
                 if (addr == 0) {
-                    if (last_addr == 0x1fd01002) {
-                        word = ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02) | ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01) | 0x00f0;
-                    } else if (last_addr == 0x1fd01006) {
-                        word = uart_get_hw(UART_ID)->dr;
-                    } else if (last_addr == 0x1fd0100e) {
-                        word = sys64_ctrl_reg;
-                    } else if (last_addr == 0x1fd01012) {
-                        flags = ssi_hw->sr;
-                        word = ((flags & SSI_SR_TFNF_BITS) ? 0x01 : 0x00) | ((flags & SSI_SR_RFNE_BITS) ? 0x02 : 0x00);
-                    } else if (last_addr == 0x1fd01016) {
-                        byte = (uint8_t) ssi_hw->dr0;
-                        word = byte;
-                    } else if (last_addr == 0x1fd0101a) {
-                        word = (((fw_binary_end - XIP_BASE) + 4095) & ~4095) >> 12;
-#if PI_USBCTRL
-                    } else if (last_addr == 0x1fd01022) {
-                        word = usb64_ctrl_reg;
-                        gpio_put(N64_INT, 1);
-                        usb64_ctrl_reg &= ~0x8000;
-                        if (usb64_ctrl_reg & 0x10) {
-                            *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ISER_OFFSET)) = 1 << USBCTRL_IRQ;
-                        }
-#endif
-                    } else {
-                        word = 0xdead;
-                    }
-                    // pio_sm_put(pio, 0, word);
-                    pio->txf[0] = word;
-                    last_addr += 2;
+                    pio->txf[0] = 0;
                 } else if (addr & 1) {
-                    if (last_addr == 0x1fd01006) {
-                        uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02) | ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01) | 0x00f0;
+                } else if (addr & 1) {
+                    word = (addr >> 16) | word;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else if (last_addr == 0x1fd01004) {
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = 0;
+                } else if (addr & 1) {
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = uart_get_hw(UART_ID)->dr;
+                } else if (addr & 1) {
+                    uart_get_hw(UART_ID)->dr = (addr >> 16) & 0xff;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else if (last_addr == 0x1fd01008) {
+            static uint32_t led_reg = 0;
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = led_reg >> 16;
+                } else if (addr & 1) {
+                    led_reg = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = led_reg & 0xffff;
+                } else if (addr & 1) {
+                    led_reg = (addr >> 16) | led_reg;
 #ifdef PICO_DEFAULT_LED_PIN
 #if PICO_LED_WS2812 == 1
-                    } else if (last_addr == 0x1fd01008) {
-                        sram_address = addr & 0xffff0000;
-                    } else if (last_addr == 0x1fd0100a) {
-                        set_rgb_led(sram_address | (addr >> 16));
+                    set_rgb_led(led_reg);
 #else
-                    } else if (last_addr == 0x1fd0100a) {
-                        gpio_put(PICO_DEFAULT_LED_PIN, (addr >> 16) & 0x01);
+                    gpio_put(PICO_DEFAULT_LED_PIN, led_reg & 0x01);
 #endif
 #endif
-                    } else if (last_addr == 0x1fd0100e) {
-                        ctrl_reg = addr >> 16;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else if (last_addr == 0x1fd0100c) {
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
 
-                        if (ctrl_reg & 0x01) {
-                            if (!(sys64_ctrl_reg & 0x01)) {
-                                flash_cs_force(1);
-                            }
-                        } else {
-                            if ((sys64_ctrl_reg & 0x01)) {
-                                flash_cs_force(0);
-                            }
+                if (addr == 0) {
+                    pio->txf[0] = 0;
+                } else if (addr & 1) {
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = sys64_ctrl_reg;
+                } else if (addr & 1) {
+                    ctrl_reg = addr >> 16;
+
+                    if (ctrl_reg & 0x01) {
+                        if (!(sys64_ctrl_reg & 0x01)) {
+                            flash_cs_force(1);
                         }
-
-                        if (ctrl_reg & 0x10) {
-                            if (!(sys64_ctrl_reg & 0x10)) {
-                                flash_quad_cont_read_mode();
-                            }
-                        } else {
-                            if (sys64_ctrl_reg & 0x10) {
-                                flash_quad_exit_cont_read_mode();
-                                flash_spi_mode();
-                            }
+                    } else {
+                        if ((sys64_ctrl_reg & 0x01)) {
+                            flash_cs_force(0);
                         }
-
-                        sys64_ctrl_reg = ctrl_reg;
-                    } else if (last_addr == 0x1fd01016) {
-                        byte = (addr >> 16) & 0xff;
-                        ssi_hw->dr0 = byte;
-#if PI_USBCTRL
-                    } else if (last_addr == 0x1fd01022) {
-                        ctrl_reg = addr >> 16;
-
-                        if (ctrl_reg & 0x0001) {
-                            if (!(usb64_ctrl_reg & 0x0001)) {
-                                reset_block(RESETS_RESET_USBCTRL_BITS);
-                            }
-                        } else {
-                            if (usb64_ctrl_reg & 0x0001) {
-                                unreset_block_wait(RESETS_RESET_USBCTRL_BITS);
-                            }
-                        }
-
-                        if (ctrl_reg & 0x0010) {
-                            if (!(usb64_ctrl_reg & 0x0010)) {
-                                // irq_set_mask_enabled(1 << USBCTRL_IRQ, true);
-                                *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ICPR_OFFSET)) = 1 << USBCTRL_IRQ;
-                                *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ISER_OFFSET)) = 1 << USBCTRL_IRQ;
-                            }
-                        } else {
-                            if (usb64_ctrl_reg & 0x0010) {
-                                // irq_set_mask_enabled(1 << USBCTRL_IRQ, false);
-                                *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ICER_OFFSET)) = 1 << USBCTRL_IRQ;
-                            }
-                        }
-
-                        usb64_ctrl_reg = ctrl_reg;
-#endif
                     }
 
-                    last_addr += 2;
+                    if (ctrl_reg & 0x10) {
+                        if (!(sys64_ctrl_reg & 0x10)) {
+                            flash_quad_cont_read_mode();
+                        }
+                    } else {
+                        if (sys64_ctrl_reg & 0x10) {
+                            flash_quad_exit_cont_read_mode();
+                            flash_spi_mode();
+                        }
+                    }
+
+                    sys64_ctrl_reg = ctrl_reg;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else if (last_addr == 0x1fd01010) {
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = 0;
+                } else if (addr & 1) {
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    flags = ssi_hw->sr;
+                    pio->txf[0] = ((flags & SSI_SR_TFNF_BITS) ? 0x01 : 0x00) | ((flags & SSI_SR_RFNE_BITS) ? 0x02 : 0x00);
+                } else if (addr & 1) {
+                    word = (addr >> 16) | word;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else if (last_addr == 0x1fd01014) {
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = 0;
+                } else if (addr & 1) {
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] =  ssi_hw->dr0;
+                } else if (addr & 1) {
+                    ssi_hw->dr0 = addr >> 16;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else if (last_addr == 0x1fd01018) {
+            static const uint32_t fw_size = fw_binary_end - XIP_BASE;
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = fw_size >> 16;
+                } else if (addr & 1) {
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = fw_size & 0xffff;
+                } else if (addr & 1) {
+                    word = (addr >> 16) | word;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else if (last_addr == 0x1fd01020) {
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = 0;
+                } else if (addr & 1) {
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = usb64_ctrl_reg;
+#if PI_USBCTRL
+                    gpio_put(N64_INT, 1);
+                    usb64_ctrl_reg &= ~0x8000;
+                    if (usb64_ctrl_reg & 0x10) {
+                        *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ISER_OFFSET)) = 1 << USBCTRL_IRQ;
+                    }
+#endif
+                } else if (addr & 1) {
+                    ctrl_reg = addr >> 16;
+
+#if PI_USBCTRL
+                    if (ctrl_reg & 0x0001) {
+                        if (!(usb64_ctrl_reg & 0x0001)) {
+                            reset_block(RESETS_RESET_USBCTRL_BITS);
+                        }
+                    } else {
+                        if (usb64_ctrl_reg & 0x0001) {
+                            unreset_block_wait(RESETS_RESET_USBCTRL_BITS);
+                        }
+                    }
+
+                    if (ctrl_reg & 0x0010) {
+                        if (!(usb64_ctrl_reg & 0x0010)) {
+                            // irq_set_mask_enabled(1 << USBCTRL_IRQ, true);
+                            *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ICPR_OFFSET)) = 1 << USBCTRL_IRQ;
+                            *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ISER_OFFSET)) = 1 << USBCTRL_IRQ;
+                        }
+                    } else {
+                        if (usb64_ctrl_reg & 0x0010) {
+                            // irq_set_mask_enabled(1 << USBCTRL_IRQ, false);
+                            *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ICER_OFFSET)) = 1 << USBCTRL_IRQ;
+                        }
+                    }
+#endif
+                    usb64_ctrl_reg = ctrl_reg;
+                } else {
+                    break;
+                }
+            } while (true);
+        } else {
+            do {
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+                if (addr == 0) {
+                    pio->txf[0] = 0xdead;
+                } else if (addr & 1) {
+                    word = addr & 0xffff0000;
+                } else {
+                    break;
+                }
+
+                while ((pio->fstat & 0x100) != 0) {
+                }
+                addr = pio->rxf[0];
+
+#ifdef DEBUG_PI
+                set_rgb_led(0xff0000);
+                printf("%08X\n", last_addr);
+#endif
+                if (addr == 0) {
+                    pio->txf[0] = 0xbeef;
+                } else if (addr & 1) {
+                    word = (addr >> 16) | word;
                 } else {
                     break;
                 }
