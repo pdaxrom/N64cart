@@ -215,7 +215,7 @@ uint32_t flash_read32(uint32_t addr)
 
 uint32_t n64cart_fw_size(void)
 {
-    return (io_read(N64CART_FW_SIZE) & 0xffff) << 12;
+    return io_read(N64CART_FW_SIZE);
 }
 
 void n64cart_sram_lock(void)

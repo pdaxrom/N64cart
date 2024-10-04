@@ -203,7 +203,7 @@ int main(void)
     uint8_t *romfs_flash_list = &pi_sram[flash_map_size];
     uint8_t *romfs_flash_buffer = &pi_sram[flash_map_size + flash_list_size];
 
-    if (!romfs_start(((fw_binary_end - XIP_BASE) + 4095) & ~4095, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
+    if (!romfs_start(fw_binary_end - XIP_BASE, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
         printf("Cannot start romfs!\n");
         while (true) {
             tight_loop_contents();

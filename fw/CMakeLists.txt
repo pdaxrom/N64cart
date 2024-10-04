@@ -35,6 +35,14 @@ else()
     set(CONFIG_REGION_PAL 0)
 endif()
 
+# Check for custom cross environment settings
+if(EXISTS $ENV{HOME}/cross-env.cmake)
+  message(STATUS "Custom cross environment detected")
+  include($ENV{HOME}/cross-env.cmake)
+else()
+  message(STATUS "Custom cross environment is not detected")
+endif()
+
 # Pull in SDK (must be before project)
 include(pico_sdk_import.cmake)
 

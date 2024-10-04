@@ -1,6 +1,6 @@
 TARGET = romfs
 
-CFLAGS = -Wall -Wpedantic -g -DTEST
+CFLAGS = -Wall -Wpedantic -g -DTEST -Wall -Wextra -pedantic -Warray-bounds -fsanitize=address
 # -m32
 
 OBJS = romfs.o main.o

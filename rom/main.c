@@ -21,6 +21,8 @@
 #include "main.h"
 #include "usb/usbd.h"
 
+#include "syslog.h"
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_IMG_STATIC
 #define STBI_NO_STDIO
@@ -197,7 +199,10 @@ int main(void)
     uint8_t *romfs_flash_list = malloc(flash_list_size);
     uint8_t *romfs_flash_buffer = malloc(ROMFS_FLASH_SECTOR);
 
-    if (!romfs_start(n64cart_fw_size(), used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
+    uint32_t fw_size = n64cart_fw_size();
+    syslog(LOG_INFO, "flash_map: %d, flash_list: %d, fw_size: %d", flash_map_size, flash_list_size, fw_size);
+
+    if (!romfs_start(fw_size, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
         n64cart_uart_puts("Cannot start romfs!\n");
     } else {
         char tmp[256];
@@ -424,11 +429,14 @@ int main(void)
                 uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4];
 
                 memset(rom_lookup, 0, sizeof(rom_lookup));
-                romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
+                uint32_t map_size = romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
+
+                //syslog(LOG_INFO, "map size: %d (%08X)\n", map_size, map_size);
 
                 n64cart_sram_unlock();
-                for (int i = 0; i < sizeof(rom_lookup) / 2; i += 2) {
+                for (int i = 0; i < map_size; i += 2) {
                     uint32_t data = (rom_lookup[i] << 16) | rom_lookup[i + 1];
+                    //syslog(LOG_INFO, "%08X: %08X", i, data);
                     io_write(N64CART_ROM_LOOKUP + (i << 1), data);
                 }
                 n64cart_sram_lock();

@@ -86,7 +86,7 @@ uint32_t romfs_create_file(char *name, romfs_file * file, uint16_t mode, uint16_
 uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_close_file(romfs_file * file);
 uint32_t romfs_open_file(char *name, romfs_file * file, uint8_t * io_buffer);
-bool romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);
+uint32_t romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file * file);
 const char *romfs_strerror(uint32_t err);
 
