@@ -23,7 +23,7 @@ else()
     set(BOARD_CFLAGS "")
 endif()
 
-include("CMake/toolchain.libdragon.cmake")
+include("cmake/toolchain.libdragon.cmake")
 
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE) # debug helper
 
@@ -121,5 +121,3 @@ add_custom_command(TARGET ${ELF_NAME}
     COMMAND ${TOOLCHAIN_PREFIX}/bin/n64elfcompress ARGS -o ${CMAKE_CURRENT_BINARY_DIR}/ -c 1 ${ELF_NAME}.stripped
     COMMAND ${N64_TOOL} ARGS -t "${PROJECT_NAME}" --toc -o ${ROM_NAME} --align 256 ${ELF_NAME}.stripped --align 8 ${ELF_NAME}.sym --align 8
 )
-
-unset(TOOLCHAIN_LIBDRAGON CACHE) # <---- this is the important to make sure the next build succeeds!!

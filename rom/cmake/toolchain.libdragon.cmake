@@ -1,5 +1,3 @@
-option(TOOLCHAIN_LIBDRAGON "Use LIBDRAGON" ON) #only set if this file is called~?
-
 if (NOT N64_INST)
     set(N64_INST "$ENV{N64_INST}")
 endif()
