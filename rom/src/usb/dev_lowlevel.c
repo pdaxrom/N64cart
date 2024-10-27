@@ -11,8 +11,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../../fw/romfs/romfs.h"
-#include "../../utils/utils2.h"
+#include "../../../fw/romfs/romfs.h"
+#include "../../../utils/utils2.h"
 #include "../main.h"
 #include "../n64cart.h"
 #include "../syslog.h"

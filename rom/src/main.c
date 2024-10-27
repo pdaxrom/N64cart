@@ -12,12 +12,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../fw/romfs/romfs.h"
+#include "../../fw/romfs/romfs.h"
 #include "ext/boot.h"
 #include "ext/boot_io.h"
 #include "ext/shell_utils.h"
 #include "n64cart.h"
-#include "build/wy700font-regular.h"
+#include "../build/wy700font-regular.h"
 #include "main.h"
 #include "usb/usbd.h"
 
