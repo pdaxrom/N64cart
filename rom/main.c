@@ -17,7 +17,7 @@
 #include "ext/boot_io.h"
 #include "ext/shell_utils.h"
 #include "n64cart.h"
-#include "wy700font-regular.h"
+#include "build/wy700font-regular.h"
 #include "main.h"
 #include "usb/usbd.h"
 

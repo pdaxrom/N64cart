@@ -9,8 +9,8 @@
 #ifndef _HARDWARE_STRUCTS_USB_H
 #define _HARDWARE_STRUCTS_USB_H
 
-#include "hardware/address_mapped.h"
-#include "hardware/regs/usb.h"
+#include "../address_mapped.h"
+#include "../regs/usb.h"
 
 // Reference to datasheet: https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf#tab-registerlist_usb
 //
