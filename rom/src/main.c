@@ -22,6 +22,7 @@
 #include "usb/usbd.h"
 
 #include "syslog.h"
+#include "md5.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_IMG_STATIC
@@ -30,6 +31,15 @@
 #include "stb/stb_image.h"
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb/stb_image_resize2.h"
+
+enum {
+    STEP_LOGO = 0,
+    STEP_ROMFS_INIT,
+    STEP_LOAD_BACKGROUND,
+    STEP_SAVE_GAMESAVE,
+    //STEP_USB_INIT,
+    STEP_FINISH
+};
 
 static const struct flash_chip flash_chip[] = {
     { 0xc2, 0x201b, 128, "MX66L1G45G" },
@@ -51,16 +61,11 @@ static char *files[128];
 static int num_files = 0;
 static int menu_sel = 0;
 
-static char save_name[64] = { 0 };
-static uint32_t save_addr = 0;
-static int save_size = 0;
-
 static uint8_t __attribute__((aligned(16))) save_data[131072];
 
 static sprite_t *bg_img = NULL;
 
-static bool rom_fs_started = false;
-static bool bg_img_checked = false;
+static int do_step = STEP_LOGO;
 
 bool romfs_flash_sector_erase(uint32_t offset)
 {
@@ -159,8 +164,35 @@ static bool get_rom_name(char *name, int size)
     return true;
 }
 
+static void print_bytes(uint8_t bytes[16]) {
+    char hex[33] = { 0 };
+    for (int i = 0; i < 16; i++) {
+        snprintf(&hex[i * 2], 3, "%02X", bytes[i]);
+    }
+    syslog(LOG_INFO, "file map md5: %s", hex);
+
+    // if (strcmp(hex, "EA9E1832EFAB0CF7303273128A79DB5E")) {
+    //     syslog(LOG_ERR, "ERROR MD5! (EA9E1832EFAB0CF7303273128A79DB5E)");
+    //     while (true) {}
+    // }
+}
+
+static void show_md5(uint8_t *buf, size_t size)
+{
+    md5_context ctx;
+    md5_init(&ctx);
+    md5_digest(&ctx, buf, size);
+
+    uint8_t md5_actual[16] = {0};
+    md5_output(&ctx, md5_actual);
+
+    print_bytes(md5_actual);
+}
+
 int main(void)
 {
+    usbd_start();
+
     display_init(is_memory_expanded()? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
 
     if (is_memory_expanded()) {
@@ -179,31 +211,6 @@ int main(void)
 
     io_write(N64CART_LED_CTRL, 0);
 
-    // copy save data from cartridge on reset button and set default save data configuration
-    syslog(LOG_INFO, "reset type %d", sys_reset_type());
-    n64cart_sram_unlock();
-    if (sys_reset_type() == RESET_WARM) {
-        syslog(LOG_INFO, "get eeprom data");
-
-        save_addr = io_read(N64CART_RMRAM);
-        save_size = io_read(N64CART_RMRAM + 4);
-        for (int i = 0; i < sizeof(save_name); i += 4) {
-            *((uint32_t *) & save_name[i]) = io_read(N64CART_RMRAM + 8 + i);
-        }
-
-        if (save_addr && save_size && save_name[0]) {
-            //              dma_wait();
-            //              data_cache_hit_writeback_invalidate(save_data, sizeof(save_data));
-            //              dma_read(save_data, N64CART_EEPROM, sizeof(save_data));
-            for (int i = 0; i < save_size; i += 4) {
-                *((uint32_t *) & save_data[i]) = io_read(save_addr + i);
-            }
-        }
-    }
-    io_write(N64CART_RMRAM, 0);
-    n64cart_sram_lock();
-    n64cart_eeprom_16kbit(true);
-
     detect_flash_chip();
 
     if (used_flash_chip) {
@@ -211,8 +218,6 @@ int main(void)
     }
 
     syslog(LOG_INFO, "N64Cart fw size: %ld", n64cart_fw_size());
-
-    usbd_start();
 
     static const char *txt_title_1 = "N64CART MANAGER";
     static const char *txt_title_2 = "(c) sashz /pdaXrom.org/, 2022-2024";
@@ -234,6 +239,8 @@ int main(void)
 
     bool hide_menu = false;
 
+    do_step = STEP_LOGO;
+
     /* Main loop test */
     while (1) {
         disp = display_get();
@@ -251,23 +258,58 @@ int main(void)
 
         graphics_set_color(0xeeeeee00, 0x00000000);
 
-        if (!rom_fs_started) {
+
+        if (do_step == STEP_LOGO) {
+            static int i = 0;
+            if (++i < 30) {
+                static char *logo_text = "pdaXrom";
+                char text[strlen(logo_text) + 1];
+                memset(text, 0, sizeof(text));
+
+                strncpy(text, logo_text, (i + 1) / 2);
+                graphics_draw_text(disp, valign(text), 120 * scr_scale, text);
+                display_show(disp);
+
+                continue;
+            }
+
+            do_step = STEP_ROMFS_INIT;
+            display_show(disp);
+            continue;
+        }
+
+        if (do_step == STEP_ROMFS_INIT) {
             static const char *save_data_txt = "ROM FS starting...";
             graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
             display_show(disp);
 
             uint32_t flash_map_size, flash_list_size;
             romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
-            uint16_t *romfs_flash_map = malloc(flash_map_size);
-            uint8_t *romfs_flash_list = malloc(flash_list_size);
+
+            static uint16_t *romfs_flash_map = NULL;
+            static uint8_t *romfs_flash_list = NULL;
+
+            if (!romfs_flash_map) {
+                romfs_flash_map = malloc(flash_map_size);
+            }
+
+            if (!romfs_flash_list) {
+                romfs_flash_list = malloc(flash_list_size);
+            }
 
             uint32_t fw_size = n64cart_fw_size();
             syslog(LOG_INFO, "flash_map: %d, flash_list: %d, fw_size: %d", flash_map_size, flash_list_size, fw_size);
+            syslog(LOG_INFO, "flash_map  ptr %p", romfs_flash_map);
+            syslog(LOG_INFO, "flash_list ptr %p", romfs_flash_list);
 
             if (!romfs_start(fw_size, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
                 syslog(LOG_ERR, "Cannot start romfs!");
             } else {
+
                 romfs_file file;
+
+                num_files = 0;
+                menu_sel = 0;
 
                 syslog(LOG_INFO, "File list:");
                 if (romfs_list(&file, true) == ROMFS_NOERR) {
@@ -280,15 +322,17 @@ int main(void)
                 }
             }
 
-            rom_fs_started = true;
+            show_md5((uint8_t *)romfs_flash_map, flash_map_size);
+
+            do_step = STEP_LOAD_BACKGROUND;
             continue;
         }
 
-        if (!bg_img_checked) {
+        if (do_step == STEP_LOAD_BACKGROUND) {
             romfs_file file;
             uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
 
-            static const char *save_data_txt = "Loading...";
+            static const char *save_data_txt = "Loading background...";
             graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
             display_show(disp);
 
@@ -338,69 +382,119 @@ int main(void)
                 }
             }
 
-            bg_img_checked = true;
+            do_step = STEP_SAVE_GAMESAVE;
             continue;
         }
 
-        if (save_addr && save_size && save_name[0]) {
-            static const char *save_data_txt = "Write game save...";
-            graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
-            display_show(disp);
+        if (do_step == STEP_SAVE_GAMESAVE) {
+            char save_name[64] = { 0 };
+            uint32_t save_addr = 0;
+            int save_size = 0;
 
-            syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, save_addr, save_size);
+            do_step = STEP_FINISH;
 
-            for (int i = 0; i < save_size; i++) {
-                if (save_data[i] != 0) {
-                    romfs_file save_file;
-                    uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
+            // copy save data from cartridge on reset button and set default save data configuration
+            syslog(LOG_INFO, "reset type %d", sys_reset_type());
+            n64cart_sram_unlock();
+            if (sys_reset_type() == RESET_WARM) {
+                syslog(LOG_INFO, "get eeprom data");
 
-                    romfs_delete(save_name);
-                    if (save_size <= 2048) {
-                        // eeprom byte swap
-                        for (int i = 0; i < save_size; i += 2) {
-                            uint8_t tmp = save_data[i];
-                            save_data[i] = save_data[i + 1];
-                            save_data[i + 1] = tmp;
-                        }
-                    } else {
-                        // sram word swap
-                        for (int i = 0; i < save_size; i += 4) {
-                            uint8_t tmp = save_data[i];
-                            save_data[i] = save_data[i + 3];
-                            save_data[i + 3] = tmp;
-                            tmp = save_data[i + 2];
-                            save_data[i + 2] = save_data[i + 1];
-                            save_data[i + 1] = tmp;
-                        }
+                save_addr = io_read(N64CART_RMRAM);
+                save_size = io_read(N64CART_RMRAM + 4);
+                for (int i = 0; i < sizeof(save_name); i += 4) {
+                    *((uint32_t *) & save_name[i]) = io_read(N64CART_RMRAM + 8 + i);
+                }
+
+                if (save_addr && save_size && save_name[0]) {
+                    //              dma_wait();
+                    //              data_cache_hit_writeback_invalidate(save_data, sizeof(save_data));
+                    //              dma_read(save_data, N64CART_EEPROM, sizeof(save_data));
+                    for (int i = 0; i < save_size; i += 4) {
+                        *((uint32_t *) & save_data[i]) = io_read(save_addr + i);
                     }
-
-                    if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) == ROMFS_NOERR) {
-                        int bwrite = 0;
-                        int ret = 0;
-                        while (save_size > 0) {
-                            ret = romfs_write_file(&save_data[bwrite], (save_size > 4096) ? 4096 : save_size, &save_file);
-                            if (!ret) {
-                                break;
-                            }
-                            save_size -= ret;
-                            bwrite += ret;
-                        }
-                        romfs_close_file(&save_file);
-                        if (!ret) {
-                            syslog(LOG_ERR, "error write save file, delete");
-                            romfs_delete(save_name);
-                        }
-                    }
-                    syslog(LOG_INFO, "save file created");
-                    break;
                 }
             }
+            io_write(N64CART_RMRAM, 0);
+            n64cart_sram_lock();
+            n64cart_eeprom_16kbit(true);
 
-            save_addr = 0;
-            save_size = 0;
-            save_name[0] = 0;
-            continue;
+            if (save_addr && save_size && save_name[0]) {
+                static const char *save_data_txt = "Write game save...";
+                graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+                display_show(disp);
+
+                syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, save_addr, save_size);
+
+                for (int i = 0; i < save_size; i++) {
+                    if (save_data[i] != 0) {
+                        romfs_file save_file;
+                        uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
+
+                        romfs_delete(save_name);
+                        if (save_size <= 2048) {
+                            // eeprom byte swap
+                            for (int i = 0; i < save_size; i += 2) {
+                                uint8_t tmp = save_data[i];
+                                save_data[i] = save_data[i + 1];
+                                save_data[i + 1] = tmp;
+                            }
+                        } else {
+                            // sram word swap
+                            for (int i = 0; i < save_size; i += 4) {
+                                uint8_t tmp = save_data[i];
+                                save_data[i] = save_data[i + 3];
+                                save_data[i + 3] = tmp;
+                                tmp = save_data[i + 2];
+                                save_data[i + 2] = save_data[i + 1];
+                                save_data[i + 1] = tmp;
+                            }
+                        }
+
+                        if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) == ROMFS_NOERR) {
+                            int bwrite = 0;
+                            int ret = 0;
+                            while (save_size > 0) {
+                                ret = romfs_write_file(&save_data[bwrite], (save_size > 4096) ? 4096 : save_size, &save_file);
+                                if (!ret) {
+                                    break;
+                                }
+                                save_size -= ret;
+                                bwrite += ret;
+                            }
+                            romfs_close_file(&save_file);
+                            if (!ret) {
+                                syslog(LOG_ERR, "error write save file, delete");
+                                romfs_delete(save_name);
+                            }
+                        }
+                        syslog(LOG_INFO, "save file created");
+                        break;
+                    }
+                }
+
+                save_addr = 0;
+                save_size = 0;
+                save_name[0] = 0;
+                continue;
+            }
         }
+
+        // if (do_step == STEP_USB_INIT) {
+        //     static int count = 0;
+        //     static const char *save_data_txt = "USB initialization...";
+        //     graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+        //     display_show(disp);
+
+        //     if (count++ == 0) {
+        //         usbd_start();
+        //     }
+
+        //     if (count < 20) {
+        //         continue;
+        //     }
+        //     do_step = STEP_FINISH;
+        //     continue;
+        // }
 
         /* Scan for User input */
         joypad_poll();
