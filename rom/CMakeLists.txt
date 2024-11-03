@@ -27,7 +27,9 @@ include("cmake/toolchain.libdragon.cmake")
 
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE) # debug helper
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+message(STATUS "System: ${CMAKE_HOST_SYSTEM_NAME}")
+
+if (${CMAKE_HOST_SYSTEM_NAME} MATCHES "Darwin")
     set(GSED gsed)
 else()
     set(GSED sed)
