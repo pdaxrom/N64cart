@@ -25,7 +25,7 @@ endif()
 
 include("cmake/toolchain.libdragon.cmake")
 
-set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE) # debug helper
+#set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE) # debug helper
 
 message(STATUS "System: ${CMAKE_HOST_SYSTEM_NAME}")
 
