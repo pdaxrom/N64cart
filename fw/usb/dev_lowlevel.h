@@ -32,6 +32,8 @@ struct usb_device_configuration {
     const struct usb_configuration_descriptor *config_descriptor;
     const unsigned char *lang_descriptor;
     const unsigned char **descriptor_strings;
+    const uint8_t *ms_os_desc_string;
+    const uint8_t *ms_winusb_feature_descriptor;
     // USB num endpoints is 16
     struct usb_endpoint_configuration endpoints[USB_NUM_ENDPOINTS];
 };
@@ -64,7 +66,7 @@ static const struct usb_endpoint_descriptor ep0_in = {
 static const struct usb_device_descriptor device_descriptor = {
     .bLength = sizeof(struct usb_device_descriptor),
     .bDescriptorType = USB_DT_DEVICE,
-    .bcdUSB = 0x0110,           // USB 1.1 device
+    .bcdUSB = 0x0200,           // USB 1.1 device
     .bDeviceClass = 0,          // Specified in interface descriptor
     .bDeviceSubClass = 0,       // No subclass
     .bDeviceProtocol = 0,       // No protocol
@@ -130,4 +132,31 @@ static const unsigned char *descriptor_strings[] = {
     (unsigned char *)"N64cart"  // Product
 };
 
+// Microsoft OS Descriptor
+#define MS_OS_DESC_STRING_INDEX		0xEE
+#define MS_OS_DESC_STRING_LENGTH	0x12
+#define MS_OS_DESC_VENDOR_CODE_OFFSET	0x10
+static const uint8_t ms_os_desc_string[] = {
+    MS_OS_DESC_STRING_LENGTH,
+    USB_DT_STRING,
+    'M', 0, 'S', 0, 'F', 0, 'T', 0, '1', 0, '0', 0, '0', 0,
+    0x69, 0x00
+};
+
+static const uint8_t ms_winusb_feature_descriptor[] = {
+    0x28, 0x00, 0x00, 0x00, // DWORD (LE)       Descriptor length (40 bytes)
+    0x00, 0x01,             // BCD WORD (LE)	Version ('1.0')
+    0x04, 0x00,             // WORD (LE)        Compatibility ID Descriptor index (0x0004)
+    0x01,                   // BYTE             Number of sections (1)
+    0x00, 0x00, 0x00, 0x00, // 7 BYTES          Reserved
+    0x00, 0x00, 0x00,       //
+    0x00,                   // BYTE             Interface Number (Interface #0)
+    0x01,                   // BYTE             Reserved
+    'W', 'I', 'N', 'U',     // 8 BYTES          Compatible ID
+    'S', 'B', 0x00, 0x00,   // ASCII String     ("WINUSB\0\0")
+    0x00, 0x00, 0x00, 0x00, // 8 BYTES          Sub-Compatible ID
+    0x00, 0x00, 0x00, 0x00, // ASCII String     (unused)
+    0x00, 0x00, 0x00, 0x00, // 6 BYTES          Reserved
+    0x00, 0x00              //
+};
 #endif

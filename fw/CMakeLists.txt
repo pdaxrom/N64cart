@@ -78,8 +78,7 @@ add_compile_options(
     -DCONFIG_REGION_PAL=${CONFIG_REGION_PAL}
 )
 
-add_executable(
-    n64cart
+list(APPEND CSOURCES
     main.c
     n64_pi.c
     n64_cic.c
@@ -88,6 +87,31 @@ add_executable(
     romfs/romfs.c
     usb/dev_lowlevel.c
     rgb_led.c
+)
+SET_SOURCE_FILES_PROPERTIES(${CSOURCES} PROPERTIES LANGUAGE C)
+
+list(APPEND SOURCES
+    main.h
+    n64_pi.h
+    flashrom.h
+    board/n64cart-v3.h
+    board/n64cart-pico.h
+    board/n64cart-pico-lite.h
+    board/n64cart-v2.h
+    usb/usb_common.h
+    usb/usbd.h
+    usb/dev_lowlevel.h
+    n64.h
+    romfs/romfs.h
+    n64_si.h
+    n64_cic.h
+    rgb_led.h
+)
+list(APPEND SOURCES ${CSOURCES})
+
+add_executable(
+    n64cart
+    ${SOURCES}
 )
 
 # pull in common dependencies

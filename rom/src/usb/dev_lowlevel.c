@@ -45,44 +45,49 @@ static volatile bool configured = false;
 static uint8_t ep0_buf[64];
 
 // Struct defining the device configuration
-static struct usb_device_configuration dev_config = {.device_descriptor = &device_descriptor,
+static struct usb_device_configuration dev_config = {
+    .device_descriptor = &device_descriptor,
     .interface_descriptor = &interface_descriptor,
     .config_descriptor = &config_descriptor,
     .lang_descriptor = lang_descriptor,
     .descriptor_strings = descriptor_strings,
-    .endpoints = { {
-                    .descriptor = &ep0_out,
-                    .handler = &ep0_out_handler,
-                    .endpoint_control = NULL,   // NA for EP0
-                    .buffer_control = &usb_dpram->ep_buf_ctrl[0].out,
-                    // EP0 in and out share a data buffer
-                    .data_buffer = &usb_dpram->ep0_buf_a[0],
-                    },
-                  {
-                   .descriptor = &ep0_in,
-                   .handler = &ep0_in_handler,
-                   .endpoint_control = NULL,    // NA for EP0,
-                   .buffer_control = &usb_dpram->ep_buf_ctrl[0].in,
-                   // EP0 in and out share a data buffer
-                   .data_buffer = &usb_dpram->ep0_buf_a[0],
-                   },
-                  {
-                   .descriptor = &ep1_out,
-                   .handler = &ep1_out_handler,
-                   // EP1 starts at offset 0 for endpoint control
-                   .endpoint_control = &usb_dpram->ep_ctrl[0].out,
-                   .buffer_control = &usb_dpram->ep_buf_ctrl[1].out,
-                   // First free EPX buffer
-                   .data_buffer = &usb_dpram->epx_data[0 * 64],
-                   },
-                  {
-                   .descriptor = &ep2_in,
-                   .handler = &ep2_in_handler,
-                   .endpoint_control = &usb_dpram->ep_ctrl[1].in,
-                   .buffer_control = &usb_dpram->ep_buf_ctrl[2].in,
-                   // Second free EPX buffer
-                   .data_buffer = &usb_dpram->epx_data[1 * 64],
-                   } }
+    .ms_os_desc_string = ms_os_desc_string,
+    .ms_winusb_feature_descriptor = ms_winusb_feature_descriptor,
+    .endpoints = {
+        {
+            .descriptor = &ep0_out,
+            .handler = &ep0_out_handler,
+            .endpoint_control = NULL,   // NA for EP0
+            .buffer_control = &usb_dpram->ep_buf_ctrl[0].out,
+            // EP0 in and out share a data buffer
+            .data_buffer = &usb_dpram->ep0_buf_a[0],
+        },
+        {
+            .descriptor = &ep0_in,
+            .handler = &ep0_in_handler,
+            .endpoint_control = NULL,    // NA for EP0,
+            .buffer_control = &usb_dpram->ep_buf_ctrl[0].in,
+            // EP0 in and out share a data buffer
+            .data_buffer = &usb_dpram->ep0_buf_a[0],
+        },
+        {
+            .descriptor = &ep1_out,
+            .handler = &ep1_out_handler,
+            // EP1 starts at offset 0 for endpoint control
+            .endpoint_control = &usb_dpram->ep_ctrl[0].out,
+            .buffer_control = &usb_dpram->ep_buf_ctrl[1].out,
+            // First free EPX buffer
+            .data_buffer = &usb_dpram->epx_data[0 * 64],
+        },
+        {
+            .descriptor = &ep2_in,
+            .handler = &ep2_in_handler,
+            .endpoint_control = &usb_dpram->ep_ctrl[1].in,
+            .buffer_control = &usb_dpram->ep_buf_ctrl[2].in,
+            // Second free EPX buffer
+            .data_buffer = &usb_dpram->epx_data[1 * 64],
+        }
+    }
 };
 
 /**
@@ -350,6 +355,10 @@ static void usb_handle_device_descriptor(volatile struct usb_setup_packet *pkt)
  */
 static void usb_handle_config_descriptor(volatile struct usb_setup_packet *pkt)
 {
+#ifdef USB_DEBUG
+    printf("config %02X %02X wIndex=%04X wValue=%04X wLength=%04X\n", pkt->bRequest, pkt->bmRequestType, pkt->wIndex, pkt->wValue, pkt->wLength);
+#endif
+
     uint8_t *buf = &ep0_buf[0];
 
     // First request will want just the config descriptor
@@ -400,14 +409,39 @@ static void usb_handle_string_descriptor(volatile struct usb_setup_packet *pkt)
     uint8_t i = pkt->wValue & 0xff;
     uint8_t len = 0;
 
+#ifdef USB_DEBUG
+    printf("string %02X %02X wIndex=%04X wValue=%04X wLength=%04X\n", pkt->bRequest, pkt->bmRequestType, pkt->wIndex, pkt->wValue, pkt->wLength);
+#endif
+
     if (i == 0) {
         len = 4;
         memcpy(&ep0_buf[0], dev_config.lang_descriptor, len);
+    } else if (i == MS_OS_DESC_STRING_INDEX) {
+        len = dev_config.ms_os_desc_string[0];
+        memcpy(&ep0_buf[0], dev_config.ms_os_desc_string, len);
     } else {
         // Prepare fills in ep0_buf
         len = usb_prepare_string_descriptor(dev_config.descriptor_strings[i - 1]);
     }
 
+    usb_start_transfer(usb_get_endpoint_configuration(EP0_IN_ADDR), &ep0_buf[0], MIN(len, pkt->wLength));
+}
+
+/**
+ * @brief
+ *
+ * @param
+ */
+void usb_handle_ms_compat_id_features_descriptor(volatile struct usb_setup_packet *pkt)
+{
+    uint8_t len = 0;
+    if (pkt->bRequest == dev_config.ms_os_desc_string[MS_OS_DESC_VENDOR_CODE_OFFSET] && pkt->wIndex == 0x04) {
+        len = dev_config.ms_winusb_feature_descriptor[0];
+#ifdef USB_DEBUG
+        printf("ms compat id featires descriptor %d!!!\n", len);
+#endif
+        memcpy(&ep0_buf[0], dev_config.ms_winusb_feature_descriptor, len);
+    }
     usb_start_transfer(usb_get_endpoint_configuration(EP0_IN_ADDR), &ep0_buf[0], MIN(len, pkt->wLength));
 }
 
@@ -454,7 +488,7 @@ static void usb_set_device_configuration(volatile struct usb_setup_packet *pkt)
     usb_acknowledge_out_request();
     configured = true;
 
-    // Get ready to rx from host
+// Get ready to rx from host
 #ifdef DEBUG_INFO
     syslog(LOG_DEBUG, "USB Device configured");
 #endif
@@ -539,6 +573,8 @@ static void usb_handle_setup_packet(void)
             syslog(LOG_DEBUG, "Other IN request (0x%x)", pkt->bRequest);
 #endif
         }
+    } else if (req_direction == 0xc0) {
+        usb_handle_ms_compat_id_features_descriptor(pkt);
     }
 }
 
