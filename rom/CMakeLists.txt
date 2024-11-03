@@ -27,6 +27,12 @@ include("cmake/toolchain.libdragon.cmake")
 
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE) # debug helper
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(GSED gsed)
+else()
+    set(GSED sed)
+endif()
+
 # the following prevents launching a build in the source tree
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
@@ -89,8 +95,8 @@ add_custom_command(OUTPUT wy700font-regular.sprite
 
 add_custom_command(OUTPUT wy700font-regular.h
     COMMAND xxd ARGS -i wy700font-regular.sprite wy700font-regular.h
-    COMMAND gsed ARGS -i 's/unsigned char /static const unsigned char /g' wy700font-regular.h
-    COMMAND gsed ARGS -i 's/unsigned int /\\/\\/ static const unsigned int /g' wy700font-regular.h
+    COMMAND ${GSED} ARGS -i 's/unsigned char /static const unsigned char /g' wy700font-regular.h
+    COMMAND ${GSED} ARGS -i 's/unsigned int /\\/\\/ static const unsigned int /g' wy700font-regular.h
     DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/wy700font-regular.sprite
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
