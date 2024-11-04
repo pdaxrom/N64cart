@@ -453,7 +453,7 @@ uint32_t romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_fil
         return 0;
     }
 
-    uint32_t sector = file->pos;
+    uint32_t sector = file->entry.start;
     uint32_t num_sectors = ((file->entry.size + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1)) / ROMFS_FLASH_SECTOR;
     for (int i = 0; i < num_sectors; i++) {
         uint32_t next = from_lsb16(flash_map_int[sector]);
