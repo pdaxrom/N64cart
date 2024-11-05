@@ -12422,6 +12422,8 @@ Source: www.st.com, BAT60J.pdf</description>
 <part name="C4" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="C-EU" device="C0402" package3d_urn="urn:adsk.eagle:package:23626/2" value="100n"/>
 <part name="GND27" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 <part name="C7" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="C-EU" device="C0402" package3d_urn="urn:adsk.eagle:package:23626/2" value="100n"/>
+<part name="R8" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="R0402" package3d_urn="urn:adsk.eagle:package:23547/3" value="10K"/>
+<part name="GND28" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -12465,8 +12467,8 @@ Do not solder R1 and R6.</text>
 <attribute name="NAME" x="583.184" y="381.381" size="1.778" layer="95"/>
 <attribute name="VALUE" x="583.184" y="376.301" size="1.778" layer="96"/>
 </instance>
-<instance part="GND4" gate="1" x="581.66" y="368.3" smashed="yes">
-<attribute name="VALUE" x="579.12" y="365.76" size="1.778" layer="96"/>
+<instance part="GND4" gate="1" x="581.66" y="363.22" smashed="yes">
+<attribute name="VALUE" x="579.12" y="360.68" size="1.778" layer="96"/>
 </instance>
 <instance part="IC1" gate="IC$1" x="469.9" y="246.38" smashed="yes">
 <attribute name="NAME" x="441.96" y="195.58" size="2.1844" layer="95"/>
@@ -12673,6 +12675,13 @@ Do not solder R1 and R6.</text>
 <attribute name="NAME" x="512.064" y="391.541" size="1.778" layer="95"/>
 <attribute name="VALUE" x="512.064" y="386.461" size="1.778" layer="96"/>
 </instance>
+<instance part="R8" gate="G$1" x="563.88" y="373.38" smashed="yes" rot="R270">
+<attribute name="NAME" x="565.3786" y="377.19" size="1.778" layer="95" rot="R270"/>
+<attribute name="VALUE" x="560.578" y="377.19" size="1.778" layer="96" rot="R270"/>
+</instance>
+<instance part="GND28" gate="1" x="563.88" y="363.22" smashed="yes">
+<attribute name="VALUE" x="561.34" y="360.68" size="1.778" layer="96"/>
+</instance>
 </instances>
 <busses>
 </busses>
@@ -12736,7 +12745,7 @@ Do not solder R1 and R6.</text>
 <segment>
 <pinref part="C22" gate="G$1" pin="2"/>
 <pinref part="GND4" gate="1" pin="GND"/>
-<wire x1="581.66" y1="375.92" x2="581.66" y2="370.84" width="0.1524" layer="91"/>
+<wire x1="581.66" y1="375.92" x2="581.66" y2="365.76" width="0.1524" layer="91"/>
 </segment>
 <segment>
 <pinref part="GND1" gate="1" pin="GND"/>
@@ -12882,6 +12891,11 @@ Do not solder R1 and R6.</text>
 <pinref part="GND27" gate="1" pin="GND"/>
 <pinref part="C4" gate="G$1" pin="2"/>
 <wire x1="469.9" y1="381" x2="469.9" y2="383.54" width="0.1524" layer="91"/>
+</segment>
+<segment>
+<pinref part="GND28" gate="1" pin="GND"/>
+<pinref part="R8" gate="G$1" pin="2"/>
+<wire x1="563.88" y1="365.76" x2="563.88" y2="368.3" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="+3V3" class="0">
@@ -13593,9 +13607,13 @@ Do not solder R1 and R6.</text>
 </segment>
 <segment>
 <pinref part="Q1" gate="G$1" pin="G"/>
-<wire x1="553.72" y1="381" x2="574.04" y2="381" width="0.1524" layer="91"/>
+<wire x1="553.72" y1="381" x2="563.88" y2="381" width="0.1524" layer="91"/>
+<wire x1="563.88" y1="381" x2="574.04" y2="381" width="0.1524" layer="91"/>
 <wire x1="574.04" y1="381" x2="574.04" y2="391.16" width="0.1524" layer="91"/>
 <label x="553.72" y="381" size="1.27" layer="95" rot="R180" xref="yes"/>
+<pinref part="R8" gate="G$1" pin="1"/>
+<wire x1="563.88" y1="378.46" x2="563.88" y2="381" width="0.1524" layer="91"/>
+<junction x="563.88" y="381"/>
 </segment>
 <segment>
 <pinref part="U$1" gate="A" pin="VIN"/>
