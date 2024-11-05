@@ -11191,6 +11191,8 @@ Source: &lt;a href="https://datasheet.lcsc.com/lcsc/2211021800_XINGLIGHT-XL-5050
 <part name="GND26" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 <part name="D3" library="microbuilder" deviceset="LED" device="0603_NOOUTLINE" value="RED"/>
 <part name="D1" library="SL02-GS08" deviceset="SL02-GS08" device="DIODE_SL02-GS08_VIS-M" value="SL02-GS08"/>
+<part name="R6" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="R0603" package3d_urn="urn:adsk.eagle:package:23555/3" value="10K"/>
+<part name="GND29" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 </parts>
 <sheets>
 <sheet>
@@ -11226,8 +11228,8 @@ Source: &lt;a href="https://datasheet.lcsc.com/lcsc/2211021800_XINGLIGHT-XL-5050
 <attribute name="NAME" x="448.564" y="366.141" size="1.778" layer="95"/>
 <attribute name="VALUE" x="448.564" y="361.061" size="1.778" layer="96"/>
 </instance>
-<instance part="GND4" gate="1" x="447.04" y="345.44" smashed="yes">
-<attribute name="VALUE" x="444.5" y="342.9" size="1.778" layer="96"/>
+<instance part="GND4" gate="1" x="447.04" y="340.36" smashed="yes">
+<attribute name="VALUE" x="444.5" y="337.82" size="1.778" layer="96"/>
 </instance>
 <instance part="IC1" gate="IC$1" x="469.9" y="246.38" smashed="yes">
 <attribute name="NAME" x="441.96" y="195.58" size="2.1844" layer="95"/>
@@ -11433,6 +11435,13 @@ Source: &lt;a href="https://datasheet.lcsc.com/lcsc/2211021800_XINGLIGHT-XL-5050
 <attribute name="VALUE" x="336.7278" y="369.3668" size="1.778" layer="96" ratio="10" rot="SR0"/>
 <attribute name="NAME" x="341.3506" y="376.8344" size="1.778" layer="95" ratio="10" rot="SR0"/>
 </instance>
+<instance part="R6" gate="G$1" x="454.66" y="350.52" smashed="yes" rot="R90">
+<attribute name="NAME" x="453.1614" y="346.71" size="1.778" layer="95" rot="R90"/>
+<attribute name="VALUE" x="457.962" y="346.71" size="1.778" layer="96" rot="R90"/>
+</instance>
+<instance part="GND29" gate="1" x="454.66" y="340.36" smashed="yes">
+<attribute name="VALUE" x="452.12" y="337.82" size="1.778" layer="96"/>
+</instance>
 </instances>
 <busses>
 </busses>
@@ -11496,7 +11505,7 @@ Source: &lt;a href="https://datasheet.lcsc.com/lcsc/2211021800_XINGLIGHT-XL-5050
 <segment>
 <pinref part="C22" gate="G$1" pin="2"/>
 <pinref part="GND4" gate="1" pin="GND"/>
-<wire x1="447.04" y1="360.68" x2="447.04" y2="347.98" width="0.1524" layer="91"/>
+<wire x1="447.04" y1="360.68" x2="447.04" y2="342.9" width="0.1524" layer="91"/>
 </segment>
 <segment>
 <pinref part="GND1" gate="1" pin="GND"/>
@@ -11638,6 +11647,11 @@ Source: &lt;a href="https://datasheet.lcsc.com/lcsc/2211021800_XINGLIGHT-XL-5050
 <pinref part="D2" gate="G$1" pin="C"/>
 <pinref part="GND26" gate="1" pin="GND"/>
 <wire x1="236.22" y1="208.28" x2="236.22" y2="205.74" width="0.1524" layer="91"/>
+</segment>
+<segment>
+<pinref part="GND29" gate="1" pin="GND"/>
+<pinref part="R6" gate="G$1" pin="1"/>
+<wire x1="454.66" y1="342.9" x2="454.66" y2="345.44" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="+3V3" class="0">
@@ -12236,6 +12250,9 @@ Source: &lt;a href="https://datasheet.lcsc.com/lcsc/2211021800_XINGLIGHT-XL-5050
 <wire x1="434.34" y1="358.14" x2="454.66" y2="358.14" width="0.1524" layer="91"/>
 <wire x1="454.66" y1="358.14" x2="454.66" y2="368.3" width="0.1524" layer="91"/>
 <label x="434.34" y="358.14" size="1.27" layer="95" rot="R180" xref="yes"/>
+<pinref part="R6" gate="G$1" pin="2"/>
+<wire x1="454.66" y1="355.6" x2="454.66" y2="358.14" width="0.1524" layer="91"/>
+<junction x="454.66" y="358.14"/>
 </segment>
 <segment>
 <pinref part="D1" gate="A" pin="2"/>
