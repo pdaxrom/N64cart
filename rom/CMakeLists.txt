@@ -65,13 +65,20 @@ add_executable(${ELF_NAME}
     #${FATFS_SOURCES}
 )
 
+execute_process(
+    COMMAND git log -1 --format=%h
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 message(STATUS "Target board       : ${BOARD}")
 file(READ ${CMAKE_CURRENT_LIST_DIR}/../fw/CMakeLists.txt vervar)
 string(REGEX MATCH "FIRMWARE_VERSION 0x([0-9A-Fa-f]*)" _ ${vervar})
 set(FIRMWARE_VERSION ${CMAKE_MATCH_1})
 message(STATUS "Firmware version is: ${FIRMWARE_VERSION}")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb -DROMFS_NO_INTERNAL_BUFFERS -DFIRMWARE_VERSION=0x${FIRMWARE_VERSION}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb -DROMFS_NO_INTERNAL_BUFFERS -DFIRMWARE_VERSION=0x${FIRMWARE_VERSION} -DGIT_HASH=\\\"${GIT_HASH}\\\"")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_CXX_FLAGS_RELEASE} -DN64")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffast-math -ftrapping-math -fno-associative-math")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${BOARD_CFLAGS}")

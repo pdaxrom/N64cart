@@ -13,7 +13,7 @@ endif
 ASFLAGS += -x assembler-with-cpp
 CFLAGS += -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb -DROMFS_NO_INTERNAL_BUFFERS
 
-CFLAGS += -DFIRMWARE_VERSION=$(shell sed -n 's/.*FIRMWARE_VERSION.*\(0x[0-9a-fA-F]*\).*/\1/p' ../fw/CMakeLists.txt)
+CFLAGS += -DFIRMWARE_VERSION=$(shell sed -n 's/.*FIRMWARE_VERSION.*\(0x[0-9a-fA-F]*\).*/\1/p' ../fw/CMakeLists.txt) -DGIT_HASH=\"$(shell git log -1 --format=%h)\"
 
 ifeq (pico,$(BOARD))
 CFLAGS += -DDISABLE_FLASH_ADDR_32=1
@@ -23,7 +23,7 @@ ifeq (pico-lite,$(BOARD))
 CFLAGS += -DDISABLE_FLASH_ADDR_32=1 -DDISABLE_UART
 endif
 
-SRC = src/main.c src/n64cart.c src/syslog.c ../fw/romfs/romfs.c src/ext/cic.c src/ext/crc32.c src/ext/boot.c src/ext/shell_utils.c src/usb/dev_lowlevel.c src/md5.c
+SRC = src/main.c src/n64cart.c src/syslog.c ../fw/romfs/romfs.c src/ext/cic.c src/ext/crc32.c src/ext/boot.c src/ext/shell_utils.c src/usb/dev_lowlevel.c src/md5.c src/imgviewer.c
 ASMSRC = src/ext/reboot.S
 
 OBJS = $(SRC:%.c=$(BUILD_DIR)/%.o)

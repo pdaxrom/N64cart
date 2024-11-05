@@ -57,31 +57,34 @@ sprite_t *image_load(char *name, int screen_w, int screen_h)
 
             stbi_uc *stbi_img = stbi_load_from_memory(picture_data, picture_data_length, &w, &h, &channels, 4);
 
-            syslog(LOG_INFO, "image w = %d, h = %d, c = %d", w, h, channels);
-
-            if (w != screen_w || h != screen_h) {
-                stbi_uc *stbi_img_new = stbir_resize_uint8_linear(stbi_img, w, h, w * 4, NULL, screen_w, screen_h,
-                                                                  screen_w * 4, STBIR_RGBA);
-                stbi_image_free(stbi_img);
-                stbi_img = stbi_img_new;
-                w = screen_w;
-                h = screen_h;
-            }
-
-            syslog(LOG_INFO, "resized w = %d, h = %d, c = %d", w, h, channels);
-
             free(picture_data);
 
-            image = malloc(sizeof(sprite_t) + w * h * 4);
-            image->width = w;
-            image->height = h;
-            image->flags = FMT_RGBA32;
-            image->hslices = 1;
-            image->vslices = 1;
+            if (stbi_img) {
+                syslog(LOG_INFO, "image w = %d, h = %d, c = %d", w, h, channels);
 
-            memmove(&image->data[0], stbi_img, w * h * 4);
+                if (w != screen_w || h != screen_h) {
+                    stbi_uc *stbi_img_new = stbir_resize_uint8_linear(stbi_img, w, h, w * 4, NULL, screen_w, screen_h,
+                                                                      screen_w * 4, STBIR_RGBA);
+                    stbi_image_free(stbi_img);
+                    stbi_img = stbi_img_new;
+                    w = screen_w;
+                    h = screen_h;
+                }
 
-            stbi_image_free(stbi_img);
+                syslog(LOG_INFO, "resized w = %d, h = %d, c = %d", w, h, channels);
+
+                image = malloc(sizeof(sprite_t) + w * h * 4);
+                if (image) {
+                    image->width = w;
+                    image->height = h;
+                    image->flags = FMT_RGBA32;
+                    image->hslices = 1;
+                    image->vslices = 1;
+
+                    memmove(&image->data[0], stbi_img, w * h * 4);
+                }
+                stbi_image_free(stbi_img);
+            }
         }
     }
 
@@ -104,6 +107,8 @@ void image_view(char *name, int screen_w, int screen_h, int screen_scale)
         if (image) {
             graphics_draw_sprite(disp, 0, 0, image);
         } else {
+            graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
+            graphics_draw_box(disp, 45 * scr_scale, 115 * scr_scale, (320 - 45 * 2) * scr_scale, 40 * scr_scale, 0x77777780);
             static const char *fopen_error_1 = "Can't open image file!";
             graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             static const char *fopen_error_2 = "Press (B) to continue";

@@ -170,7 +170,9 @@ int main(void)
 #endif
 #endif
 
-    printf("N64cart (" GIT_HASH ") by pdaXrom!\n");
+//#ifdef DEBUG_INFO
+    printf("N64cart fw v%d.%d (" GIT_HASH ") by pdaXrom!\n", FIRMWARE_VERSION / 256, FIRMWARE_VERSION % 256);
+//#endif
 
     if (used_flash_chip == NULL) {
         printf("Unknown ROM chip, system stopped!\n");
