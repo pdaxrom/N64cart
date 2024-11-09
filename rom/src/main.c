@@ -175,12 +175,12 @@ static int check_file_extension(char *file, char *ext)
     return strcasecmp(&str_file[strlen(str_file) - strlen(str_ext)], str_ext);
 }
 
-static void print_bytes(uint8_t bytes[16]) {
+static void print_bytes(uint8_t bytes[16], char *title) {
     char hex[33] = { 0 };
     for (int i = 0; i < 16; i++) {
         snprintf(&hex[i * 2], 3, "%02X", bytes[i]);
     }
-    syslog(LOG_INFO, "file map md5: %s", hex);
+    syslog(LOG_INFO, "%s md5: %s", title, hex);
 
     // if (strcmp(hex, "EA9E1832EFAB0CF7303273128A79DB5E")) {
     //     syslog(LOG_ERR, "ERROR MD5! (EA9E1832EFAB0CF7303273128A79DB5E)");
@@ -188,16 +188,22 @@ static void print_bytes(uint8_t bytes[16]) {
     // }
 }
 
-static void show_md5(uint8_t *buf, size_t size)
+static void calc_md5(uint8_t *buf, size_t size, uint8_t md5_out[16])
 {
     md5_context ctx;
     md5_init(&ctx);
     md5_digest(&ctx, buf, size);
 
-    uint8_t md5_actual[16] = {0};
-    md5_output(&ctx, md5_actual);
+    memset(md5_out, 0, 16);
+    md5_output(&ctx, md5_out);
+}
 
-    print_bytes(md5_actual);
+static void show_md5(uint8_t *buf, size_t size)
+{
+    uint8_t md5_actual[16] = {0};
+    calc_md5(buf, size, md5_actual);
+
+    print_bytes(md5_actual, "file map");
 }
 
 int main(void)
@@ -355,6 +361,7 @@ int main(void)
             char save_name[64] = { 0 };
             uint32_t save_addr = 0;
             int save_size = 0;
+            uint8_t md5_old[16];
 
             do_step = STEP_FINISH;
 
@@ -367,7 +374,11 @@ int main(void)
                 save_addr = io_read(N64CART_RMRAM);
                 save_size = io_read(N64CART_RMRAM + 4);
                 for (int i = 0; i < sizeof(save_name); i += 4) {
-                    *((uint32_t *) & save_name[i]) = io_read(N64CART_RMRAM + 8 + i);
+                    *((uint32_t *) &save_name[i]) = io_read(N64CART_RMRAM + 8 + i);
+                }
+
+                for (int i = 0; i < 16; i += 4) {
+                    *((uint32_t *) &md5_old[i]) = io_read(N64CART_RMRAM + 8 + sizeof(save_name) + i);
                 }
 
                 if (save_addr && save_size && save_name[0]) {
@@ -375,7 +386,7 @@ int main(void)
                     //              data_cache_hit_writeback_invalidate(save_data, sizeof(save_data));
                     //              dma_read(save_data, N64CART_EEPROM, sizeof(save_data));
                     for (int i = 0; i < save_size; i += 4) {
-                        *((uint32_t *) & save_data[i]) = io_read(save_addr + i);
+                        *((uint32_t *) &save_data[i]) = io_read(save_addr + i);
                     }
                 }
             }
@@ -390,51 +401,53 @@ int main(void)
 
                 syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, save_addr, save_size);
 
-                for (int i = 0; i < save_size; i++) {
-                    if (save_data[i] != 0) {
-                        romfs_file save_file;
-                        uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
+                uint8_t md5_actual[16] = {0};
+                calc_md5(save_data, save_size, md5_actual);
+                print_bytes(md5_old, "old save file");
+                print_bytes(md5_actual, "new save file");
 
-                        romfs_delete(save_name);
-                        if (save_size <= 2048) {
-                            // eeprom byte swap
-                            for (int i = 0; i < save_size; i += 2) {
-                                uint8_t tmp = save_data[i];
-                                save_data[i] = save_data[i + 1];
-                                save_data[i + 1] = tmp;
-                            }
-                        } else {
-                            // sram word swap
-                            for (int i = 0; i < save_size; i += 4) {
-                                uint8_t tmp = save_data[i];
-                                save_data[i] = save_data[i + 3];
-                                save_data[i + 3] = tmp;
-                                tmp = save_data[i + 2];
-                                save_data[i + 2] = save_data[i + 1];
-                                save_data[i + 1] = tmp;
-                            }
-                        }
+                if (memcmp(md5_old, md5_actual, 16)) {
+                    romfs_file save_file;
+                    uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
 
-                        if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) == ROMFS_NOERR) {
-                            int bwrite = 0;
-                            int ret = 0;
-                            while (save_size > 0) {
-                                ret = romfs_write_file(&save_data[bwrite], (save_size > 4096) ? 4096 : save_size, &save_file);
-                                if (!ret) {
-                                    break;
-                                }
-                                save_size -= ret;
-                                bwrite += ret;
-                            }
-                            romfs_close_file(&save_file);
-                            if (!ret) {
-                                syslog(LOG_ERR, "error write save file, delete");
-                                romfs_delete(save_name);
-                            }
+                    romfs_delete(save_name);
+                    if (save_size <= 2048) {
+                        // eeprom byte swap
+                        for (int i = 0; i < save_size; i += 2) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
                         }
-                        syslog(LOG_INFO, "save file created");
-                        break;
+                    } else {
+                        // sram word swap
+                        for (int i = 0; i < save_size; i += 4) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 3];
+                            save_data[i + 3] = tmp;
+                            tmp = save_data[i + 2];
+                            save_data[i + 2] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
+                        }
                     }
+
+                    if (romfs_create_file(save_name, &save_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) == ROMFS_NOERR) {
+                        int bwrite = 0;
+                        int ret = 0;
+                        while (save_size > 0) {
+                            ret = romfs_write_file(&save_data[bwrite], (save_size > 4096) ? 4096 : save_size, &save_file);
+                            if (!ret) {
+                                break;
+                            }
+                            save_size -= ret;
+                            bwrite += ret;
+                        }
+                        romfs_close_file(&save_file);
+                        if (!ret) {
+                            syslog(LOG_ERR, "error write save file, delete");
+                            romfs_delete(save_name);
+                        }
+                    }
+                    syslog(LOG_INFO, "save file created");
                 }
 
                 save_addr = 0;
@@ -582,7 +595,7 @@ int main(void)
                         io_write(N64CART_RMRAM, pi_addr);
                         io_write(N64CART_RMRAM + 4, save_file_size);
                         for (int i = 0; i < sizeof(save_name); i += 4) {
-                            io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) & save_name[i]));
+                            io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) &save_name[i]));
                         }
                         n64cart_sram_lock();
 
@@ -618,7 +631,15 @@ int main(void)
                                 }
                             }
 
+                            uint8_t md5_actual[16] = {0};
+                            calc_md5(save_data, save_file_size, md5_actual);
+                            print_bytes(md5_actual, "save file");
+
                             n64cart_sram_unlock();
+                            for (int i = 0; i < 16; i += 4) {
+                                io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
+                            }
+
                             // dma_wait();
                             // data_cache_hit_writeback(save_data, sizeof(save_data));
                             // dma_write(save_data, N64CART_EEPROM, sizeof(save_data));
