@@ -1,0 +1,45 @@
+diff --git a/src/graphics.c b/src/graphics.c
+index 4aebb360a..ffa838f8f 100644
+--- a/src/graphics.c
++++ b/src/graphics.c
+@@ -452,16 +452,32 @@ void graphics_draw_character( surface_t* disp, int x, int y, char ch )
+         graphics_set_default_font();
+     }
+ 
+-    /* Figure out if they want the background to be transparent */
+-    int trans = __is_transparent( depth, b_color );
++    if ((x + sprite_font.font_width <= 0) ||
++        (x >= disp->width) ||
++        (y + sprite_font.font_height <= 0) ||
++        (y >= disp->height))
++    {
++        return;
++    }
++
++    const int sx_tmp = ( ch % sprite_font.sprite->hslices ) * sprite_font.font_width;
++    const int sy_tmp = ( ch / sprite_font.sprite->hslices ) * sprite_font.font_height;
++    const int ex_tmp = sx_tmp + sprite_font.font_width;
++    const int ey_tmp = sy_tmp + sprite_font.font_height;
+ 
+-    const int sx = ( ch % sprite_font.sprite->hslices ) * sprite_font.font_width;
+-    const int sy = ( ch / sprite_font.sprite->hslices ) * sprite_font.font_height;
+-    const int ex = sx + sprite_font.font_width;
+-    const int ey = sy + sprite_font.font_height;
++    const int ex_fix = (x + sprite_font.font_width) - disp->width;
++    const int ey_fix = (y + sprite_font.font_height) - disp->height;
+ 
+-    const int tx = x - sx;
+-    const int ty = y - sy;
++    const int sx = sx_tmp - ((x < 0) ? x : 0);
++    const int sy = sy_tmp - ((y < 0) ? y : 0);
++    const int ex = ex_tmp - ((ex_fix > 0) ? ex_fix : 0);
++    const int ey = ey_tmp - ((ey_fix > 0) ? ey_fix : 0);
++
++    const int tx = x - sx_tmp;
++    const int ty = y - sy_tmp;
++
++    /* Figure out if they want the background to be transparent */
++    int trans = __is_transparent( depth, b_color );
+ 
+     if( depth == 2 )
+     {

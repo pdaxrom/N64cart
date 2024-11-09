@@ -25,6 +25,8 @@
 #include "md5.h"
 #include "imgviewer.h"
 
+#define FILE_NAME_SCROLL_DELAY  (5)
+
 enum {
     STEP_LOGO = 0,
     STEP_ROMFS_INIT,
@@ -50,7 +52,14 @@ static int scr_width;
 static int scr_height;
 static int scr_scale;
 
-static char *files[128];
+static struct File_Rec {
+    char *name;
+    size_t size;
+    int scroll_pos;
+    int scroll_dir;
+    int scroll_delay;
+} files[128];
+
 static int num_files = 0;
 static int menu_sel = 0;
 
@@ -213,6 +222,9 @@ int main(void)
 
     display_init(is_memory_expanded()? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
 
+    int font_width = 8;
+    int font_height = 8;
+
     if (is_memory_expanded()) {
         graphics_set_font_sprite((sprite_t *) wy700font_regular_sprite);
         scr_scale = 2;
@@ -333,7 +345,12 @@ int main(void)
                 if (romfs_list(&file, true) == ROMFS_NOERR) {
                     do {
                         if (file.entry.attr.names.type > ROMFS_TYPE_FLASHMAP) {
-                            files[num_files++] = strdup(file.entry.name);
+                            files[num_files].name = strdup(file.entry.name);
+                            files[num_files].size = file.entry.size;
+                            files[num_files].scroll_pos = 0;
+                            files[num_files].scroll_dir = 1;
+                            files[num_files].scroll_delay = FILE_NAME_SCROLL_DELAY;
+                            num_files++;
                         }
                         syslog(LOG_INFO, "%s\t%ld\t%0X %4X", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
                     } while (romfs_list(&file, false) == ROMFS_NOERR);
@@ -506,23 +523,23 @@ int main(void)
             graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
             graphics_draw_box(disp, 45 * scr_scale, 115 * scr_scale, (320 - 45 * 2) * scr_scale, 40 * scr_scale, 0x77777780);
 
-            if (!check_file_extension(files[menu_sel], "JPG") || !check_file_extension(files[menu_sel], "JPEG") ||
-                !check_file_extension(files[menu_sel], "PNG") || !check_file_extension(files[menu_sel], "TGA") ||
-                !check_file_extension(files[menu_sel], "BMP") || !check_file_extension(files[menu_sel], "GIF") ||
-                !check_file_extension(files[menu_sel], "PIC") || !check_file_extension(files[menu_sel], "PNM") ||
-                !check_file_extension(files[menu_sel], "PPM") || !check_file_extension(files[menu_sel], "PGM")) {
+            if (!check_file_extension(files[menu_sel].name, "JPG") || !check_file_extension(files[menu_sel].name, "JPEG") ||
+                !check_file_extension(files[menu_sel].name, "PNG") || !check_file_extension(files[menu_sel].name, "TGA") ||
+                !check_file_extension(files[menu_sel].name, "BMP") || !check_file_extension(files[menu_sel].name, "GIF") ||
+                !check_file_extension(files[menu_sel].name, "PIC") || !check_file_extension(files[menu_sel].name, "PNM") ||
+                !check_file_extension(files[menu_sel].name, "PPM") || !check_file_extension(files[menu_sel].name, "PGM")) {
 
                 static const char *text = "Loading image...";
                 graphics_draw_text(disp, valign(text), 120 * scr_scale, text);
 
                 display_show(disp);
 
-                image_view(files[menu_sel], scr_width, scr_height, scr_scale);
+                image_view(files[menu_sel].name, scr_width, scr_height, scr_scale);
 
                 continue;
-            } else if (!check_file_extension(files[menu_sel], "Z64") || !check_file_extension(files[menu_sel], "V64") ||
-                       !check_file_extension(files[menu_sel], "N64")) {
-                if (romfs_open_file(files[menu_sel], &file, romfs_flash_buffer) == ROMFS_NOERR) {
+            } else if (!check_file_extension(files[menu_sel].name, "Z64") || !check_file_extension(files[menu_sel].name, "V64") ||
+                       !check_file_extension(files[menu_sel].name, "N64")) {
+                if (romfs_open_file(files[menu_sel].name, &file, romfs_flash_buffer) == ROMFS_NOERR) {
                     uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4];
 
                     memset(rom_lookup, 0, sizeof(rom_lookup));
@@ -725,8 +742,8 @@ int main(void)
                 joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
                 if (pressed.a) {
-                    romfs_delete(files[menu_sel]);
-                    free(files[menu_sel]);
+                    romfs_delete(files[menu_sel].name);
+                    free(files[menu_sel].name);
                     num_files--;
                     for (int i = menu_sel; i < num_files; i++) {
                         files[i] = files[i + 1];
@@ -762,11 +779,35 @@ int main(void)
 
         for (int i = first_file; i < total_files_to_show; i++) {
             if (i == menu_sel) {
-                sprintf(tStr, "%02d: *%.24s", i, files[i]);
+                int str_px_max_with = 26 * font_width * scr_scale;
+                int str_px_width = strlen(files[i].name) * font_width * scr_scale;
+
+                if (str_px_width > str_px_max_with) {
+                    files[i].scroll_pos -= files[i].scroll_dir;
+                    if (files[i].scroll_dir > 0) {
+                        if (str_px_width + files[i].scroll_pos == str_px_max_with) {
+                            files[i].scroll_dir = -1;
+                        }
+                    } else {
+                        if (files[i].scroll_pos == 0) {
+                            files[i].scroll_dir = 1;
+                        }
+                    }
+                }
+                sprintf(tStr, "%02d:*", i);
             } else {
-                sprintf(tStr, "%02d:  %.24s", i, files[i]);
+                if (files[i].scroll_pos != 0) {
+                    files[i].scroll_pos += (files[i].scroll_pos > 0) ? -1 : 1;
+
+                } else {
+                    files[i].scroll_dir = 1;
+                    files[i].scroll_delay = FILE_NAME_SCROLL_DELAY;
+                }
+                sprintf(tStr, "%02d: ", i);
             }
             graphics_draw_text(disp, 40 * scr_scale, (120 + (i - first_file) * 10) * scr_scale, tStr);
+            surface_t text_fb = surface_make_sub(disp, (40 + 4 * font_width) * scr_scale, (120 + (i - first_file) * 10) * scr_scale, font_width * 26 * scr_scale, 10 * scr_scale);
+            graphics_draw_text(&text_fb, files[i].scroll_pos, 0, files[i].name);
         }
 
         if (pressed.start) {
