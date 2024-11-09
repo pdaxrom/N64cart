@@ -26,6 +26,7 @@
 #include "imgviewer.h"
 
 #define FILE_NAME_SCROLL_DELAY  (5)
+#define KEYS_DELAY (3)
 
 enum {
     STEP_LOGO = 0,
@@ -220,12 +221,14 @@ int main(void)
     syslog(LOG_INFO, "N64cart manager fw v%d.%d (" GIT_HASH ") by pdaXrom!", FIRMWARE_VERSION / 256, FIRMWARE_VERSION % 256);
     usbd_start();
 
-    display_init(is_memory_expanded()? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+    bool is_hires = is_memory_expanded();
+
+    display_init(is_hires ? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
 
     int font_width = 8;
     int font_height = 8;
 
-    if (is_memory_expanded()) {
+    if (is_hires) {
         graphics_set_font_sprite((sprite_t *) wy700font_regular_sprite);
         scr_scale = 2;
     } else {
@@ -270,6 +273,8 @@ int main(void)
     bool hide_menu = false;
 
     do_step = STEP_LOGO;
+
+    int keys_delay_counter = 0;
 
     /* Main loop test */
     while (1) {
@@ -494,7 +499,7 @@ int main(void)
         /* Scan for User input */
         joypad_poll();
         joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
-        //        joypad_buttons_t held = joypad_get_buttons_held(JOYPAD_PORT_1);
+        joypad_buttons_t held = joypad_get_buttons_held(JOYPAD_PORT_1);
         //      joypad_inputs_t inputs = joypad_get_inputs(JOYPAD_PORT_1);
 
         if (pressed.z) {
@@ -762,15 +767,23 @@ int main(void)
 
         int menu_page_size = 10;
 
-        if (menu_sel > 0 && pressed.d_up) {
+        if (keys_delay_counter > 0) {
+            keys_delay_counter--;
+        }
+
+        if (menu_sel > 0 && (pressed.d_up || (held.d_up && !keys_delay_counter))) {
             menu_sel--;
-        } else if (menu_sel < (num_files - 1) && pressed.d_down) {
+            keys_delay_counter = KEYS_DELAY * (is_hires ? 1 : 4);
+        } else if (menu_sel < (num_files - 1) && (pressed.d_down || (held.d_down && !keys_delay_counter))) {
             menu_sel++;
-        } else if (menu_sel >= menu_page_size && pressed.l) {
+            keys_delay_counter = KEYS_DELAY * (is_hires ? 1 : 4);
+        } else if (menu_sel >= menu_page_size && (pressed.l || (held.l && !keys_delay_counter))) {
             menu_sel -= menu_page_size;
-        } else if ((menu_sel - menu_sel % menu_page_size) + menu_page_size < num_files && pressed.r) {
+            keys_delay_counter = KEYS_DELAY * (is_hires ? 1 : 4);
+        } else if ((menu_sel - menu_sel % menu_page_size) + menu_page_size < num_files && (pressed.r || (held.r && !keys_delay_counter))) {
             menu_sel += menu_page_size;
             menu_sel = (menu_sel < num_files) ? menu_sel : (num_files - 1);
+            keys_delay_counter = KEYS_DELAY * (is_hires ? 1 : 4);
         }
 
         int first_file = menu_sel - menu_sel % menu_page_size;
