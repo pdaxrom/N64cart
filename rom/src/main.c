@@ -13,8 +13,6 @@
 #include <string.h>
 
 #include "../../fw/romfs/romfs.h"
-#include "ext/boot.h"
-#include "ext/boot_io.h"
 #include "ext/shell_utils.h"
 #include "n64cart.h"
 #include "../build/wy700font-regular.h"
@@ -214,6 +212,212 @@ static void show_md5(uint8_t *buf, size_t size)
     calc_md5(buf, size, md5_actual);
 
     print_bytes(md5_actual, "file map");
+}
+
+static void run_rom(const char *name, const char *addon, const int addon_offset, int addon_save_type)
+{
+    romfs_file file;
+    uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
+
+    if (romfs_open_file(name, &file, romfs_flash_buffer) == ROMFS_NOERR) {
+        uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4];
+
+        memset(rom_lookup, 0, sizeof(rom_lookup));
+        uint32_t map_size = romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
+
+        //syslog(LOG_INFO, "map size: %d (%08X)\n", map_size, map_size);
+
+        n64cart_sram_unlock();
+        for (int i = 0; i < map_size; i += 2) {
+            uint32_t data = (rom_lookup[i] << 16) | rom_lookup[i + 1];
+            //syslog(LOG_INFO, "%08X: %08X", i, data);
+            io_write(N64CART_ROM_LOOKUP + (i << 1), data);
+        }
+        n64cart_sram_lock();
+
+        char save_name[64];
+        int cic_id = 2;
+        int save_type = 0;
+        int rom_detected = 0;
+
+        if (addon) {
+            if (romfs_open_file(addon, &file, romfs_flash_buffer) == ROMFS_NOERR) {
+                memset(rom_lookup, 0, sizeof(rom_lookup));
+                uint32_t map_size = romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
+
+                uint32_t offset = addon_offset >> 12;
+
+                n64cart_sram_unlock();
+                for (int i = 0; i < map_size; i += 2) {
+                    uint32_t data = (rom_lookup[i] << 16) | rom_lookup[i + 1];
+                    //syslog(LOG_INFO, "%08X: %08X", i, data);
+                    io_write(N64CART_ROM_LOOKUP + ((i + offset) << 1), data);
+                }
+                n64cart_sram_lock();
+            } else {
+                syslog(LOG_ERR, "Can't open addon file %s!", addon);
+                return;
+            }
+            rom_detected = 1;
+            save_type = addon_save_type;
+            memset(save_name, 0, sizeof(save_name));
+            strcpy(save_name, name);
+            char *tmp = strrchr(save_name, '.');
+            if (tmp) {
+                *tmp = '\0';
+            }
+            strcat(save_name, "-");
+            strncat(save_name, addon, sizeof(save_name) - strlen(save_name) - 4);
+            if ((tmp = strrchr(save_name, '.'))) {
+                *tmp = '\0';
+            }
+        } else {
+            if (get_rom_name(save_name, sizeof(save_name))) {
+                rom_detected = get_cic_save(&save_name[1], &cic_id, &save_type);
+            }
+        }
+
+        syslog(LOG_INFO, "rom detected %d, cic_id %d, save_type %d", rom_detected, cic_id, save_type);
+
+        if (rom_detected) {
+            syslog(LOG_INFO, "eeprom save name: %s", save_name);
+
+            int save_file_size = 0;
+            uint32_t pi_addr = 0;
+            switch (save_type) {
+            case 1:
+                strcat(save_name, ".sra");
+                save_file_size = 32768;
+                pi_addr = N64CART_SRAM;
+                break;
+            case 2:
+                strcat(save_name, ".sra");
+                save_file_size = 131072;
+                pi_addr = N64CART_SRAM;
+                break;
+            case 3:
+                strcat(save_name, ".eep");
+                save_file_size = 512;
+                n64cart_eeprom_16kbit(false);
+                pi_addr = N64CART_EEPROM;
+                break;
+            case 4:
+                strcat(save_name, ".eep");
+                save_file_size = 2048;
+                n64cart_eeprom_16kbit(true);
+                pi_addr = N64CART_EEPROM;
+                break;
+            case 5:
+                strcat(save_name, ".fla");
+                save_file_size = 131072;
+                pi_addr = N64CART_SRAM;
+                break;
+            case 6:
+                strcat(save_name, ".sra");
+                save_file_size = 98304;
+                pi_addr = N64CART_SRAM;
+                break;
+            default:
+                strcat(save_name, ".sav");
+                n64cart_eeprom_16kbit(true);
+            }
+
+            syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, pi_addr, save_file_size);
+
+            romfs_file save_file;
+
+            n64cart_sram_unlock();
+            io_write(N64CART_RMRAM, pi_addr);
+            io_write(N64CART_RMRAM + 4, save_file_size);
+            for (int i = 0; i < sizeof(save_name); i += 4) {
+                io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) &save_name[i]));
+            }
+            n64cart_sram_lock();
+
+            if (romfs_open_file(save_name, &save_file, romfs_flash_buffer) == ROMFS_NOERR) {
+                syslog(LOG_INFO, "Load save data");
+                int rbytes = 0;
+                while (rbytes < save_file_size) {
+                    int ret = romfs_read_file(&save_data[rbytes], 4096, &save_file);
+                    if (!ret) {
+                        break;
+                    }
+                    rbytes += ret;
+                }
+
+                syslog(LOG_INFO, "read %d bytes", rbytes);
+
+                if (rbytes <= 2048) {
+                    // eeprom byte swap
+                    for (int i = 0; i < rbytes; i += 2) {
+                        uint8_t tmp = save_data[i];
+                        save_data[i] = save_data[i + 1];
+                        save_data[i + 1] = tmp;
+                    }
+                } else {
+                    // sram word swap
+                    for (int i = 0; i < rbytes; i += 4) {
+                        uint8_t tmp = save_data[i];
+                        save_data[i] = save_data[i + 3];
+                        save_data[i + 3] = tmp;
+                        tmp = save_data[i + 2];
+                        save_data[i + 2] = save_data[i + 1];
+                        save_data[i + 1] = tmp;
+                    }
+                }
+
+                uint8_t md5_actual[16] = {0};
+                calc_md5(save_data, save_file_size, md5_actual);
+                print_bytes(md5_actual, "save file");
+
+                n64cart_sram_unlock();
+                for (int i = 0; i < 16; i += 4) {
+                    io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
+                }
+
+                // dma_wait();
+                // data_cache_hit_writeback(save_data, sizeof(save_data));
+                // dma_write(save_data, N64CART_EEPROM, sizeof(save_data));
+                for (int i = 0; i < save_file_size; i += 4) {
+                    io_write(pi_addr + i, *((uint32_t *) & save_data[i]));
+                }
+                n64cart_sram_lock();
+            } else {
+                syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
+                n64cart_sram_unlock();
+                for (int i = 0; i < save_file_size; i += 4) {
+                    io_write(pi_addr + i, 0);
+                }
+                n64cart_sram_lock();
+            }
+        } else {
+            n64cart_sram_unlock();
+            io_write(N64CART_RMRAM, 0);
+            n64cart_sram_lock();
+        }
+
+        OS_INFO->tv_type = get_tv_type();
+        OS_INFO->reset_type = RESET_COLD;
+        OS_INFO->mem_size = get_memory_size();
+
+        syslog(LOG_INFO, "cic_id %d", cic_id);
+        syslog(LOG_INFO, "tv_type %ld", OS_INFO->tv_type);
+        syslog(LOG_INFO, "device_type %ld", OS_INFO->device_type);
+        syslog(LOG_INFO, "device_base %8lX", OS_INFO->device_base);
+        syslog(LOG_INFO, "reset_type %ld", OS_INFO->reset_type);
+        syslog(LOG_INFO, "cic_id %ld", OS_INFO->cic_id);
+        syslog(LOG_INFO, "version %ld", OS_INFO->version);
+        syslog(LOG_INFO, "mem_size %ld", OS_INFO->mem_size);
+
+        joypad_close();
+        display_close();
+
+        usbd_finish();
+
+        disable_interrupts();
+
+        simulate_boot(cic_id, 2);
+    }
 }
 
 int main(void)
@@ -522,9 +726,6 @@ int main(void)
         graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);
 
         if (pressed.a) {
-            romfs_file file;
-            uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
-
             graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
             graphics_draw_box(disp, 45 * scr_scale, 115 * scr_scale, (320 - 45 * 2) * scr_scale, 40 * scr_scale, 0x77777780);
 
@@ -544,179 +745,17 @@ int main(void)
                 continue;
             } else if (!check_file_extension(files[menu_sel].name, "Z64") || !check_file_extension(files[menu_sel].name, "V64") ||
                        !check_file_extension(files[menu_sel].name, "N64")) {
-                if (romfs_open_file(files[menu_sel].name, &file, romfs_flash_buffer) == ROMFS_NOERR) {
-                    uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4];
-
-                    memset(rom_lookup, 0, sizeof(rom_lookup));
-                    uint32_t map_size = romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
-
-                    //syslog(LOG_INFO, "map size: %d (%08X)\n", map_size, map_size);
-
-                    n64cart_sram_unlock();
-                    for (int i = 0; i < map_size; i += 2) {
-                        uint32_t data = (rom_lookup[i] << 16) | rom_lookup[i + 1];
-                        //syslog(LOG_INFO, "%08X: %08X", i, data);
-                        io_write(N64CART_ROM_LOOKUP + (i << 1), data);
-                    }
-                    n64cart_sram_lock();
-
-                    char save_name[64];
-                    int cic_id = 2;
-                    int save_type = 0;
-                    int rom_detected = 0;
-
-                    if (get_rom_name(save_name, sizeof(save_name))) {
-                        rom_detected = get_cic_save(&save_name[1], &cic_id, &save_type);
-                    }
-
-                    syslog(LOG_INFO, "rom detected %d, cic_id %d, save_type %d", rom_detected, cic_id, save_type);
-
-                    if (rom_detected) {
-                        syslog(LOG_INFO, "eeprom save name: %s", save_name);
-
-                        int save_file_size = 0;
-                        uint32_t pi_addr = 0;
-                        switch (save_type) {
-                        case 1:
-                            strcat(save_name, ".sra");
-                            save_file_size = 32768;
-                            pi_addr = N64CART_SRAM;
-                            break;
-                        case 2:
-                            strcat(save_name, ".sra");
-                            save_file_size = 131072;
-                            pi_addr = N64CART_SRAM;
-                            break;
-                        case 3:
-                            strcat(save_name, ".eep");
-                            save_file_size = 512;
-                            n64cart_eeprom_16kbit(false);
-                            pi_addr = N64CART_EEPROM;
-                            break;
-                        case 4:
-                            strcat(save_name, ".eep");
-                            save_file_size = 2048;
-                            n64cart_eeprom_16kbit(true);
-                            pi_addr = N64CART_EEPROM;
-                            break;
-                        case 5:
-                            strcat(save_name, ".fla");
-                            save_file_size = 131072;
-                            pi_addr = N64CART_SRAM;
-                            break;
-                        default:
-                            strcat(save_name, ".sav");
-                            n64cart_eeprom_16kbit(true);
-                        }
-
-                        syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, pi_addr, save_file_size);
-
-                        romfs_file save_file;
-
-                        n64cart_sram_unlock();
-                        io_write(N64CART_RMRAM, pi_addr);
-                        io_write(N64CART_RMRAM + 4, save_file_size);
-                        for (int i = 0; i < sizeof(save_name); i += 4) {
-                            io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) &save_name[i]));
-                        }
-                        n64cart_sram_lock();
-
-                        if (romfs_open_file(save_name, &save_file, romfs_flash_buffer) == ROMFS_NOERR) {
-                            syslog(LOG_INFO, "Load save data");
-                            int rbytes = 0;
-                            while (rbytes < save_file_size) {
-                                int ret = romfs_read_file(&save_data[rbytes], 4096, &save_file);
-                                if (!ret) {
-                                    break;
-                                }
-                                rbytes += ret;
-                            }
-
-                            syslog(LOG_INFO, "read %d bytes", rbytes);
-
-                            if (rbytes <= 2048) {
-                                // eeprom byte swap
-                                for (int i = 0; i < rbytes; i += 2) {
-                                    uint8_t tmp = save_data[i];
-                                    save_data[i] = save_data[i + 1];
-                                    save_data[i + 1] = tmp;
-                                }
-                            } else {
-                                // sram word swap
-                                for (int i = 0; i < rbytes; i += 4) {
-                                    uint8_t tmp = save_data[i];
-                                    save_data[i] = save_data[i + 3];
-                                    save_data[i + 3] = tmp;
-                                    tmp = save_data[i + 2];
-                                    save_data[i + 2] = save_data[i + 1];
-                                    save_data[i + 1] = tmp;
-                                }
-                            }
-
-                            uint8_t md5_actual[16] = {0};
-                            calc_md5(save_data, save_file_size, md5_actual);
-                            print_bytes(md5_actual, "save file");
-
-                            n64cart_sram_unlock();
-                            for (int i = 0; i < 16; i += 4) {
-                                io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
-                            }
-
-                            // dma_wait();
-                            // data_cache_hit_writeback(save_data, sizeof(save_data));
-                            // dma_write(save_data, N64CART_EEPROM, sizeof(save_data));
-                            for (int i = 0; i < save_file_size; i += 4) {
-                                io_write(pi_addr + i, *((uint32_t *) & save_data[i]));
-                            }
-                            n64cart_sram_lock();
-                        } else {
-                            syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
-                            n64cart_sram_unlock();
-                            for (int i = 0; i < save_file_size; i += 4) {
-                                io_write(pi_addr + i, 0);
-                            }
-                            n64cart_sram_lock();
-                        }
-                    } else {
-                        n64cart_sram_unlock();
-                        io_write(N64CART_RMRAM, 0);
-                        n64cart_sram_lock();
-                    }
-
-                    OS_INFO->tv_type = get_tv_type();
-                    OS_INFO->reset_type = RESET_COLD;
-                    OS_INFO->mem_size = get_memory_size();
-
-                    syslog(LOG_INFO, "cic_id %d", cic_id);
-                    syslog(LOG_INFO, "tv_type %ld", OS_INFO->tv_type);
-                    syslog(LOG_INFO, "device_type %ld", OS_INFO->device_type);
-                    syslog(LOG_INFO, "device_base %8lX", OS_INFO->device_base);
-                    syslog(LOG_INFO, "reset_type %ld", OS_INFO->reset_type);
-                    syslog(LOG_INFO, "cic_id %ld", OS_INFO->cic_id);
-                    syslog(LOG_INFO, "version %ld", OS_INFO->version);
-                    syslog(LOG_INFO, "mem_size %ld", OS_INFO->mem_size);
-
-                    joypad_close();
-                    display_close();
-
-
-                    //                boot_params_t params;
-                    //                params.device_type = BOOT_DEVICE_TYPE_ROM;
-                    //                params.tv_type = get_tv_type(); //BOOT_TV_TYPE_NTSC;
-                    //                params.detect_cic_seed = true;
-
-                    usbd_finish();
-
-                    disable_interrupts();
-
-                    //                boot(&params);
-
-                    //                set_force_tv(get_tv_type());
-                    simulate_boot(cic_id, 2);
-                } else {
-                    static const char *fopen_error_1 = "Can't open ROM file!";
-                    graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
-                }
+                run_rom(files[menu_sel].name, NULL, 0, 0);
+                static const char *fopen_error_1 = "Can't open ROM file!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+            } else if (!check_file_extension(files[menu_sel].name, "NES")) {
+                run_rom("neon64bu.rom", files[menu_sel].name, 0x200000, 6);
+                static const char *fopen_error_1 = "NES emulation error!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+            } else if (!check_file_extension(files[menu_sel].name, "SFC") || !check_file_extension(files[menu_sel].name, "SMC")) {
+                run_rom("sodium64.z64", files[menu_sel].name, 0x104000, 2);
+                static const char *fopen_error_1 = "SNES emulation error!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else {
                 static const char *fopen_error_1 = "Wrong ROM file extension!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
