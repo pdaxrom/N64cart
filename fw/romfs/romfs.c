@@ -103,10 +103,10 @@ bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t
 //    printf("romfs list size %d\n", flash_list_size);
 
     if (flash_map_size && flash_list_size) {
-        for (int i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
+        for (uint32_t i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
             romfs_flash_sector_read(flash_start + i, &flash_list_int[i], ROMFS_FLASH_SECTOR);
         }
-        for (int i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
+        for (uint32_t i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
             romfs_flash_sector_read(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i], ROMFS_FLASH_SECTOR);
         }
         return true;
@@ -117,12 +117,12 @@ bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t
 
 void romfs_flush(void)
 {
-    for (int i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
+    for (uint32_t i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
         romfs_flash_sector_erase(flash_start + i);
         romfs_flash_sector_write(flash_start + i, &flash_list_int[i]);
     }
 
-    for (int i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
+    for (uint32_t i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
         romfs_flash_sector_erase(flash_start + flash_list_size + i);
         romfs_flash_sector_write(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i]);
     }
@@ -165,7 +165,7 @@ bool romfs_format(void)
 
     memset((uint8_t *) flash_map_int, 0xff, flash_map_size);
 
-    for (int i = 0; i < (flash_start + flash_list_size + flash_map_size) / ROMFS_FLASH_SECTOR; i++) {
+    for (uint32_t i = 0; i < (flash_start + flash_list_size + flash_map_size) / ROMFS_FLASH_SECTOR; i++) {
         flash_map_int[i] = to_lsb16(i + 1);
     }
 
@@ -272,13 +272,13 @@ uint32_t romfs_delete(const char *name)
 
 static uint32_t romfs_find_free_sector(uint32_t start)
 {
-    for (int i = start; i < flash_map_size / sizeof(uint16_t); i++) {
+    for (uint32_t i = start; i < flash_map_size / sizeof(uint16_t); i++) {
         if (flash_map_int[i] == 0xffff) {
             return i;
         }
     }
 
-    for (int i = 0; i < start; i++) {
+    for (uint32_t i = 0; i < start; i++) {
         if (flash_map_int[i] == 0xffff) {
             return i;
         }
@@ -287,7 +287,7 @@ static uint32_t romfs_find_free_sector(uint32_t start)
     return 0xffff;
 }
 
-uint32_t romfs_create_file(char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer)
+uint32_t romfs_create_file(const char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer)
 {
 #ifdef ROMFS_NO_INTERNAL_BUFFERS
     if (!io_buffer) {
@@ -418,7 +418,7 @@ uint32_t romfs_close_file(romfs_file *file)
     return ROMFS_NOERR;
 }
 
-uint32_t romfs_open_file(char *name, romfs_file *file, uint8_t *io_buffer)
+uint32_t romfs_open_file(const char *name, romfs_file *file, uint8_t *io_buffer)
 {
 #ifdef ROMFS_NO_INTERNAL_BUFFERS
     if (!io_buffer) {
@@ -455,7 +455,7 @@ uint32_t romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_fil
 
     uint32_t sector = file->entry.start;
     uint32_t num_sectors = ((file->entry.size + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1)) / ROMFS_FLASH_SECTOR;
-    for (int i = 0; i < num_sectors; i++) {
+    for (uint32_t i = 0; i < num_sectors; i++) {
         uint32_t next = from_lsb16(flash_map_int[sector]);
         map_buffer[i] = sector;
         sector = next;
