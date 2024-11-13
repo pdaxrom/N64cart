@@ -384,7 +384,17 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
                 n64cart_sram_lock();
             } else {
                 syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
+                memset(save_data, 0, sizeof(save_data));
+
+                uint8_t md5_actual[16] = {0};
+                calc_md5(save_data, save_file_size, md5_actual);
+                print_bytes(md5_actual, "save file");
+
                 n64cart_sram_unlock();
+                for (int i = 0; i < 16; i += 4) {
+                    io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
+                }
+
                 for (int i = 0; i < save_file_size; i += 4) {
                     io_write(pi_addr + i, 0);
                 }
