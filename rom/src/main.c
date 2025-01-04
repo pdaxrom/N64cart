@@ -763,8 +763,21 @@ int main(void)
                 static const char *fopen_error_1 = "NES emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "SFC") || !check_file_extension(files[menu_sel].name, "SMC")) {
-                run_rom("sodium64.z64", files[menu_sel].name, 0x104000, 2);
+                run_rom("sodium64.z64", files[menu_sel].name, 0x200000, 2);
                 static const char *fopen_error_1 = "SNES emulation error!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+            } else if (!check_file_extension(files[menu_sel].name, "GB")) {
+                run_rom("gb.v64", files[menu_sel].name, 0x200000, 6);
+                static const char *fopen_error_1 = "GB emulation error!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+            } else if (!check_file_extension(files[menu_sel].name, "GBC")) {
+                run_rom("gbc.v64", files[menu_sel].name, 0x200000, 6);
+                static const char *fopen_error_1 = "GBC emulation error!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+            } else if (!check_file_extension(files[menu_sel].name, "SMS") || !check_file_extension(files[menu_sel].name, "GG") ||
+                !check_file_extension(files[menu_sel].name, "SG")) {
+                run_rom("TotalSMS.z64", files[menu_sel].name, 0x200000, 6);
+                static const char *fopen_error_1 = "SEGA 8bit emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else {
                 static const char *fopen_error_1 = "Wrong ROM file extension!";
