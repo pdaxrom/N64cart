@@ -185,9 +185,9 @@ void simulate_boot(uint32_t cic_chip, uint8_t gBootCic)
     short int gCheats = 0;
 
     // Clear screen
-    IO_WRITE(VI_V_INT, 0x3FF);
-    IO_WRITE(VI_H_LIMITS, 0);
-    IO_WRITE(VI_CUR_LINE, 0);
+    IO_WRITE(VI_V_INTR, 0x3FF);
+    IO_WRITE(VI_H_VIDEO, 0);
+    IO_WRITE(VI_V_CURRENT, 0);
 
     // Reset controller and clear interrupt
     IO_WRITE(PI_STATUS_REG, 0x03);

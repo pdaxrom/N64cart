@@ -123,20 +123,6 @@ typedef uint64_t sim_u64;
 #define                      DPC_PIPEBUSY                 (DP_BASE_REG + 0x18)
 #define                      DPC_TMEM                     (DP_BASE_REG + 0x1C)
 
-#define	VI_CONTROL	(VI_BASE_REG + 0x00)
-#define	VI_FRAMEBUFFER	(VI_BASE_REG + 0x04)
-#define	VI_WIDTH	(VI_BASE_REG + 0x08)
-#define	VI_V_INT	(VI_BASE_REG + 0x0C)
-#define	VI_CUR_LINE	(VI_BASE_REG + 0x10)
-#define	VI_TIMING	(VI_BASE_REG + 0x14)
-#define	VI_V_SYNC	(VI_BASE_REG + 0x18)
-#define	VI_H_SYNC	(VI_BASE_REG + 0x1C)
-#define	VI_H_SYNC2	(VI_BASE_REG + 0x20)
-#define	VI_H_LIMITS	(VI_BASE_REG + 0x24)
-#define	VI_COLOR_BURST	(VI_BASE_REG + 0x28)
-#define	VI_H_SCALE	(VI_BASE_REG + 0x2C)
-#define	VI_VSCALE	(VI_BASE_REG + 0x30)
-
 #define	PHYS_TO_K0(x)	((u32)(x)|0x80000000)   /* physical to kseg0 */
 #define	K0_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)   /* kseg0 to physical */
 #define	PHYS_TO_K1(x)	((u32)(x)|0xA0000000)   /* physical to kseg1 */
