@@ -66,6 +66,8 @@ To effectively work with cartridge flash chip, a special version of the filesyst
 
 - Emulation for SRAM 256Kbit/1MBit
 
+- Emulation for Flash RAM 1Mbit (29L1100)
+
 - USB utility to access to the cartridge flash chip as filesystem.
 
 ### Memory mapping
