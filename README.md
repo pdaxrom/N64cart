@@ -109,6 +109,7 @@ LED_RGB|0x00ffffff|-W|PCB v3 only
 Function|Bit mask|Mode
 --------|--------|----
 EEPROM_16KBIT|0x1000|RW
+FRAM_MODE|0x200|RW
 SRAM_UNLOCK|0x100|RW
 FLASH_MODE_QUAD|0x10|RW
 FLASH_CS_HIGH|0x01|RW
