@@ -232,6 +232,20 @@ void n64cart_sram_unlock(void)
     io_write(N64CART_SYS_CTRL, ctrl);
 }
 
+void n64cart_sram_mode(void)
+{
+    uint32_t ctrl = io_read(N64CART_SYS_CTRL);
+    ctrl &= ~N64CART_FRAM_MODE;
+    io_write(N64CART_SYS_CTRL, ctrl);
+}
+
+void n64cart_fram_mode(void)
+{
+    uint32_t ctrl = io_read(N64CART_SYS_CTRL);
+    ctrl |= N64CART_FRAM_MODE;
+    io_write(N64CART_SYS_CTRL, ctrl);
+}
+
 void n64cart_eeprom_16kbit(bool enable)
 {
     uint32_t ctrl = io_read(N64CART_SYS_CTRL);

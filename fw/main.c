@@ -28,13 +28,13 @@
 #endif
 
 static const struct flash_chip flash_chip[] = {
-    { 0xc2, 0x201b, 128, 342000, VREG_VOLTAGE_1_20, "MX66L1G45G" },
-    { 0xef, 0x4020, 64, 342000, VREG_VOLTAGE_1_20, "W25Q512" },
-    { 0xef, 0x4019, 32, 342000, VREG_VOLTAGE_1_20, "W25Q256" },
-    { 0xef, 0x4018, 16, 342000, VREG_VOLTAGE_1_20, "W25Q128" },
-    { 0xef, 0x4017, 8, 342000, VREG_VOLTAGE_1_20, "W25Q64" },
-    { 0xef, 0x4016, 4, 342000, VREG_VOLTAGE_1_20, "W25Q32" },
-    { 0xef, 0x4015, 2, 342000, VREG_VOLTAGE_1_20, "W25Q16" },
+    { 0xc2, 0x201b, 128, 364000, VREG_VOLTAGE_1_20, "MX66L1G45G" },
+    { 0xef, 0x4020, 64, 364000, VREG_VOLTAGE_1_20, "W25Q512" },
+    { 0xef, 0x4019, 32, 364000, VREG_VOLTAGE_1_20, "W25Q256" },
+    { 0xef, 0x4018, 16, 364000, VREG_VOLTAGE_1_20, "W25Q128" },
+    { 0xef, 0x4017, 8, 364000, VREG_VOLTAGE_1_20, "W25Q64" },
+    { 0xef, 0x4016, 4, 364000, VREG_VOLTAGE_1_20, "W25Q32" },
+    { 0xef, 0x4015, 2, 364000, VREG_VOLTAGE_1_20, "W25Q16" },
 };
 
 static const struct flash_chip *used_flash_chip;

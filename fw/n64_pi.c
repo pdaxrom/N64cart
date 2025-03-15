@@ -93,6 +93,29 @@ void n64_pi(void)
     uint32_t mapped_addr;
     uint32_t sram_address;
 
+    enum {
+        FLASH_CMD_NONE = 0,
+        FLASH_CMD_CHIP_ERASE = 0x3c,
+        FLASH_CMD_SECTOR_ERASE = 0x4b,
+        FLASH_CMD_EXECUTE_ERASE = 0x78,
+        FLASH_CMD_PROGRAM_PAGE = 0xa5,
+        FLASH_CMD_PAGE_PROGRAM = 0xb4,
+        FLASH_CMD_STATUS = 0xd2,
+        FLASH_CMD_ID = 0xe1,
+        FLASH_CMD_READ_ARRAY = 0xf0
+    };
+
+    uint16_t flash_id[4] = { 0xffff, 0x8001, 0x00c2, 0x001e };
+    uint16_t flash_buffer[64];
+
+    uint16_t fram_mode = 0;
+    uint16_t fram_mode_tmp = 0;
+    uint16_t fram_page = 0;
+    uint32_t fram_erase_counter = 0;
+
+    uint32_t fram_status = 0;
+    uint32_t fram_word = 0;
+
     uint32_t flags;
     uint16_t ctrl_reg;
     static const uintptr_t fw_binary_end = (uintptr_t) & __flash_binary_end;
@@ -110,13 +133,11 @@ void n64_pi(void)
                 mapped_addr = (rom_lookup[(last_addr & 0x3ffffff) >> 12]) << 12 | (last_addr & 0xfff);
                 word = flash_quad_read16(mapped_addr);
 
-                // addr = pio_sm_get_blocking(pio, 0);
                 while ((pio->fstat & 0x100) != 0) {
                 }
                 addr = pio->rxf[0];
 
                 if (addr == 0) {
-                    // pio_sm_put(pio, 0, word);
                     pio->txf[0] = word;
                 } else if (!(addr & 1)) {
                     break;
@@ -125,23 +146,166 @@ void n64_pi(void)
             } while (true);
 #if PI_SRAM
         } else if (last_addr >= 0x08000000 && last_addr <= 0x0FFFFFFF) {
-            sram_address = resolve_sram_address(last_addr) >> 1;
-            do {
-                // addr = pio_sm_get_blocking(pio, 0);
-                while ((pio->fstat & 0x100) != 0) {
-                }
-                addr = pio->rxf[0];
+            if (!(sys64_ctrl_reg & 0x200)) {
+                sram_address = resolve_sram_address(last_addr) >> 1;
+                do {
+                    while ((pio->fstat & 0x100) != 0) {
+                    }
+                    addr = pio->rxf[0];
 
-                if (addr == 0) {
-                    // pio_sm_put(pio, 0, sram_16[sram_address++]);
-                    pio->txf[0] = sram_16[sram_address++];
-                } else if (addr & 1) {
-                    sram_16[sram_address++] = addr >> 16;
+                    if (addr == 0) {
+                        pio->txf[0] = sram_16[sram_address++];
+                    } else if (addr & 1) {
+                        sram_16[sram_address++] = addr >> 16;
+                    } else {
+                        break;
+                    }
+                } while (true);
+            } else if (!(last_addr & 0x00010000)) {
+                if (fram_mode == FLASH_CMD_READ_ARRAY) {
+                    sram_address = last_addr & 0xffff;
+                    do {
+                        while ((pio->fstat & 0x100) != 0) {
+                        }
+                        addr = pio->rxf[0];
+
+                        if (addr == 0) {
+                            pio->txf[0] = sram_16[sram_address++];
+                        } else if (addr & 1) {
+                            //sram_16[sram_address++] = addr >> 16;
+                        } else {
+                            break;
+                        }
+                        sram_address &= 0xffff;
+                    } while (true);
+                } else if (fram_mode == FLASH_CMD_PAGE_PROGRAM) {
+                    sram_address = (last_addr & 0x3f) >> 1;
+                    do {
+                        while ((pio->fstat & 0x100) != 0) {
+                        }
+                        addr = pio->rxf[0];
+
+                        if (addr == 0) {
+                            pio->txf[0] = 0;
+                        } else if (addr & 1) {
+                            flash_buffer[sram_address++] = addr >> 16;
+                        } else {
+                            break;
+                        }
+                        sram_address &= 0x3f;
+                    } while (true);
+                } else if (fram_mode == FLASH_CMD_ID) {
+                        sram_address = 0;
+                        do {
+                            while ((pio->fstat & 0x100) != 0) {
+                            }
+                            addr = pio->rxf[0];
+
+                            if (addr == 0) {
+                                pio->txf[0] = flash_id[sram_address++];
+                            } else if (addr & 1) {
+                                //flash_buffer[sram_address++] = addr >> 16;
+                            } else {
+                                break;
+                            }
+                            sram_address &= 0x3;
+                        } while (true);
                 } else {
-                    break;
+                    fram_word = fram_status;
+                    do {
+                        while ((pio->fstat & 0x100) != 0) {
+                        }
+                        addr = pio->rxf[0];
+
+                        if (addr == 0) {
+                            pio->txf[0] = fram_word >> 16;
+                        } else if (addr & 1) {
+                            if (fram_mode == FLASH_CMD_STATUS) {
+                                fram_status = addr & 0xffff0000;
+                            }
+                        } else {
+                            break;
+                        }
+
+                        while ((pio->fstat & 0x100) != 0) {
+                        }
+                        addr = pio->rxf[0];
+
+                        if (addr == 0) {
+                            pio->txf[0] = fram_word & 0xffff;
+                            if (fram_erase_counter) {
+                                memset(&sram_16[fram_erase_counter], 0xff, 0x1000);
+                                fram_erase_counter += 0x800;
+                                if (fram_erase_counter == 0x10000) {
+                                    fram_erase_counter = 0;
+                                    fram_status = 0x08;
+                                }
+                            }
+                        } else if (addr & 1) {
+                            if (fram_mode == FLASH_CMD_STATUS) {
+                                fram_status = (addr >> 16) | fram_status;
+                            }
+                        } else {
+                            break;
+                        }
+                    } while (true);
                 }
-                last_addr += 2;
-            } while (true);
+            } else {
+                do {
+                    while ((pio->fstat & 0x100) != 0) {
+                    }
+                    addr = pio->rxf[0];
+
+                    if (addr == 0) {
+                        pio->txf[0] = fram_word >> 16;
+                    } else if (addr & 1) {
+                        fram_word = addr & 0xffff0000;
+                    } else {
+                        break;
+                    }
+
+                    while ((pio->fstat & 0x100) != 0) {
+                    }
+                    addr = pio->rxf[0];
+
+                    if (addr == 0) {
+                        pio->txf[0] = fram_word & 0xffff;
+                    } else if (addr & 1) {
+                        fram_word = (addr >> 16) | fram_word;
+                        fram_mode_tmp = fram_word >> 24;
+
+                        if (fram_mode_tmp == FLASH_CMD_EXECUTE_ERASE) {
+                            if (fram_mode == FLASH_CMD_CHIP_ERASE) {
+                                memset(sram_16, 0xff, 0x1000);
+                                fram_erase_counter = 0x800;
+                                fram_status = 0x02;
+                            } else if (fram_mode == FLASH_CMD_SECTOR_ERASE) {
+                                memset(&sram_16[fram_page << 6], 0xff, 128);
+                                fram_status = 0x08;
+                            }
+                            fram_mode = fram_mode_tmp;
+                            continue;
+                        }
+
+                        fram_mode = fram_mode_tmp;
+
+                        if (fram_word == FLASH_CMD_ID) {
+                            continue;
+                        } else if (fram_mode == FLASH_CMD_SECTOR_ERASE) {
+                            fram_page = fram_word & 0x3ff;
+                            continue;
+                        } else if (fram_mode == FLASH_CMD_PROGRAM_PAGE) {
+                            memmove(&sram_16[(fram_word & 0x3ff) << 6], flash_buffer, 128);
+                            fram_status = 0x04;
+                            continue;
+                        }
+                        continue;
+                    } else {
+                        break;
+                    }
+                } while (true);
+                continue;
+            }
 #endif
 #if PI_USBCTRL
         } else if (last_addr >= 0x1fe00000 && last_addr <= 0x1fefffff) {

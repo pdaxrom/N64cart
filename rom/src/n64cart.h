@@ -21,6 +21,7 @@
 #define N64CART_SSI_DR0		0x1fd01014
 
 #define N64CART_EEPROM_16KBIT	0x1000
+#define N64CART_FRAM_MODE	0x200
 #define N64CART_SRAM_UNLOCK	0x100
 #define N64CART_FLASH_MODE_QUAD	0x10
 #define N64CART_FLASH_CS_HIGH	0x01
@@ -82,6 +83,9 @@ uint32_t n64cart_fw_size(void);
 
 void n64cart_sram_lock(void);
 void n64cart_sram_unlock(void);
+
+void n64cart_sram_mode(void);
+void n64cart_fram_mode(void);
 
 void n64cart_eeprom_16kbit(bool enable);
 bool n64cart_is_eeprom_16kbit(void);

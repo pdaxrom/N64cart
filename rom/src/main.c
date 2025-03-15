@@ -144,7 +144,7 @@ const struct flash_chip *get_flash_info()
     return used_flash_chip;
 }
 
-static bool get_rom_name(char *name, int size)
+static bool get_rom_name(char *name, int size, bool *adv, uint8_t *opts)
 {
     n64cart_sram_unlock();
     disable_interrupts();
@@ -157,6 +157,17 @@ static bool get_rom_name(char *name, int size)
     for (int i = 0; i < 4; i++) {
         if (!isalnum((int)name[i])) {
             return false;
+        }
+    }
+
+    if (adv) {
+        if (!strncmp(name + 1, "ED", 2)) {
+            *adv = true;
+            if (opts) {
+                *opts = name[4];
+            }
+        } else {
+            *adv = false;
         }
     }
 
@@ -272,8 +283,16 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
                 *tmp = '\0';
             }
         } else {
-            if (get_rom_name(save_name, sizeof(save_name))) {
-                rom_detected = get_cic_save(&save_name[1], &cic_id, &save_type);
+            bool adv;
+            uint8_t opts;
+            if (get_rom_name(save_name, sizeof(save_name), &adv, &opts)) {
+                if (adv) {
+                    static const uint8_t save_type_conv[16] = { 0, 3, 4, 1, 6, 5, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+                    rom_detected = true;
+                    save_type = save_type_conv[opts >> 4];
+                } else {
+                    rom_detected = get_cic_save(&save_name[1], &cic_id, &save_type);
+                }
             }
         }
 
@@ -318,92 +337,100 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
                 pi_addr = N64CART_SRAM;
                 break;
             default:
-                strcat(save_name, ".sav");
-                n64cart_eeprom_16kbit(true);
+                save_name[0] = '\0';
+                save_file_size = 0;
+                pi_addr = 0;
             }
-
-            syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, pi_addr, save_file_size);
-
-            romfs_file save_file;
 
             n64cart_sram_unlock();
             io_write(N64CART_RMRAM, pi_addr);
             io_write(N64CART_RMRAM + 4, save_file_size);
-            for (int i = 0; i < sizeof(save_name); i += 4) {
-                io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) &save_name[i]));
-            }
-            n64cart_sram_lock();
 
-            if (romfs_open_file(save_name, &save_file, romfs_flash_buffer) == ROMFS_NOERR) {
-                syslog(LOG_INFO, "Load save data");
-                int rbytes = 0;
-                while (rbytes < save_file_size) {
-                    int ret = romfs_read_file(&save_data[rbytes], 4096, &save_file);
-                    if (!ret) {
-                        break;
-                    }
-                    rbytes += ret;
+            if (strlen(save_name) > 0) {
+                syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, pi_addr, save_file_size);
+
+                for (int i = 0; i < sizeof(save_name); i += 4) {
+                    io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) &save_name[i]));
                 }
+                n64cart_sram_lock();
 
-                syslog(LOG_INFO, "read %d bytes", rbytes);
+                romfs_file save_file;
 
-                if (rbytes <= 2048) {
-                    // eeprom byte swap
-                    for (int i = 0; i < rbytes; i += 2) {
-                        uint8_t tmp = save_data[i];
-                        save_data[i] = save_data[i + 1];
-                        save_data[i + 1] = tmp;
+                if (romfs_open_file(save_name, &save_file, romfs_flash_buffer) == ROMFS_NOERR) {
+                    syslog(LOG_INFO, "Load save data");
+                    int rbytes = 0;
+                    while (rbytes < save_file_size) {
+                        int ret = romfs_read_file(&save_data[rbytes], 4096, &save_file);
+                        if (!ret) {
+                            break;
+                        }
+                        rbytes += ret;
+                    }
+
+                    syslog(LOG_INFO, "read %d bytes", rbytes);
+
+                    if (rbytes <= 2048) {
+                        // eeprom byte swap
+                        for (int i = 0; i < rbytes; i += 2) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
+                        }
+                    } else {
+                        // sram word swap
+                        for (int i = 0; i < rbytes; i += 4) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 3];
+                            save_data[i + 3] = tmp;
+                            tmp = save_data[i + 2];
+                            save_data[i + 2] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
+                        }
+                    }
+
+                    uint8_t md5_actual[16] = {0};
+                    calc_md5(save_data, save_file_size, md5_actual);
+                    print_bytes(md5_actual, "save file");
+
+                    n64cart_sram_unlock();
+                    for (int i = 0; i < 16; i += 4) {
+                        io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
+                    }
+
+                    // dma_wait();
+                    // data_cache_hit_writeback(save_data, sizeof(save_data));
+                    // dma_write(save_data, N64CART_EEPROM, sizeof(save_data));
+                    for (int i = 0; i < save_file_size; i += 4) {
+                        io_write(pi_addr + i, *((uint32_t *) & save_data[i]));
                     }
                 } else {
-                    // sram word swap
-                    for (int i = 0; i < rbytes; i += 4) {
-                        uint8_t tmp = save_data[i];
-                        save_data[i] = save_data[i + 3];
-                        save_data[i + 3] = tmp;
-                        tmp = save_data[i + 2];
-                        save_data[i + 2] = save_data[i + 1];
-                        save_data[i + 1] = tmp;
+                    syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
+                    memset(save_data, 0, sizeof(save_data));
+
+                    uint8_t md5_actual[16] = {0};
+                    calc_md5(save_data, save_file_size, md5_actual);
+                    print_bytes(md5_actual, "save file");
+
+                    n64cart_sram_unlock();
+                    for (int i = 0; i < 16; i += 4) {
+                        io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
+                    }
+
+                    for (int i = 0; i < save_file_size; i += 4) {
+                        io_write(pi_addr + i, 0);
                     }
                 }
-
-                uint8_t md5_actual[16] = {0};
-                calc_md5(save_data, save_file_size, md5_actual);
-                print_bytes(md5_actual, "save file");
-
-                n64cart_sram_unlock();
-                for (int i = 0; i < 16; i += 4) {
-                    io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
-                }
-
-                // dma_wait();
-                // data_cache_hit_writeback(save_data, sizeof(save_data));
-                // dma_write(save_data, N64CART_EEPROM, sizeof(save_data));
-                for (int i = 0; i < save_file_size; i += 4) {
-                    io_write(pi_addr + i, *((uint32_t *) & save_data[i]));
-                }
-                n64cart_sram_lock();
-            } else {
-                syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
-                memset(save_data, 0, sizeof(save_data));
-
-                uint8_t md5_actual[16] = {0};
-                calc_md5(save_data, save_file_size, md5_actual);
-                print_bytes(md5_actual, "save file");
-
-                n64cart_sram_unlock();
-                for (int i = 0; i < 16; i += 4) {
-                    io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
-                }
-
-                for (int i = 0; i < save_file_size; i += 4) {
-                    io_write(pi_addr + i, 0);
-                }
-                n64cart_sram_lock();
             }
+            n64cart_sram_lock();
         } else {
             n64cart_sram_unlock();
             io_write(N64CART_RMRAM, 0);
             n64cart_sram_lock();
+        }
+
+        if (save_type == 5) {
+            syslog(LOG_INFO, "switch to Flash RAM mode");
+            n64cart_fram_mode();
         }
 
         OS_INFO->tv_type = get_tv_type();
@@ -603,26 +630,30 @@ int main(void)
 
             // copy save data from cartridge on reset button and set default save data configuration
             syslog(LOG_INFO, "reset type %d", sys_reset_type());
+            syslog(LOG_INFO, "switch to SRAM mode");
+            n64cart_sram_mode();
             n64cart_sram_unlock();
             if (sys_reset_type() == RESET_WARM) {
                 syslog(LOG_INFO, "get eeprom data");
 
                 save_addr = io_read(N64CART_RMRAM);
                 save_size = io_read(N64CART_RMRAM + 4);
-                for (int i = 0; i < sizeof(save_name); i += 4) {
-                    *((uint32_t *) &save_name[i]) = io_read(N64CART_RMRAM + 8 + i);
-                }
+                if (save_addr && save_size) {
+                    for (int i = 0; i < sizeof(save_name); i += 4) {
+                        *((uint32_t *) &save_name[i]) = io_read(N64CART_RMRAM + 8 + i);
+                    }
 
-                for (int i = 0; i < 16; i += 4) {
-                    *((uint32_t *) &md5_old[i]) = io_read(N64CART_RMRAM + 8 + sizeof(save_name) + i);
-                }
+                    for (int i = 0; i < 16; i += 4) {
+                        *((uint32_t *) &md5_old[i]) = io_read(N64CART_RMRAM + 8 + sizeof(save_name) + i);
+                    }
 
-                if (save_addr && save_size && save_name[0]) {
-                    //              dma_wait();
-                    //              data_cache_hit_writeback_invalidate(save_data, sizeof(save_data));
-                    //              dma_read(save_data, N64CART_EEPROM, sizeof(save_data));
-                    for (int i = 0; i < save_size; i += 4) {
-                        *((uint32_t *) &save_data[i]) = io_read(save_addr + i);
+                    if (save_addr && save_size && save_name[0]) {
+                        //              dma_wait();
+                        //              data_cache_hit_writeback_invalidate(save_data, sizeof(save_data));
+                        //              dma_read(save_data, N64CART_EEPROM, sizeof(save_data));
+                        for (int i = 0; i < save_size; i += 4) {
+                            *((uint32_t *) &save_data[i]) = io_read(save_addr + i);
+                        }
                     }
                 }
             }
@@ -775,7 +806,7 @@ int main(void)
                 static const char *fopen_error_1 = "GBC emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "SMS") || !check_file_extension(files[menu_sel].name, "GG") ||
-                !check_file_extension(files[menu_sel].name, "SG")) {
+                       !check_file_extension(files[menu_sel].name, "SG")) {
                 run_rom("TotalSMS.z64", files[menu_sel].name, 0x200000, 6);
                 static const char *fopen_error_1 = "SEGA 8bit emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
