@@ -105,7 +105,7 @@ void n64_pi(void)
         FLASH_CMD_READ_ARRAY = 0xf0
     };
 
-    uint16_t flash_id[4] = { 0xffff, 0x8001, 0x00c2, 0x001e };
+    uint16_t flash_id[4] = { 0x1111, 0x8001, 0x00c2, 0x001e };
     uint16_t flash_buffer[64];
 
     uint16_t fram_mode = 0;
