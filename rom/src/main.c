@@ -225,7 +225,7 @@ static void show_md5(uint8_t *buf, size_t size)
     print_bytes(md5_actual, "file map");
 }
 
-static void run_rom(const char *name, const char *addon, const int addon_offset, int addon_save_type)
+static void run_rom(display_context_t disp, const char *name, const char *addon, const int addon_offset, int addon_save_type)
 {
     romfs_file file;
     uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
@@ -361,7 +361,12 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
                 romfs_file save_file;
 
                 if (romfs_open_file(save_name, &save_file, romfs_flash_buffer) == ROMFS_NOERR) {
-                    syslog(LOG_INFO, "Load save data");
+                    syslog(LOG_INFO, "Reading save file...");
+
+                    static const char *load_data_txt = "Reading save file...";
+                    graphics_draw_text(disp, valign(load_data_txt), 120 * scr_scale, load_data_txt);
+                    display_show(disp);
+
                     int rbytes = 0;
                     while (rbytes < save_file_size) {
                         int ret = romfs_read_file(&save_data[rbytes], 4096, &save_file);
@@ -666,7 +671,10 @@ int main(void)
             n64cart_eeprom_16kbit(true);
 
             if (save_addr && save_size && save_name[0]) {
-                static const char *save_data_txt = "Write game save...";
+                graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
+                graphics_draw_box(disp, 45 * scr_scale, 115 * scr_scale, (320 - 45 * 2) * scr_scale, 40 * scr_scale, 0x77777780);
+
+                static const char *save_data_txt = "Writing save file...";
                 graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
                 display_show(disp);
 
@@ -790,28 +798,28 @@ int main(void)
                 continue;
             } else if (!check_file_extension(files[menu_sel].name, "Z64") || !check_file_extension(files[menu_sel].name, "V64") ||
                        !check_file_extension(files[menu_sel].name, "N64")) {
-                run_rom(files[menu_sel].name, NULL, 0, 0);
+                run_rom(disp, files[menu_sel].name, NULL, 0, 0);
                 static const char *fopen_error_1 = "Can't open ROM file!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "NES")) {
-                run_rom("neon64bu.rom", files[menu_sel].name, 0x200000, 6);
+                run_rom(disp, "neon64bu.rom", files[menu_sel].name, 0x200000, 6);
                 static const char *fopen_error_1 = "NES emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "SFC") || !check_file_extension(files[menu_sel].name, "SMC")) {
-                run_rom("sodium64.z64", files[menu_sel].name, 0x200000, 2);
+                run_rom(disp, "sodium64.z64", files[menu_sel].name, 0x200000, 2);
                 static const char *fopen_error_1 = "SNES emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "GB")) {
-                run_rom("gb.v64", files[menu_sel].name, 0x200000, 6);
+                run_rom(disp, "gb.v64", files[menu_sel].name, 0x200000, 6);
                 static const char *fopen_error_1 = "GB emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "GBC")) {
-                run_rom("gbc.v64", files[menu_sel].name, 0x200000, 6);
+                run_rom(disp, "gbc.v64", files[menu_sel].name, 0x200000, 6);
                 static const char *fopen_error_1 = "GBC emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "SMS") || !check_file_extension(files[menu_sel].name, "GG") ||
                        !check_file_extension(files[menu_sel].name, "SG")) {
-                run_rom("TotalSMS.z64", files[menu_sel].name, 0x200000, 6);
+                run_rom(disp, "TotalSMS.z64", files[menu_sel].name, 0x200000, 6);
                 static const char *fopen_error_1 = "SEGA 8bit emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else {
