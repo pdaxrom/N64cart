@@ -300,6 +300,7 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
 
         if (rom_detected) {
             syslog(LOG_INFO, "eeprom save name: %s", save_name);
+            uint8_t erase_byte = 0xff;
 
             int save_file_size = 0;
             uint32_t pi_addr = 0;
@@ -308,11 +309,13 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
                 strcat(save_name, ".sra");
                 save_file_size = 32768;
                 pi_addr = N64CART_SRAM;
+                erase_byte = 0;
                 break;
             case 2:
                 strcat(save_name, ".sra");
                 save_file_size = 131072;
                 pi_addr = N64CART_SRAM;
+                erase_byte = 0;
                 break;
             case 3:
                 strcat(save_name, ".eep");
@@ -335,6 +338,7 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
                 strcat(save_name, ".sra");
                 save_file_size = 98304;
                 pi_addr = N64CART_SRAM;
+                erase_byte = 0;
                 break;
             default:
                 save_name[0] = '\0';
@@ -405,7 +409,7 @@ static void run_rom(const char *name, const char *addon, const int addon_offset,
                     }
                 } else {
                     syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
-                    memset(save_data, 0, sizeof(save_data));
+                    memset(save_data, erase_byte, sizeof(save_data));
 
                     uint8_t md5_actual[16] = {0};
                     calc_md5(save_data, save_file_size, md5_actual);
