@@ -1,5 +1,7 @@
 TARGET = usb-romfs
 
+ROMFS_PROXY = usb-romfs-proxy
+
 all: $(TARGET)
 
 OBJS = $(TARGET).o ../fw/romfs/romfs.o
@@ -26,6 +28,9 @@ CFLAGS += -I../fw/romfs -DROMFS_NO_INTERNAL_BUFFERS
 $(TARGET): $(LIBUSB_DLL) $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LIBS)
 
+$(ROMFS_PROXY): $(LIBUSB_DLL) $(ROMFS_PROXY).o
+	$(CC) -o $@ $^ $(LIBS)
+
 clean:
 	rm -rf build
-	rm -f $(OBJS) $(TARGET) $(TARGET).exe libusb-1.0.dll
+	rm -f $(OBJS) $(TARGET) $(TARGET).exe libusb-1.0.dll $(ROMFS_PROXY) $(ROMFS_PROXY).o $(ROMFS_PROXY).exe

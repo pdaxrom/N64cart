@@ -167,7 +167,7 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
     return true;
 }
 
-static bool send_usb_cmd(uint16_t type)
+static bool send_usb_cmd(uint16_t type, struct ack_header *ack)
 {
     int actual;
     struct req_header romfs_req;
@@ -181,7 +181,7 @@ static bool send_usb_cmd(uint16_t type)
         return false;
     }
 
-    bulk_transfer(dev_handle, 0x82, (void *)&romfs_ack, sizeof(romfs_ack), &actual, 5000);
+    bulk_transfer(dev_handle, 0x82, ack ? ack : (void *)&romfs_ack, sizeof(romfs_ack), &actual, 5000);
     if (actual != sizeof(romfs_ack)) {
         fprintf(stderr, "Command reply error transfer\n");
         return false;
@@ -225,10 +225,13 @@ int main(int argc, char *argv[])
 
     libusb_claim_interface(dev_handle, 0);
 
-    int actual;
-    struct req_header romfs_req;
     struct ack_header romfs_info;
 
+    if (!send_usb_cmd(CART_INFO, &romfs_info)) {
+	goto err;
+    }
+
+/*
     romfs_req.type = CART_INFO;
 
     bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
@@ -242,6 +245,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Header reply error transfer\n");
         goto err;
     }
+*/
 
     printf("firmware version  : %d.%d\n", romfs_info.info.vers >> 8, romfs_info.info.vers & 0xff);
     printf("ROMFS start offset: %08X\n", romfs_info.info.start);
@@ -249,15 +253,15 @@ int main(int argc, char *argv[])
 
     if (argc > 1 && strcmp(argv[1], "help")) {
         if (!strcmp(argv[1], "bootloader")) {
-            if (send_usb_cmd(BOOTLOADER_MODE)) {
+            if (send_usb_cmd(BOOTLOADER_MODE, NULL)) {
                 retval = 0;
             }
         } else if (!strcmp(argv[1], "reboot")) {
-            if (send_usb_cmd(CART_REBOOT)) {
+            if (send_usb_cmd(CART_REBOOT, NULL)) {
                 retval = 0;
             }
         } else {
-            if (!send_usb_cmd(FLASH_SPI_MODE)) {
+            if (!send_usb_cmd(FLASH_SPI_MODE, NULL)) {
                 fprintf(stderr, "cannot switch flash to spi mode, error!\n");
                 goto err_io;
             }
@@ -449,7 +453,7 @@ int main(int argc, char *argv[])
             }
 
  err_io:
-            if (!send_usb_cmd(FLASH_QUAD_MODE)) {
+            if (!send_usb_cmd(FLASH_QUAD_MODE, NULL)) {
                 fprintf(stderr, "cannot switch flash to quad mode, error!\n");
                 retval = 1;
             }
