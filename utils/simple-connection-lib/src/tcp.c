@@ -78,9 +78,22 @@
 
 #endif
 
-#define WS_NTOH64(n) htobe64(n)
-#define WS_NTOH32(n) htobe32(n)
-#define WS_NTOH16(n) htobe16(n)
+#ifdef sgi
+#include <ctype.h>
+#include <alloca.h>
+
+typedef int socklen_t;
+
+#define htobe64 htonll
+#define htobe16 htons
+#define ntobe64 ntohll
+#define ntobe16 ntohs
+
+#endif
+
+#define WS_NTOH64(n) ntobe64(n)
+#define WS_NTOH32(n) ntobe32(n)
+#define WS_NTOH16(n) ntobe16(n)
 #define WS_HTON64(n) htobe64(n)
 #define WS_HTON16(n) htobe16(n)
 
@@ -170,6 +183,49 @@ static int winsock_init(void)
     
     winsock_inited = 1;
     return 0;
+}
+#endif
+
+#ifdef sgi
+uint64_t htonll(uint64_t host_value)
+{
+    uint64_t result = 0;
+    uint8_t *src = (uint8_t *)&host_value;
+    uint8_t *dst = (uint8_t *)&result;
+
+    for (int i = 0; i < 8; i++) {
+        dst[i] = src[7 - i]; // Reverse the byte order
+    }
+
+    return result;
+}
+
+uint64_t ntohll(uint64_t net_value)
+{
+    return htonll(net_value); // Same as htonll()
+}
+
+char *strcasestr(const char *haystack, const char *needle)
+{
+    if (!*needle) {
+        return (char *)haystack;
+    }
+
+    for (; *haystack; haystack++) {
+        const char *h = haystack;
+        const char *n = needle;
+
+        while (*h && *n && (tolower((unsigned char)*h) == tolower((unsigned char)*n))) {
+            h++;
+            n++;
+        }
+
+        if (!*n) {
+            return (char *)haystack;
+        }
+    }
+
+    return NULL;
 }
 #endif
 
@@ -623,8 +679,13 @@ static int http_ws_method_server(tcp_channel *channel, char *request, size_t len
     char *key_b64 = (char *)simple_connection_base64_encode((const unsigned char *)field, strlen(field), NULL);
 #endif
 
+#ifdef sgi
+    sprintf(req, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\nSec-WebSocket-Protocol: binary\r\n\r\n",
+	    key_b64);
+#else
     snprintf(req, sizeof(req), "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\nSec-WebSocket-Protocol: binary\r\n\r\n",
 	    key_b64);
+#endif
 
     free(key_b64);
 
@@ -653,8 +714,13 @@ static int http_ws_method_client(tcp_channel *channel)
 
     char *key_b64 = (char *)simple_connection_base64_encode((const unsigned char *)key, 16, NULL);
 
+#ifdef sgi
+    sprintf(req, "GET %s HTTP/1.1\r\nHost: %s\r\nSec-WebSocket-Version: 13\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Protocol: binary\r\n\r\n",
+	    channel->path ? channel->path : "/", channel->host, key_b64);
+#else
     snprintf(req, sizeof(req), "GET %s HTTP/1.1\r\nHost: %s\r\nSec-WebSocket-Version: 13\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Protocol: binary\r\n\r\n",
 	    channel->path ? channel->path : "/", channel->host, key_b64);
+#endif
 
     free(key_b64);
 

@@ -12,6 +12,10 @@
 #include "romfs.h"
 #include "utils2.h"
 
+#ifdef sgi
+#define strtoimax strtoll
+#endif
+
 #ifdef ENABLE_REMOTE
 #include "romfs-proxy.h"
 
@@ -54,7 +58,6 @@ int tcp_write_all(tcp_channel *c, void *buf, size_t len)
 
     return all;
 }
-
 #else
 #define RETRY_MAX 50
 
