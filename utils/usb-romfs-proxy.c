@@ -212,87 +212,87 @@ static int usb_romfs(tcp_channel *client)
     struct ack_header romfs_info;
 
     while(true) {
-	uint16_t cmd;
-	if ((r = tcp_read(client, &cmd, sizeof(cmd))) < 0) {
-	    fprintf(stderr, "tcp_read() error %s\n", __FILE__);
-	    goto err;
-	}
+        uint16_t cmd;
+        if ((r = tcp_read(client, &cmd, sizeof(cmd))) < 0) {
+            fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+            goto err;
+        }
 
-	if (cmd == USB_CMD) {
-	    if ((r = tcp_read(client, &romfs_req, sizeof(romfs_req))) != sizeof(romfs_req)) {
-		fprintf(stderr, "tcp_read() error %s\n", __FILE__);
-		goto err;
-	    }
+        if (cmd == USB_CMD) {
+            if ((r = tcp_read(client, &romfs_req, sizeof(romfs_req))) != sizeof(romfs_req)) {
+                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+                goto err;
+            }
 
-	    bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
-	    if (actual != sizeof(romfs_req)) {
-		fprintf(stderr, "Header error transfer\n");
-		goto err;
-	    }
+            bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
+            if (actual != sizeof(romfs_req)) {
+                fprintf(stderr, "Header error transfer\n");
+                goto err;
+            }
 
-	    bulk_transfer(dev_handle, 0x82, (void *)&romfs_info, sizeof(romfs_info), &actual, 5000);
-	    if (actual != sizeof(romfs_info)) {
-		fprintf(stderr, "Header reply error transfer\n");
-		goto err;
-	    }
+            bulk_transfer(dev_handle, 0x82, (void *)&romfs_info, sizeof(romfs_info), &actual, 5000);
+            if (actual != sizeof(romfs_info)) {
+                fprintf(stderr, "Header reply error transfer\n");
+                goto err;
+            }
 
-	    if ((r = tcp_write(client, &romfs_info, sizeof(romfs_info))) != sizeof(romfs_info)) {
-		fprintf(stderr, "tcp_write() error %s\n", __FILE__);
-		goto err;
-	    }
-	} else if (cmd == USB_ERASE_SECTOR) {
-	    struct sector_info sec;
-	    if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
-		fprintf(stderr, "tcp_read() error %s\n", __FILE__);
-		goto err;
-	    }
-	    uint8_t ok = romfs_flash_sector_erase(sec.offset);
-	    if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
-		fprintf(stderr, "tcp_write() error %s\n", __FILE__);
-		goto err;
-	    }
-	} else if (cmd == USB_READ_SECTOR) {
-	    struct sector_info sec;
-	    if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
-		fprintf(stderr, "tcp_read() error %s\n", __FILE__);
-		goto err;
-	    }
-	    uint8_t *buf = alloca(sec.length);
-	    uint8_t ok = romfs_flash_sector_read(sec.offset, buf, sec.length);
-	    if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
-		fprintf(stderr, "tcp_write() error %s\n", __FILE__);
-		goto err;
-	    }
-	    if (ok) {
-		if ((r = tcp_write(client, &buf, sec.length)) != sec.length) {
-		    fprintf(stderr, "tcp_write() error %s\n", __FILE__);
-		    goto err;
-		}
-	    }
-	} else if (cmd == USB_WRITE_SECTOR) {
-	    struct sector_info sec;
-	    if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
-		fprintf(stderr, "tcp_read() error %s\n", __FILE__);
-		goto err;
-	    }
-	    uint8_t *buf = alloca(sec.length);
-	    if ((r = tcp_read(client, &buf, sec.length)) != sec.length) {
-		fprintf(stderr, "tcp_read() error %s\n", __FILE__);
-		goto err;
-	    }
-	    uint8_t ok = romfs_flash_sector_write(sec.offset, buf);
-	    if (!ok) {
-		fprintf(stderr, "flash sector write error!\n");
-		goto err;
-	    }
-//	    if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
-//		fprintf(stderr, "tcp_write() error %s\n", __FILE__);
-//		goto err;
-//	    }
-	}
+            if ((r = tcp_write(client, &romfs_info, sizeof(romfs_info))) != sizeof(romfs_info)) {
+                fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+                goto err;
+            }
+        } else if (cmd == USB_ERASE_SECTOR) {
+            struct sector_info sec;
+            if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
+                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+                goto err;
+            }
+            uint8_t ok = romfs_flash_sector_erase(sec.offset);
+            if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
+                fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+                goto err;
+            }
+        } else if (cmd == USB_READ_SECTOR) {
+            struct sector_info sec;
+            if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
+                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+                goto err;
+            }
+            uint8_t *buf = alloca(sec.length);
+            uint8_t ok = romfs_flash_sector_read(sec.offset, buf, sec.length);
+            if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
+                fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+                goto err;
+            }
+            if (ok) {
+                if ((r = tcp_write(client, &buf, sec.length)) != sec.length) {
+                    fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+                    goto err;
+                }
+            }
+        } else if (cmd == USB_WRITE_SECTOR) {
+            struct sector_info sec;
+            if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
+                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+                goto err;
+            }
+            uint8_t *buf = alloca(sec.length);
+            if ((r = tcp_read(client, &buf, sec.length)) != sec.length) {
+                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+                goto err;
+            }
+            uint8_t ok = romfs_flash_sector_write(sec.offset, buf);
+            if (!ok) {
+                fprintf(stderr, "flash sector write error!\n");
+                goto err;
+            }
+            //	    if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
+            //		fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+            //		goto err;
+            //	    }
+        }
     }
 
- err:
+err:
 
     libusb_release_interface(dev_handle, 0);
 
@@ -303,22 +303,22 @@ int main(int argc, char *argv[])
 {
     tcp_channel *server = tcp_open(TCP_SERVER, NULL, TCP_PORT, NULL, NULL);
     if (!server) {
-	fprintf(stderr, "tcp_open()\n");
-	return -1;
+        fprintf(stderr, "tcp_open()\n");
+        return -1;
     }
 
     while(true) {
-	tcp_channel *client = tcp_accept(server);
-	if (!client) {
-	    fprintf(stderr, "tcp_accept()\n");
-	    return -1;
-	}
+        tcp_channel *client = tcp_accept(server);
+        if (!client) {
+            fprintf(stderr, "tcp_accept()\n");
+            return -1;
+        }
 
-	printf("New connection accepted\n");
+        printf("New connection accepted\n");
 
-	usb_romfs(client);
+        usb_romfs(client);
 
-	tcp_close(client);
+        tcp_close(client);
     }
 
     tcp_close(server);
