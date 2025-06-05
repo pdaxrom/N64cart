@@ -228,24 +228,8 @@ int main(int argc, char *argv[])
     struct ack_header romfs_info;
 
     if (!send_usb_cmd(CART_INFO, &romfs_info)) {
-	goto err;
-    }
-
-/*
-    romfs_req.type = CART_INFO;
-
-    bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
-    if (actual != sizeof(romfs_req)) {
-        fprintf(stderr, "Header error transfer\n");
         goto err;
     }
-
-    bulk_transfer(dev_handle, 0x82, (void *)&romfs_info, sizeof(romfs_info), &actual, 5000);
-    if (actual != sizeof(romfs_info)) {
-        fprintf(stderr, "Header reply error transfer\n");
-        goto err;
-    }
-*/
 
     printf("firmware version  : %d.%d\n", romfs_info.info.vers >> 8, romfs_info.info.vers & 0xff);
     printf("ROMFS start offset: %08X\n", romfs_info.info.start);
