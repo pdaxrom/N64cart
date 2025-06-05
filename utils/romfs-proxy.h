@@ -1,5 +1,7 @@
 #pragma once
 
+#define TCP_PORT	6464
+
 enum {
     USB_CMD = 0,
     USB_ERASE_SECTOR,

@@ -1,5 +1,7 @@
 #include <inttypes.h>
+#ifndef ENABLE_REMOTE
 #include <libusb.h>
+#endif
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +12,50 @@
 #include "romfs.h"
 #include "utils2.h"
 
+#ifdef ENABLE_REMOTE
+#include "romfs-proxy.h"
+
+#include "simple-connection-lib/src/base64.c"
+#include "simple-connection-lib/src/getrandom.c"
+#include "simple-connection-lib/src/tcp.c"
+
+static tcp_channel *server;
+
+int tcp_read_all(tcp_channel *c, void *buf, size_t len)
+{
+    char *ptr = buf;
+    size_t all = 0;
+
+    while (len > 0) {
+        size_t r = tcp_read(c, &ptr[all], len);
+        if (r <= 0) {
+            break;
+        }
+        len -= r;
+        all += r;
+    }
+
+    return all;
+}
+
+int tcp_write_all(tcp_channel *c, void *buf, size_t len)
+{
+    char *ptr = buf;
+    size_t all = 0;
+
+    while (len > 0) {
+        size_t r = tcp_write(c, &ptr[all], len);
+        if (r <= 0) {
+            break;
+        }
+        len -= r;
+        all += r;
+    }
+
+    return all;
+}
+
+#else
 #define RETRY_MAX 50
 
 // #define DEBUG
@@ -32,12 +78,37 @@ static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoi
     return ret;
 }
 
+#endif
+
 bool romfs_flash_sector_erase(uint32_t offset)
 {
 #ifdef DEBUG
     printf("flash erase %08X\n", offset);
 #endif
+#ifdef ENABLE_REMOTE
+    struct __attribute__((__packed__)) {
+        uint16_t c;
+        struct sector_info s;
+    } cmd;
 
+    cmd.c = htons(USB_ERASE_SECTOR);
+    cmd.s.offset = htonl(offset);
+
+    if (tcp_write_all(server, &cmd, sizeof(cmd)) != sizeof(cmd)) {
+        fprintf(stderr, "Write flash sector erase request error\n");
+        return false;
+    }
+
+    uint8_t ok = 0;
+    if (tcp_read_all(server, &ok, sizeof(ok)) != sizeof(ok)) {
+        fprintf(stderr, "Read flash sector erase status error\n");
+        return false;
+    }
+
+    if (!ok) {
+        return false;
+    }
+#else
     int actual;
     struct req_header romfs_req;
     struct ack_header romfs_ack;
@@ -60,7 +131,7 @@ bool romfs_flash_sector_erase(uint32_t offset)
     if (romfs_ack.type != ACK_NOERROR) {
         return false;
     }
-
+#endif
     return true;
 }
 
@@ -69,7 +140,36 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
 #ifdef DEBUG
     printf("flash write %08X (%p)\n", offset, (void *)buffer);
 #endif
+#ifdef ENABLE_REMOTE
+    struct __attribute__((__packed__)) {
+        uint16_t c;
+        struct sector_info s;
+    } cmd;
 
+    cmd.c = htons(USB_WRITE_SECTOR);
+    cmd.s.offset = htonl(offset);
+    cmd.s.length = htonl(4096);
+
+    if (tcp_write_all(server, &cmd, sizeof(cmd)) != sizeof(cmd)) {
+        fprintf(stderr, "Write flash sector write request error\n");
+        return false;
+    }
+
+    if (tcp_write_all(server, buffer, 4096) != 4096) {
+        fprintf(stderr, "Write flash sector write data error\n");
+        return false;
+    }
+
+    uint8_t ok = 0;
+    if (tcp_read_all(server, &ok, sizeof(ok)) != sizeof(ok)) {
+        fprintf(stderr, "Read flash sector write status error\n");
+        return false;
+    }
+
+    if (!ok) {
+        return false;
+    }
+#else
     int actual;
     struct req_header romfs_req;
     struct ack_header romfs_ack;
@@ -113,7 +213,7 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
             return false;
         }
     }
-
+#endif
     return true;
 }
 
@@ -122,7 +222,26 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 #ifdef DEBUG
     printf("flash read %08X (%p) %d\n", offset, (void *)buffer, need);
 #endif
+#ifdef ENABLE_REMOTE
+    struct __attribute__((__packed__)) {
+        uint16_t c;
+        struct sector_info s;
+    } cmd;
 
+    cmd.c = htons(USB_READ_SECTOR);
+    cmd.s.offset = htonl(offset);
+    cmd.s.length = htonl(need);
+
+    if (tcp_write_all(server, &cmd, sizeof(cmd)) != sizeof(cmd)) {
+        fprintf(stderr, "Write flash sector read request error\n");
+        return false;
+    }
+
+    if (tcp_read_all(server, buffer, need) != need) {
+        fprintf(stderr, "Read flash sector data error\n");
+        return false;
+    }
+#else
     int actual;
     struct req_header romfs_req;
 
@@ -163,16 +282,42 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
             return false;
         }
     }
-
+#endif
     return true;
 }
 
 static bool send_usb_cmd(uint16_t type, struct ack_header *ack)
 {
-    int actual;
-    struct req_header romfs_req;
     struct ack_header romfs_ack;
 
+#ifdef ENABLE_REMOTE
+    struct __attribute__((__packed__)) {
+        uint16_t c;
+        struct req_header romfs_req;
+    } cmd;
+
+    cmd.c = htons(USB_CMD);
+    cmd.romfs_req.type = htons(type);
+
+    if (tcp_write_all(server, &cmd, sizeof(cmd)) != sizeof(cmd)) {
+        fprintf(stderr, "Command header error transfer\n");
+        return false;
+    }
+
+    if (tcp_read_all(server, ack ? ack : &romfs_ack, sizeof(romfs_ack)) != sizeof(romfs_ack)) {
+        fprintf(stderr, "Command reply error transfer\n");
+        return false;
+    }
+
+    if (ack) {
+        ack->type = ntohs(ack->type);
+        ack->info.start = ntohl(ack->info.start);
+        ack->info.size = ntohl(ack->info.size);
+        ack->info.vers = ntohl(ack->info.vers);
+    }
+#else
+    int actual;
+    struct req_header romfs_req;
     romfs_req.type = type;
 
     bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
@@ -186,7 +331,7 @@ static bool send_usb_cmd(uint16_t type, struct ack_header *ack)
         fprintf(stderr, "Command reply error transfer\n");
         return false;
     }
-
+#endif
     return true;
 }
 
@@ -202,6 +347,17 @@ static char *find_filename(char *path)
 int main(int argc, char *argv[])
 {
     int retval = 1;
+#ifdef ENABLE_REMOTE
+    server = tcp_open(TCP_CLIENT, argv[1], TCP_PORT, NULL, NULL);
+    if (!server) {
+        fprintf(stderr, "Cannot connect to romfs proxy!\n");
+        return 1;
+    }
+
+    argv[1] = argv[0];
+    argv++;
+    argc--;
+#else
     uint32_t r = libusb_init(&ctx);
 
     if (r < 0) {
@@ -224,6 +380,7 @@ int main(int argc, char *argv[])
     }
 
     libusb_claim_interface(dev_handle, 0);
+#endif
 
     struct ack_header romfs_info;
 
@@ -436,7 +593,7 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "Error: Unknown command '%s'\n", argv[2]);
             }
 
- err_io:
+        err_io:
             if (!send_usb_cmd(FLASH_QUAD_MODE, NULL)) {
                 fprintf(stderr, "cannot switch flash to quad mode, error!\n");
                 retval = 1;
@@ -454,9 +611,11 @@ int main(int argc, char *argv[])
         fprintf(stderr, "%s pull <remote filename>[ <local filename>]\n", argv[0]);
     }
 
- err:
-
+err:
+#ifdef ENABLE_REMOTE
+    tcp_close(server);
+#else
     libusb_release_interface(dev_handle, 0);
-
+#endif
     return retval;
 }

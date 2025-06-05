@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <signal.h>
 #ifndef _WIN32
 #include <sys/select.h>
 #endif
@@ -16,17 +17,15 @@
 #endif
 
 #include "utils2.h"
-#include "usb-romfs-proxy.h"
+#include "romfs-proxy.h"
 
 #include "simple-connection-lib/src/base64.c"
 #include "simple-connection-lib/src/getrandom.c"
 #include "simple-connection-lib/src/tcp.c"
 
-#define TCP_PORT	6464
-
 #define RETRY_MAX 50
 
-// #define DEBUG
+//#define DEBUG
 
 static libusb_context *ctx = NULL;
 static libusb_device_handle *dev_handle;
@@ -181,6 +180,40 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
     return true;
 }
 
+int tcp_read_all(tcp_channel *c, void *buf, size_t len)
+{
+    char *ptr = buf;
+    size_t all = 0;
+
+    while (len > 0) {
+        size_t r = tcp_read(c, &ptr[all], len);
+        if (r <= 0) {
+            break;
+        }
+        len -= r;
+        all += r;
+    }
+
+    return all;
+}
+
+int tcp_write_all(tcp_channel *c, void *buf, size_t len)
+{
+    char *ptr = buf;
+    size_t all = 0;
+
+    while (len > 0) {
+        size_t r = tcp_write(c, &ptr[all], len);
+        if (r <= 0) {
+            break;
+        }
+        len -= r;
+        all += r;
+    }
+
+    return all;
+}
+
 static int usb_romfs(tcp_channel *client)
 {
     int retval = 1;
@@ -213,16 +246,20 @@ static int usb_romfs(tcp_channel *client)
 
     while(true) {
         uint16_t cmd;
-        if ((r = tcp_read(client, &cmd, sizeof(cmd))) < 0) {
-            fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+        if ((r = tcp_read_all(client, &cmd, sizeof(cmd))) < 0) {
+            fprintf(stderr, "tcp_read_all() error %d\n", __LINE__);
             goto err;
         }
 
+        cmd = ntohs(cmd);
+
         if (cmd == USB_CMD) {
-            if ((r = tcp_read(client, &romfs_req, sizeof(romfs_req))) != sizeof(romfs_req)) {
-                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+            if ((r = tcp_read_all(client, &romfs_req, sizeof(romfs_req))) != sizeof(romfs_req)) {
+                fprintf(stderr, "tcp_read_all() error %d\n", __LINE__);
                 goto err;
             }
+
+            romfs_req.type = ntohs(romfs_req.type);
 
             bulk_transfer(dev_handle, 0x01, (void *)&romfs_req, sizeof(romfs_req), &actual, 5000);
             if (actual != sizeof(romfs_req)) {
@@ -236,59 +273,71 @@ static int usb_romfs(tcp_channel *client)
                 goto err;
             }
 
-            if ((r = tcp_write(client, &romfs_info, sizeof(romfs_info))) != sizeof(romfs_info)) {
-                fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+            romfs_info.type = htons(romfs_info.type);
+            romfs_info.info.start = htonl(romfs_info.info.start);
+            romfs_info.info.size = htonl(romfs_info.info.size);
+            romfs_info.info.vers = htonl(romfs_info.info.vers);
+
+            if ((r = tcp_write_all(client, &romfs_info, sizeof(romfs_info))) != sizeof(romfs_info)) {
+                fprintf(stderr, "tcp_write_all() error %d\n", __LINE__);
                 goto err;
             }
         } else if (cmd == USB_ERASE_SECTOR) {
             struct sector_info sec;
-            if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
-                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+            if ((r = tcp_read_all(client, &sec, sizeof(sec))) != sizeof(sec)) {
+                fprintf(stderr, "tcp_read_all() error %d\n", __LINE__);
                 goto err;
             }
+            sec.offset = ntohl(sec.offset);
+            sec.length = ntohl(sec.length);
             uint8_t ok = romfs_flash_sector_erase(sec.offset);
-            if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
-                fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+            if ((r = tcp_write_all(client, &ok, sizeof(ok))) != sizeof(ok)) {
+                fprintf(stderr, "tcp_write_all() error %d\n", __LINE__);
+                goto err;
+            }
+            if (!ok) {
+                fprintf(stderr, "flash sector erase error\n");
                 goto err;
             }
         } else if (cmd == USB_READ_SECTOR) {
             struct sector_info sec;
-            if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
-                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+            if ((r = tcp_read_all(client, &sec, sizeof(sec))) != sizeof(sec)) {
+                fprintf(stderr, "tcp_read_all() error %d\n", __LINE__);
                 goto err;
             }
+            sec.offset = ntohl(sec.offset);
+            sec.length = ntohl(sec.length);
             uint8_t *buf = alloca(sec.length);
-            uint8_t ok = romfs_flash_sector_read(sec.offset, buf, sec.length);
-            if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
-                fprintf(stderr, "tcp_write() error %s\n", __FILE__);
+            if (!romfs_flash_sector_read(sec.offset, buf, sec.length)) {
+                fprintf(stderr, "flash sector read error!\n");
                 goto err;
             }
-            if (ok) {
-                if ((r = tcp_write(client, &buf, sec.length)) != sec.length) {
-                    fprintf(stderr, "tcp_write() error %s\n", __FILE__);
-                    goto err;
-                }
+            if ((r = tcp_write_all(client, buf, sec.length)) != sec.length) {
+                fprintf(stderr, "tcp_write_all() error %d\n", __LINE__);
+                goto err;
             }
         } else if (cmd == USB_WRITE_SECTOR) {
             struct sector_info sec;
-            if ((r = tcp_read(client, &sec, sizeof(sec))) != sizeof(sec)) {
-                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+            if ((r = tcp_read_all(client, &sec, sizeof(sec))) != sizeof(sec)) {
+                fprintf(stderr, "tcp_read_all() error %d\n", __LINE__);
                 goto err;
             }
+            sec.offset = ntohl(sec.offset);
+            sec.length = ntohl(sec.length);
             uint8_t *buf = alloca(sec.length);
-            if ((r = tcp_read(client, &buf, sec.length)) != sec.length) {
-                fprintf(stderr, "tcp_read() error %s\n", __FILE__);
+            if ((r = tcp_read_all(client, buf, sec.length)) != sec.length) {
+                fprintf(stderr, "tcp_read_all() error %d\n", __LINE__);
                 goto err;
             }
             uint8_t ok = romfs_flash_sector_write(sec.offset, buf);
-            if (!ok) {
-                fprintf(stderr, "flash sector write error!\n");
+            if ((r = tcp_write_all(client, &ok, sizeof(ok))) != sizeof(ok)) {
+                fprintf(stderr, "tcp_write_all() error %d\n", __LINE__);
                 goto err;
             }
-            //	    if ((r = tcp_write(client, &ok, sizeof(ok))) != sizeof(ok)) {
-            //		fprintf(stderr, "tcp_write() error %s\n", __FILE__);
-            //		goto err;
-            //	    }
+            if (!ok) {
+                fprintf(stderr, "flash sector write error\n");
+                goto err;
+            }
         }
     }
 
@@ -301,6 +350,9 @@ err:
 
 int main(int argc, char *argv[])
 {
+    /* Ignore PIPE signal and return EPIPE error */
+    signal(SIGPIPE, SIG_IGN);
+
     tcp_channel *server = tcp_open(TCP_SERVER, NULL, TCP_PORT, NULL, NULL);
     if (!server) {
         fprintf(stderr, "tcp_open()\n");
