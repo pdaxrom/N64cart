@@ -483,15 +483,14 @@ int main(int argc, char *argv[])
                             while ((ret = fread(buffer, 1, 4096, inf)) > 0) {
                                 if (fix_endian) {
                                     if (rom_type == -1) {
-                                        uint32_t type = ((uint32_t *) buffer)[0];
                                         fprintf(stderr, "Detected ROM type: ");
-                                        if (type == 0x40123780) {
+                                        if (buffer[0] == 0x80 && buffer[1] == 0x37 && buffer[2] == 0x12 && buffer[3] == 0x40) {
                                             rom_type = 0;
                                             fprintf(stderr, "Z64\n");
-                                        } else if (type == 0x80371240) {
+                                        } else if (buffer[0] == 0x40 && buffer[1] == 0x12 && buffer[2] == 0x37 && buffer[3] == 0x80) {
                                             rom_type = 1;
                                             fprintf(stderr, "N64\n");
-                                        } else if (type == 0x12408037) {
+                                        } else if (buffer[0] == 0x37 && buffer[1] == 0x80 && buffer[2] == 0x40 && buffer[3] == 0x12) {
                                             rom_type = 2;
                                             fprintf(stderr, "V64\n");
                                         } else {
