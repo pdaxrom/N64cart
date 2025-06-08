@@ -17,7 +17,7 @@
 #endif
 
 #include "utils2.h"
-#include "romfs-proxy.h"
+#include "proxy-romfs.h"
 
 #include "simple-connection-lib/src/base64.c"
 #include "simple-connection-lib/src/getrandom.c"

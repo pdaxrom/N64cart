@@ -1,6 +1,6 @@
 TARGET = usb-romfs
 
-ROMFS_PROXY = romfs-proxy
+ROMFS_PROXY = proxy-romfs
 
 ROMFS_REMOTE = remote-romfs
 

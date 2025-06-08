@@ -17,7 +17,7 @@
 #endif
 
 #ifdef ENABLE_REMOTE
-#include "romfs-proxy.h"
+#include "proxy-romfs.h"
 
 #include "simple-connection-lib/src/base64.c"
 #include "simple-connection-lib/src/getrandom.c"
@@ -347,10 +347,33 @@ static char *find_filename(char *path)
     return pos + 1;
 }
 
+static void usage(void)
+{
+#ifdef ENABLE_REMOTE
+    static const char *str = "remote-romfs <proxy ip>";
+#else
+    static const char *str = "usb-romfs";
+#endif
+    fprintf(stderr, "Usage:\n");
+    fprintf(stderr, "%s help\n", str);
+    fprintf(stderr, "%s bootloader\n", str);
+    fprintf(stderr, "%s reboot\n", str);
+    fprintf(stderr, "%s format\n", str);
+    fprintf(stderr, "%s list\n", str);
+    fprintf(stderr, "%s delete <remote filename>\n", str);
+    fprintf(stderr, "%s push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]\n", str);
+    fprintf(stderr, "%s pull <remote filename>[ <local filename>]\n", str);
+}
+
 int main(int argc, char *argv[])
 {
     int retval = 1;
 #ifdef ENABLE_REMOTE
+    if (argc < 2) {
+        usage();
+        return 1;
+    }
+
     server = tcp_open(TCP_CLIENT, argv[1], TCP_PORT, NULL, NULL);
     if (!server) {
         fprintf(stderr, "Cannot connect to romfs proxy!\n");
@@ -592,7 +615,7 @@ int main(int argc, char *argv[])
                     }
                 }
             } else {
-                fprintf(stderr, "Error: Unknown command '%s'\n", argv[2]);
+                fprintf(stderr, "Error: Unknown command '%s'\n", argv[1]);
             }
 
         err_io:
@@ -602,15 +625,7 @@ int main(int argc, char *argv[])
             }
         }
     } else {
-        fprintf(stderr, "Usage:\n");
-        fprintf(stderr, "%s help\n", argv[0]);
-        fprintf(stderr, "%s bootloader\n", argv[0]);
-        fprintf(stderr, "%s reboot\n", argv[0]);
-        fprintf(stderr, "%s format\n", argv[0]);
-        fprintf(stderr, "%s list\n", argv[0]);
-        fprintf(stderr, "%s delete <remote filename>\n", argv[0]);
-        fprintf(stderr, "%s push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]\n", argv[0]);
-        fprintf(stderr, "%s pull <remote filename>[ <local filename>]\n", argv[0]);
+        usage();
     }
 
 err:
