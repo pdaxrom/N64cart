@@ -187,7 +187,7 @@ static int winsock_init(void)
 #endif
 
 #ifdef sgi
-uint64_t htonll(uint64_t host_value)
+static uint64_t htonll(uint64_t host_value)
 {
     uint64_t result = 0;
     uint8_t *src = (uint8_t *)&host_value;
@@ -200,12 +200,12 @@ uint64_t htonll(uint64_t host_value)
     return result;
 }
 
-uint64_t ntohll(uint64_t net_value)
+static uint64_t ntohll(uint64_t net_value)
 {
     return htonll(net_value); // Same as htonll()
 }
 
-char *strcasestr(const char *haystack, const char *needle)
+static char *strcasestr(const char *haystack, const char *needle)
 {
     if (!*needle) {
         return (char *)haystack;

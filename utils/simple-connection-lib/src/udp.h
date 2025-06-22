@@ -65,15 +65,15 @@ extern "C" {
 #endif
 
 udp_channel *udp_open(int mode, char *addr, int port);
-int udp_read(udp_channel *u, uint8_t *buf, size_t len);
-int udp_write(udp_channel *u, uint8_t *buf, size_t len);
+int udp_read(udp_channel *u, void *buf, size_t len);
+int udp_write(udp_channel *u, void *buf, size_t len);
 int udp_close(udp_channel *u);
 
-int udp_read_src(udp_channel *u, uint8_t *buf, size_t len);
+int udp_read_src(udp_channel *u, void *buf, size_t len);
 void udp_commit_dst(udp_channel *u);
 
 int udp_forward_add(udp_channel *u, char *label);
-int udp_forward_write(udp_channel *u, char *label, uint8_t *buf, size_t len);
+int udp_forward_write(udp_channel *u, char *label, void *buf, size_t len);
 void udp_forward_show(udp_channel *u);
 void udp_forward_remove_inactive(udp_channel *u);
 

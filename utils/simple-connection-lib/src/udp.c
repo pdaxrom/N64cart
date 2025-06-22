@@ -149,7 +149,7 @@ int udp_close(udp_channel *u)
     return 0;
 }
 
-int udp_read(udp_channel *u, uint8_t *buf, size_t len)
+int udp_read(udp_channel *u, void *buf, size_t len)
 {
     int r;
     socklen_t slen = sizeof(u->my_addr);
@@ -176,7 +176,7 @@ int udp_read(udp_channel *u, uint8_t *buf, size_t len)
     return r;
 }
 
-int udp_write(udp_channel *u, uint8_t *buf, size_t len)
+int udp_write(udp_channel *u, void *buf, size_t len)
 {
     int r;
     socklen_t slen = sizeof(u->my_addr);
@@ -198,7 +198,7 @@ int udp_write(udp_channel *u, uint8_t *buf, size_t len)
  *
  */
 
-int udp_read_src(udp_channel *u, uint8_t *buf, size_t len)
+int udp_read_src(udp_channel *u, void *buf, size_t len)
 {
     int r;
     socklen_t slen = sizeof(u->my_addr);
@@ -271,7 +271,7 @@ int udp_forward_add(udp_channel *u, char *label)
     return 0;
 }
 
-int udp_forward_write(udp_channel *u, char *label, uint8_t *buf, size_t len)
+int udp_forward_write(udp_channel *u, char *label, void *buf, size_t len)
 {
     if (u->mode != UDP_SERVER) {
 	return 0;
