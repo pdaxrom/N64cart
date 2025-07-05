@@ -85,16 +85,19 @@
 typedef int socklen_t;
 
 #define htobe64 htonll
+#define htobe32 htonl
 #define htobe16 htons
 #define ntobe64 ntohll
+#define ntobe32 ntohl
 #define ntobe16 ntohs
 
 #endif
 
-#define WS_NTOH64(n) ntobe64(n)
-#define WS_NTOH32(n) ntobe32(n)
-#define WS_NTOH16(n) ntobe16(n)
+#define WS_NTOH64(n) be64toh(n)
+#define WS_NTOH32(n) be32toh(n)
+#define WS_NTOH16(n) be16toh(n)
 #define WS_HTON64(n) htobe64(n)
+#define WS_HTON32(n) htobe32(n)
 #define WS_HTON16(n) htobe16(n)
 
 #endif
