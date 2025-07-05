@@ -48,10 +48,10 @@ done
 
 cd ${TOP_DIR}/utils
 make clean
-make SYSTEM=Windows
+make SYSTEM=Windows all remote
 mkdir -p ${BUILD_ROOT}/usb-romfs-${VER}-win32
 
-cp usb-romfs.exe  ${BUILD_ROOT}/usb-romfs-${VER}-win32/
+cp *-romfs.exe  ${BUILD_ROOT}/usb-romfs-${VER}-win32/
 cp libusb-1.0.dll ${BUILD_ROOT}/usb-romfs-${VER}-win32/
 
 make clean
