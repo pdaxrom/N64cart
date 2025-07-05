@@ -16,6 +16,7 @@
 #include <alloca.h>
 #endif
 
+#include "romfs.h"
 #include "utils2.h"
 #include "proxy-romfs.h"
 
@@ -29,6 +30,8 @@
 
 static libusb_context *ctx = NULL;
 static libusb_device_handle *dev_handle;
+
+static uint8_t prealloc_sector_buf[ROMFS_FLASH_SECTOR];
 
 static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoint, unsigned char *data, int length, int *transferred, unsigned int timeout)
 {
@@ -106,7 +109,7 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
         return false;
     }
 
-    for (int i = 0; i < 4096; i += 64) {
+    for (int i = 0; i < ROMFS_FLASH_SECTOR; i += 64) {
         uint8_t tmp[64];
         memmove(tmp, &buffer[i], 64);
 
@@ -311,7 +314,11 @@ static int usb_romfs(tcp_channel *client)
             }
             sec.offset = ntohl(sec.offset);
             sec.length = ntohl(sec.length);
-            uint8_t *buf = alloca(sec.length);
+            if (sec.length > ROMFS_FLASH_SECTOR) {
+                fprintf(stderr, "sector size too big %d\n", sec.length);
+                goto err;
+            }
+            uint8_t *buf = prealloc_sector_buf;
             if (!romfs_flash_sector_read(sec.offset, buf, sec.length)) {
                 fprintf(stderr, "flash sector read error!\n");
                 goto err;
@@ -328,7 +335,11 @@ static int usb_romfs(tcp_channel *client)
             }
             sec.offset = ntohl(sec.offset);
             sec.length = ntohl(sec.length);
-            uint8_t *buf = alloca(sec.length);
+            if (sec.length > ROMFS_FLASH_SECTOR) {
+                fprintf(stderr, "sector size too big %d\n", sec.length);
+                goto err;
+            }
+            uint8_t *buf = prealloc_sector_buf;
             if ((r = tcp_read_all(client, buf, sec.length)) != sec.length) {
                 fprintf(stderr, "tcp_read_all() error at line %d\n", __LINE__);
                 goto err;
