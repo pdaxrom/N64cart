@@ -4,8 +4,9 @@
 #endif
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#if defined(__APPLE__) || defined(__linux__)
+#if defined(__APPLE__) || defined(__linux__) || defined(sgi)
 #include <alloca.h>
 #endif
 

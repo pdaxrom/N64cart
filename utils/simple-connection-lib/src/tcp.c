@@ -87,9 +87,9 @@ typedef int socklen_t;
 #define htobe64 htonll
 #define htobe32 htonl
 #define htobe16 htons
-#define ntobe64 ntohll
-#define ntobe32 ntohl
-#define ntobe16 ntohs
+#define be64toh ntohll
+#define be32toh ntohl
+#define be16toh ntohs
 
 #endif
 
