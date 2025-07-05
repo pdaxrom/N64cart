@@ -12,6 +12,7 @@
 * [Cartrigde utility](#cartrigde-utility)
   * [Build](#build)
   * [How to use](#how-to-use)
+  * [Remote access to cartridge](#remote-access-to-cartridge)
 * [Total cartridge cost (32MB version)](#total-cartridge-cost-32mb-version)
 * [Photos version 2](#photos-version-2)
 * [BOM list for version 3](#bom-list-for-version-3)
@@ -160,15 +161,15 @@ Add to cmake ```-DREGION=pal``` to build it for PAL.
 
 Steps to build:
 ```
-  cd fw
+cd fw
 
-  mkdir build
+mkdir build
 
-  cd build
+cd build
 
-  cmake ..
+cmake ..
 
-  make -j
+make -j
 ```
 
 Press the cartridge button, connect the cartridge to USB and upload 'n64cart.uf2' to the RPI-RP2 disk.
@@ -182,9 +183,9 @@ Add to make ```BOARD=pico``` to build it for generic pico (flash chip 16 MB and 
 Steps to build:
 
 ```
-  cd ../../rom
+cd ../../rom
 
-  make
+make
 ```
 
 ## Cartrigde utility
@@ -196,17 +197,17 @@ The utility is used to format cartridge memory, write and read files from cartri
 To build for linux and Mac OS, you need to install the libusb development files.
 
 ```
-  cd ../utils
+cd ../utils
 
-  make
+make
 ```
 
 For windows, install mingw toolchain.
 
 ```
-  cd ../utils
+cd ../utils
   
-  make SYSTEM=Windows
+make SYSTEM=Windows
 ```
 
 ### How to use
@@ -214,21 +215,21 @@ For windows, install mingw toolchain.
 The first time you use a cartridge, you must format it and write a file manager:
 
 ```
-  ./usb-romfs format
+./usb-romfs format
 
-  ./usb-romfs push ../rom/n64cart-manager.z64
+./usb-romfs push ../rom/n64cart-manager.z64
 ```
 
 Upload some other roms, for example:
 
 ```
-  ./usb-romfs push rodfsdemo.z64
+./usb-romfs push rodfsdemo.z64
 ```
 
 Change background image:
 
 ```
-  ./usb-romfs push picture.jpg background.jpg
+./usb-romfs push picture.jpg background.jpg
 ```
 
 Full list of the utility commands:
@@ -243,6 +244,34 @@ Full list of the utility commands:
 ./usb-romfs push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]
 ./usb-romfs pull <remote filename>[ <local filename>]
 ```
+
+### Remote access to cartridge
+
+If your computer does not allow you to connect to the cartridge (for example, it is an old Silicon Graphics that does not have USB), you can use proxy access through another computer. To do this, build utilities for remote access:
+
+```
+make remote
+```
+
+If the working computer and the proxy computer are different systems, compile the remote utility for the working computer with the cross compiler specified:
+
+```
+make CC="mips-sgi-irix6o32-gcc" remote-romfs
+```
+
+Copy ```remote-romfs``` to the working machine. On the proxy machine, connect the USB cable of the cartridge and start the proxy:
+
+```
+./proxy-romfs
+```
+
+Use remote-romfs on the working machine the same way as usb-romfs but specify the proxy address:
+
+```
+./remote-romfs <proxy IP address> <command ...>
+```
+
+[Photos of remote access to the cartridge](#photos-of-remote-access-to-the-cartridge-from-sgi-indy)
 
 ## Total cartridge cost (32MB version)
 
@@ -340,3 +369,10 @@ XTAL1|ABLS-12.000MHZ-B4-T|ABLS-12.000MHZ-B4-T|XTAL_ABLS_ABR
 
 <img src="pics/IMG_20240811_110152.jpg" width="480" />
 
+## Photos of remote access to the cartridge from SGI Indy
+
+<img src="pics/20250705_142513.jpg" width="480" />
+
+<img src="pics/20250705_150633.jpg" width="480" />
+
+<img src="pics/20250705_150648.jpg" width="480" />
