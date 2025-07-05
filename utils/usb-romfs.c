@@ -19,9 +19,7 @@
 #ifdef ENABLE_REMOTE
 #include "proxy-romfs.h"
 
-#include "simple-connection-lib/src/base64.c"
-#include "simple-connection-lib/src/getrandom.c"
-#include "simple-connection-lib/src/tcp.c"
+#include "simple-connection-lib/src/tcp.h"
 
 static tcp_channel *server;
 

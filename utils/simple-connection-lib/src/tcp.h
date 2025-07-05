@@ -33,6 +33,7 @@
 #include <sys/un.h>
 #else
 #include <windows.h>
+#include <stdint.h>
 #endif
 #ifdef ENABLE_SSL
 #include <openssl/ssl.h>
