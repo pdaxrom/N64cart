@@ -23,6 +23,10 @@ ifeq (pico-lite,$(BOARD))
 CFLAGS += -DDISABLE_FLASH_ADDR_32=1 -DDISABLE_UART
 endif
 
+if (y,$(NO_FILE_DELETION))
+CFLAGS += -DNO_FILE_DELETION
+endif
+
 SRC = src/main.c src/n64cart.c src/syslog.c ../fw/romfs/romfs.c src/ext/cic.c src/ext/crc32.c src/ext/boot.c src/ext/shell_utils.c src/usb/dev_lowlevel.c src/md5.c src/imgviewer.c
 ASMSRC = src/ext/reboot.S
 

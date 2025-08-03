@@ -15,7 +15,11 @@
 #include "../../fw/romfs/romfs.h"
 #include "ext/shell_utils.h"
 #include "n64cart.h"
+#ifdef WITH_FONT_FILE
+#include WITH_FONT_FILE
+#else
 #include "../build/wy700font-regular.h"
+#endif
 #include "main.h"
 #include "usb/usbd.h"
 
@@ -506,7 +510,11 @@ int main(void)
     static const char *txt_title_2 = "(c) sashz /pdaXrom.org/, 2022-2024";
     static char txt_rom_info[128];
     static const char *txt_menu_info_1 = "[UP]/[DOWN]-Select, [L]/[R]-Page";
+#ifdef NO_FILE_DELETION
+    static const char *txt_menu_info_2 = "[A]-Run";
+#else
     static const char *txt_menu_info_2 = "[A]-Run, [C-L]-Delete";
+#endif
 
     if (used_flash_chip) {
         snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_size);
@@ -841,7 +849,9 @@ int main(void)
             }
 
             continue;
-        } else if (pressed.c_left) {
+        }
+#ifndef NO_FILE_DELETION
+        else if (pressed.c_left) {
             static const char *fopen_error_1 = "Delete file? (A) Yes (B) No";
             graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
 
@@ -869,7 +879,7 @@ int main(void)
 
             continue;
         }
-
+#endif
         int menu_page_size = 10;
 
         if (keys_delay_counter > 0) {

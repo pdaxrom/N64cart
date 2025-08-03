@@ -44,6 +44,16 @@ for cfg in v3 v2 pico pico-lite; do
     make -j || break
     cp -f n64cart-manager.z64 ${RELEASE_DIR}/n64cart-manager-${cfg}-${VER}.z64
     cd ..
+
+    ROM_BUILD_DIR="${BUILD_ROOT}/rom-${cfg}-no-file-deletetion"
+    echo "ROM build dir   $ROM_BUILD_DIR"
+    mkdir -p $ROM_BUILD_DIR
+
+    cd $ROM_BUILD_DIR
+    cmake -DBOARD=$cfg -DDISABLE_FILE_DELETION=ON ${TOP_DIR}/rom || break
+    make -j || break
+    cp -f n64cart-manager.z64 ${RELEASE_DIR}/n64cart-manager-${cfg}-nofiledel-${VER}.z64
+    cd ..
 done
 
 cd ${TOP_DIR}/utils

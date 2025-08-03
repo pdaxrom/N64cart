@@ -23,6 +23,14 @@ else()
     set(BOARD_CFLAGS "")
 endif()
 
+option(DISABLE_FILE_DELETION "Disable file deletion" OFF)
+
+if(DISABLE_FILE_DELETION)
+    set(BOARD_CFLAGS "${BOARD_CFLAGS} -DNO_FILE_DELETION")
+endif()
+
+message(STATUS "Disable file deletion " ${DISABLE_FILE_DELETION})
+
 include("cmake/toolchain.libdragon.cmake")
 
 #set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE) # debug helper
@@ -81,7 +89,7 @@ message(STATUS "Firmware version is: ${FIRMWARE_VERSION}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=unused-but-set-variable -Wno-error=unused-function -Iusb -DROMFS_NO_INTERNAL_BUFFERS -DFIRMWARE_VERSION=0x${FIRMWARE_VERSION} -DGIT_HASH=\\\"${GIT_HASH}\\\"")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_CXX_FLAGS_RELEASE} -DN64")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffast-math -ftrapping-math -fno-associative-math")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${BOARD_CFLAGS}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${BOARD_CFLAGS} -DWITH_FONT_FILE=\\\"${CMAKE_CURRENT_BINARY_DIR}/wy700font-regular.h\\\"")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp")
 
 file(GLOB_RECURSE CSOURCES "src/*.c" "${CMAKE_CURRENT_LIST_DIR}/../fw/romfs/romfs.c")
