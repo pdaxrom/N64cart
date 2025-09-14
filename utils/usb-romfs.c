@@ -346,6 +346,20 @@ static char *find_filename(char *path)
     return pos + 1;
 }
 
+static const char *human_readable_size(double bytes, char *buf, size_t bufsize)
+{
+    const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
+    int unit_index = 0;
+
+    while (bytes >= 1024 && unit_index < 5) {
+        bytes /= 1024.0;
+        unit_index++;
+    }
+
+    snprintf(buf, bufsize, "%.2f %s", bytes, units[unit_index]);
+    return buf;
+}
+
 static void usage(void)
 {
 #ifdef ENABLE_REMOTE
@@ -362,6 +376,7 @@ static void usage(void)
     fprintf(stderr, "%s delete <remote filename>\n", str);
     fprintf(stderr, "%s push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]\n", str);
     fprintf(stderr, "%s pull <remote filename>[ <local filename>]\n", str);
+    fprintf(stderr, "%s free\n", str);
 }
 
 int main(int argc, char *argv[])
@@ -447,14 +462,27 @@ int main(int argc, char *argv[])
                 if (romfs_format()) {
                     retval = 0;
                 }
+            } else if (!strcmp(argv[1], "free")) {
+                uint32_t free_mem = romfs_free();
+                char free_txt[128];
+                printf("Free %d bytes (%s)\n", free_mem, human_readable_size(free_mem, free_txt, sizeof(free_txt)));
             } else if (!strcmp(argv[1], "list")) {
                 romfs_file file;
+                char num_buf[128];
+                bool conv = (argc > 2 && !strcmp(argv[2], "-h")) ? true : false;
+                printf("\n");
                 if (romfs_list(&file, true) == ROMFS_NOERR) {
                     do {
-                        printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
+                        if (conv) {
+                            printf("%0X %03X %10s %s\n", file.entry.attr.names.mode, file.entry.attr.names.type, human_readable_size(file.entry.size, num_buf, sizeof(num_buf)), file.entry.name);
+                        } else {
+                            printf("%0X %03X %10d %s\n", file.entry.attr.names.mode, file.entry.attr.names.type, file.entry.size, file.entry.name);
+                        }
                     } while (romfs_list(&file, false) == ROMFS_NOERR);
                     retval = 0;
                 }
+                uint32_t free_mem = romfs_free();
+                printf("\nFree %d bytes (%s)\n", free_mem, human_readable_size(free_mem, num_buf, sizeof(num_buf)));
             } else if (!strcmp(argv[1], "delete")) {
                 uint32_t err;
                 if ((err = romfs_delete(argv[2])) != ROMFS_NOERR) {

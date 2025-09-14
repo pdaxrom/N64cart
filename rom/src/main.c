@@ -229,6 +229,20 @@ static void show_md5(uint8_t *buf, size_t size)
     print_bytes(md5_actual, "file map");
 }
 
+static const char *human_readable_size(double bytes, char *buf, size_t bufsize)
+{
+    const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
+    int unit_index = 0;
+
+    while (bytes >= 1024 && unit_index < 5) {
+        bytes /= 1024.0;
+        unit_index++;
+    }
+
+    snprintf(buf, bufsize, "%.2f %s", bytes, units[unit_index]);
+    return buf;
+}
+
 static void run_rom(display_context_t disp, const char *name, const char *addon, const int addon_offset, int addon_save_type)
 {
     romfs_file file;
@@ -522,6 +536,8 @@ int main(void)
         strncpy(txt_rom_info, "Unknown flash chip", sizeof(txt_rom_info) - 1);
     }
 
+    static char txt_romfs_free[64];
+
     static const char *tv_type_str[] = { "PAL", "NTSC", "M-PAL" };
     static char txt_tv_type_msg[64];
     snprintf(txt_tv_type_msg, sizeof(txt_tv_type_msg), "%s mode", tv_type_str[get_tv_type()]);
@@ -598,7 +614,6 @@ int main(void)
             if (!romfs_start(fw_size, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
                 syslog(LOG_ERR, "Cannot start romfs!");
             } else {
-
                 romfs_file file;
 
                 num_files = 0;
@@ -621,6 +636,10 @@ int main(void)
             }
 
             show_md5((uint8_t *)romfs_flash_map, flash_map_size);
+
+            char txt_hum_size[32];
+            human_readable_size(romfs_free(), txt_hum_size, sizeof(txt_hum_size));
+            snprintf(txt_romfs_free, sizeof(txt_romfs_free), "ROMFS: %s free", txt_hum_size);
 
             do_step = STEP_LOAD_BACKGROUND;
             continue;
@@ -780,8 +799,9 @@ int main(void)
         graphics_draw_text(disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
         graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
 
-        graphics_draw_text(disp, valign(txt_rom_info), 30 * scr_scale, txt_rom_info);
-        graphics_draw_text(disp, valign(txt_tv_type_msg), 40 * scr_scale, txt_tv_type_msg);
+        graphics_draw_text(disp, valign(txt_tv_type_msg), 30 * scr_scale, txt_tv_type_msg);
+        graphics_draw_text(disp, valign(txt_rom_info), 40 * scr_scale, txt_rom_info);
+        graphics_draw_text(disp, valign(txt_romfs_free), 50 * scr_scale, txt_romfs_free);
 
         graphics_draw_text(disp, valign(txt_menu_info_1), 90 * scr_scale, txt_menu_info_1);
         graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);

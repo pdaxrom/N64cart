@@ -24,9 +24,12 @@ fi
 
 ./romfs ${ROM_FILE} format
 
+echo "PUSH"
 for f in $(ls ${IN_DIR}); do echo $f; ./romfs ${ROM_FILE} push ${IN_DIR}/${f} $f; done
+echo "PULL"
 for f in $(ls ${IN_DIR}); do echo $f; ./romfs ${ROM_FILE} pull $f ${OUT_DIR}/${f}; done
 #for f in $(ls ${IN_DIR}); do ${MD5SUM} ${IN_DIR}/${f} ${OUT_DIR}/${f}; done
+echo "COMPARE"
 for f in $(ls ${IN_DIR}); do cmp ${IN_DIR}/${f} ${OUT_DIR}/${f}; done
 
 rm -rf ${OUT_DIR}

@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include "romfs.h"
@@ -94,10 +95,20 @@ int main(int argc, char *argv[])
 
     flash_base = memory;
 
-    if (!romfs_start(0x10000, sizeof(memory))) {
+    uint32_t map_size = 0;
+    uint32_t list_size = 0;
+
+    romfs_get_buffers_sizes(sizeof(memory), &map_size, &list_size);
+
+    uint16_t *flash_map = alloca(map_size);
+    uint8_t *flash_list = alloca(list_size);
+
+    if (!romfs_start(0x10000, sizeof(memory), flash_map, flash_list)) {
         printf("Cannot start romfs!\n");
         goto err;
     }
+
+    uint8_t *romfs_io_buffer = alloca(ROMFS_FLASH_SECTOR);
 
     if (argc > 2) {
         if (!strcmp(argv[2], "format")) {
@@ -120,7 +131,7 @@ int main(int argc, char *argv[])
                 uint8_t buffer[4096];
                 int ret;
                 romfs_file file;
-                if (romfs_create_file(argv[4], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, NULL) != ROMFS_NOERR) {
+                if (romfs_create_file(argv[4], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_io_buffer) != ROMFS_NOERR) {
                     fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
                 } else {
                     while ((ret = fread(buffer, 1, 64, inf)) > 0) {
@@ -143,7 +154,7 @@ int main(int argc, char *argv[])
             }
         } else if (!strcmp(argv[2], "pull")) {
             romfs_file file;
-            if (romfs_open_file(argv[3], &file, NULL) == ROMFS_NOERR) {
+            if (romfs_open_file(argv[3], &file, romfs_io_buffer) == ROMFS_NOERR) {
                 FILE *outf = fopen(argv[4], "wb");
                 if (outf) {
                     uint8_t buffer[4096];
@@ -161,6 +172,8 @@ int main(int argc, char *argv[])
             } else {
                 fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
             }
+        } else if (!strcmp(argv[2], "free")) {
+            printf("Free space: %u bytes\n", romfs_free());
         } else {
             fprintf(stderr, "Error: Unknown command '%s'\n", argv[2]);
         }

@@ -40,6 +40,7 @@ enum {
     ROMFS_ERR_FILE_EXISTS,
     ROMFS_ERR_FILE_DATA_TOO_BIG,
     ROMFS_ERR_EOF,
+    ROMFS_ERR_OPERATION,
 };
 
 typedef struct __attribute__((packed)) {
@@ -72,18 +73,14 @@ bool romfs_flash_sector_erase(uint32_t offset);
 bool romfs_flash_sector_write(uint32_t offset, uint8_t * buffer);
 bool romfs_flash_sector_read(uint32_t offset, uint8_t * buffer, uint32_t need);
 
-#ifdef ROMFS_NO_INTERNAL_BUFFERS
 void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t * map_size, uint32_t * list_size);
 bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t * flash_map, uint8_t * flash_list);
-#else
-bool romfs_start(uint32_t start, uint32_t rom_size);
-#endif
 bool romfs_format(void);
 uint32_t romfs_free(void);
 uint32_t romfs_list(romfs_file * entry, bool first);
 uint32_t romfs_delete(const char *name);
 uint32_t romfs_create_file(const char *name, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer);
-uint32_t romfs_write_file(void *buffer, uint32_t size, romfs_file * file);
+uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_close_file(romfs_file * file);
 uint32_t romfs_open_file(const char *name, romfs_file * file, uint8_t * io_buffer);
 uint32_t romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);
