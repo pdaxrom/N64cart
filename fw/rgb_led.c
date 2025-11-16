@@ -18,12 +18,12 @@ static void rgb2pwm(uint32_t rgb)
 {
     uint32_t grb = ((rgb << 16) & 0xff000000) | (rgb & 0x00ff0000) | ((rgb & 0x000000ff) << 8);
     for (int i = 0; i < (8 * 3); i++) {
-	if (grb & 0x80000000) {
-	    pwm_buffer[i] = T1 << 16;
-	} else {
-	    pwm_buffer[i] = T0 << 16;
-	}
-	grb <<= 1;
+        if (grb & 0x80000000) {
+            pwm_buffer[i] = T1 << 16;
+        } else {
+            pwm_buffer[i] = T0 << 16;
+        }
+        grb <<= 1;
     }
     pwm_buffer[3 * 8] = 0;
 }
@@ -67,13 +67,13 @@ void init_rgb_led(void)
 
     // Setup the channel and set it going
     dma_channel_configure(
-        pwm_dma_chan,
-        &pwm_dma_chan_config,
-        &pwm_hw->slice[led_pwm_slice_num].cc, // Write to PWM counter compare
-        pwm_buffer,
-        3 * 8 + 1,
-        true
-    );
+                pwm_dma_chan,
+                &pwm_dma_chan_config,
+                &pwm_hw->slice[led_pwm_slice_num].cc, // Write to PWM counter compare
+                pwm_buffer,
+                3 * 8 + 1,
+                true
+                );
 }
 
 #else

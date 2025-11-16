@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "../../fw/romfs/romfs.h"
 #include "syslog.h"
@@ -24,7 +25,25 @@
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include "stb/stb_image_resize2.h"
 
+#define ROMFS_POSIX_PREFIX "romfs:/"
+#define ROMFS_PATH_MAX 256
+
 static int scr_width, scr_height, scr_scale;
+
+static void build_romfs_prefixed_path(const char *path, char *out, size_t out_size)
+{
+    if (!out || out_size == 0) {
+        return;
+    }
+
+    if (!path || path[0] == '\0') {
+        snprintf(out, out_size, "%s", ROMFS_POSIX_PREFIX);
+    } else if (path[0] == '/') {
+        snprintf(out, out_size, "romfs:%s", path);
+    } else {
+        snprintf(out, out_size, ROMFS_POSIX_PREFIX "%s", path);
+    }
+}
 
 static int valign(const char *s)
 {
@@ -34,58 +53,83 @@ static int valign(const char *s)
 sprite_t *image_load(char *name, int screen_w, int screen_h)
 {
     sprite_t *image = NULL;
-    uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
-    romfs_file file;
+    char path[ROMFS_PATH_MAX + 8];
+    build_romfs_prefixed_path(name, path, sizeof(path));
 
-    if (romfs_open_file(name, &file, romfs_flash_buffer) == ROMFS_NOERR) {
-        int ret;
-        int pos = 0;
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        syslog(LOG_ERR, "cannot open image %s (errno %d)", path, errno);
+        return NULL;
+    }
 
-        int picture_data_length = file.entry.size;
-        uint8_t *picture_data = malloc(picture_data_length);
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        return NULL;
+    }
 
-        while (pos < picture_data_length && (ret = romfs_read_file(&picture_data[pos], 4096, &file)) > 0) {
-            pos += ret;
-        }
-        romfs_close_file(&file);
-        syslog(LOG_INFO, "read image file %d bytes", pos);
+    long length = ftell(fp);
+    if (length < 0) {
+        fclose(fp);
+        return NULL;
+    }
 
-        if (picture_data != NULL && picture_data[0] == 0xff && picture_data[1] == 0xd8) {
-            syslog(LOG_INFO, "User picture");
+    if (fseek(fp, 0, SEEK_SET) != 0) {
+        fclose(fp);
+        return NULL;
+    }
 
-            int w, h, channels;
+    uint8_t *picture_data = malloc((size_t)length);
+    if (!picture_data) {
+        fclose(fp);
+        return NULL;
+    }
 
-            stbi_uc *stbi_img = stbi_load_from_memory(picture_data, picture_data_length, &w, &h, &channels, 4);
+    size_t read = fread(picture_data, 1, (size_t)length, fp);
+    fclose(fp);
+    if (read != (size_t)length) {
+        free(picture_data);
+        return NULL;
+    }
 
-            free(picture_data);
+    syslog(LOG_INFO, "read image file %ld bytes", length);
 
-            if (stbi_img) {
-                syslog(LOG_INFO, "image w = %d, h = %d, c = %d", w, h, channels);
+    if (picture_data[0] == 0xff && picture_data[1] == 0xd8) {
+        syslog(LOG_INFO, "User picture");
 
-                if (w != screen_w || h != screen_h) {
-                    stbi_uc *stbi_img_new = stbir_resize_uint8_linear(stbi_img, w, h, w * 4, NULL, screen_w, screen_h,
-                                                                      screen_w * 4, STBIR_RGBA);
-                    stbi_image_free(stbi_img);
-                    stbi_img = stbi_img_new;
-                    w = screen_w;
-                    h = screen_h;
-                }
+        int w, h, channels;
 
-                syslog(LOG_INFO, "resized w = %d, h = %d, c = %d", w, h, channels);
+        stbi_uc *stbi_img = stbi_load_from_memory(picture_data, (int)length, &w, &h, &channels, 4);
 
-                image = malloc(sizeof(sprite_t) + w * h * 4);
-                if (image) {
-                    image->width = w;
-                    image->height = h;
-                    image->flags = FMT_RGBA32;
-                    image->hslices = 1;
-                    image->vslices = 1;
+        free(picture_data);
 
-                    memmove(&image->data[0], stbi_img, w * h * 4);
-                }
+        if (stbi_img) {
+            syslog(LOG_INFO, "image w = %d, h = %d, c = %d", w, h, channels);
+
+            if (w != screen_w || h != screen_h) {
+                stbi_uc *stbi_img_new = stbir_resize_uint8_linear(stbi_img, w, h, w * 4, NULL, screen_w, screen_h,
+                                                                  screen_w * 4, STBIR_RGBA);
                 stbi_image_free(stbi_img);
+                stbi_img = stbi_img_new;
+                w = screen_w;
+                h = screen_h;
             }
+
+            syslog(LOG_INFO, "resized w = %d, h = %d, c = %d", w, h, channels);
+
+            image = malloc(sizeof(sprite_t) + w * h * 4);
+            if (image) {
+                image->width = w;
+                image->height = h;
+                image->flags = FMT_RGBA32;
+                image->hslices = 1;
+                image->vslices = 1;
+
+                memmove(&image->data[0], stbi_img, w * h * 4);
+            }
+            stbi_image_free(stbi_img);
         }
+    } else {
+        free(picture_data);
     }
 
     return image;

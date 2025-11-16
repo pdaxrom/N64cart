@@ -11,7 +11,9 @@
 #include <stdbool.h>
 #include "romfs.h"
 
-static uint8_t memory[ROMFS_FLASH_SIZE * 1024 * 1024];
+#define ROMFS_IO_CHUNK_SIZE 64 /* I/O chunk size for reading/writing */
+
+static uint8_t memory[ROMFS_FLASH_SIZE * ROMFS_MB];
 
 static uint8_t *flash_base = NULL;
 
@@ -58,7 +60,7 @@ bool load_romfs(char *name, uint8_t *mem, size_t len, size_t *read_len)
     bool ret = true;
     FILE *out = fopen(name, "rb");
     if (out) {
-        int rlen;
+        size_t rlen;
         if ((rlen = fread(mem, 1, len, out)) != len) {
             ret = false;
         }
@@ -114,27 +116,58 @@ int main(int argc, char *argv[])
         if (!strcmp(argv[2], "format")) {
             romfs_format();
         } else if (!strcmp(argv[2], "list")) {
-            romfs_file file;
-            if (romfs_list(&file, true) == ROMFS_NOERR) {
-                do {
-                    printf("%s\t%d\t%0X %4X\n", file.entry.name, file.entry.size, file.entry.attr.names.mode, file.entry.attr.names.type);
-                } while (romfs_list(&file, false) == ROMFS_NOERR);
+            romfs_dir target_dir;
+            uint32_t err = ROMFS_NOERR;
+            if (argc > 3) {
+                err = romfs_dir_open_path(argv[3], &target_dir);
+            } else {
+                err = romfs_dir_root(&target_dir);
+            }
+
+            if (err != ROMFS_NOERR) {
+                fprintf(stderr, "Error: [%s] %s!\n", (argc > 3) ? argv[3] : "/", romfs_strerror(err));
+            } else {
+                romfs_file file = {0};
+                uint32_t list_err = romfs_list_dir(&file, true, &target_dir, true);
+                if (list_err == ROMFS_ERR_NO_FREE_ENTRIES) {
+                    printf("(empty)\n");
+                } else if (list_err != ROMFS_NOERR) {
+                    fprintf(stderr, "Error listing directory: %s\n", romfs_strerror(list_err));
+                } else {
+                    do {
+                        bool is_dir = (file.entry.attr.names.type == ROMFS_TYPE_DIR);
+                        printf("%s%s\t%u\t%02X %02X\n",
+                               file.entry.name,
+                               is_dir ? "/" : "",
+                               is_dir ? 0u : file.entry.size,
+                               file.entry.attr.names.mode,
+                               file.entry.attr.names.type);
+                    } while (romfs_list_dir(&file, false, &target_dir, true) == ROMFS_NOERR);
+                }
             }
         } else if (!strcmp(argv[2], "delete")) {
+            if (argc < 4) {
+                fprintf(stderr, "Usage: %s delete <path>\n", argv[0]);
+                goto err;
+            }
             uint32_t err;
-            if ((err = romfs_delete(argv[3])) != ROMFS_NOERR) {
+            if ((err = romfs_delete_path(argv[3])) != ROMFS_NOERR) {
                 fprintf(stderr, "Error: [%s] %s!\n", argv[3], romfs_strerror(err));
             }
         } else if (!strcmp(argv[2], "push")) {
+            if (argc < 5) {
+                fprintf(stderr, "Usage: %s push <host_file> <romfs_path>\n", argv[0]);
+                goto err;
+            }
             FILE *inf = fopen(argv[3], "rb");
             if (inf) {
-                uint8_t buffer[4096];
+                uint8_t buffer[ROMFS_FLASH_SECTOR];
                 int ret;
                 romfs_file file;
-                if (romfs_create_file(argv[4], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_io_buffer) != ROMFS_NOERR) {
+                if (romfs_create_path(argv[4], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_io_buffer, true) != ROMFS_NOERR) {
                     fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
                 } else {
-                    while ((ret = fread(buffer, 1, 64, inf)) > 0) {
+                    while ((ret = fread(buffer, 1, ROMFS_IO_CHUNK_SIZE, inf)) > 0) {
                         if (romfs_write_file(buffer, ret, &file) == 0) {
                             break;
                         }
@@ -153,24 +186,49 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "Cannot open file %s\n", argv[3]);
             }
         } else if (!strcmp(argv[2], "pull")) {
+            if (argc < 5) {
+                fprintf(stderr, "Usage: %s pull <romfs_path> <host_file>\n", argv[0]);
+                goto err;
+            }
             romfs_file file;
-            if (romfs_open_file(argv[3], &file, romfs_io_buffer) == ROMFS_NOERR) {
+            if (romfs_open_path(argv[3], &file, romfs_io_buffer) == ROMFS_NOERR) {
                 FILE *outf = fopen(argv[4], "wb");
                 if (outf) {
-                    uint8_t buffer[4096];
+                    uint8_t buffer[ROMFS_FLASH_SECTOR];
                     int ret;
-                    while ((ret = romfs_read_file(buffer, 4096, &file)) > 0) {
+                    while ((ret = romfs_read_file(buffer, ROMFS_FLASH_SECTOR, &file)) > 0) {
                         fwrite(buffer, 1, ret, outf);
                     }
 
                     if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
                         fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
                     }
+                    fclose(outf);
                 } else {
                     fprintf(stderr, "Cannot open file %s\n", argv[3]);
                 }
+                romfs_close_file(&file);
             } else {
                 fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
+            }
+        } else if (!strcmp(argv[2], "mkdir")) {
+            if (argc < 4) {
+                fprintf(stderr, "Usage: %s mkdir <path>\n", argv[0]);
+                goto err;
+            }
+            romfs_dir created;
+            uint32_t err = romfs_mkdir_path(argv[3], true, &created);
+            if (err != ROMFS_NOERR) {
+                fprintf(stderr, "Error creating directory [%s]: %s\n", argv[3], romfs_strerror(err));
+            }
+        } else if (!strcmp(argv[2], "rmdir")) {
+            if (argc < 4) {
+                fprintf(stderr, "Usage: %s rmdir <path>\n", argv[0]);
+                goto err;
+            }
+            uint32_t err = romfs_rmdir_path(argv[3]);
+            if (err != ROMFS_NOERR) {
+                fprintf(stderr, "Error removing directory [%s]: %s\n", argv[3], romfs_strerror(err));
             }
         } else if (!strcmp(argv[2], "free")) {
             printf("Free space: %u bytes\n", romfs_free());

@@ -92,7 +92,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffast-math -ftrapping-math -fno-associative
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${BOARD_CFLAGS} -DWITH_FONT_FILE=\\\"${CMAKE_CURRENT_BINARY_DIR}/wy700font-regular.h\\\"")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp")
 
-file(GLOB_RECURSE CSOURCES "src/*.c" "${CMAKE_CURRENT_LIST_DIR}/../fw/romfs/romfs.c")
+file(GLOB_RECURSE CSOURCES "src/*.c" "${CMAKE_CURRENT_LIST_DIR}/../fw/romfs/romfs.c" "${CMAKE_CURRENT_LIST_DIR}/../fw/romfs/newlib-romfs.c")
 SET_SOURCE_FILES_PROPERTIES(${CSOURCES} PROPERTIES LANGUAGE C)
 
 file(GLOB_RECURSE SOURCES "src/*.h" "${CMAKE_CURRENT_LIST_DIR}/../fw/romfs/romfs.h")

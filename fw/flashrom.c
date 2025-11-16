@@ -69,7 +69,7 @@ void flash_spi_mode(void)
     ssi_hw->ssienr = 0;
 
     ssi_hw->ctrlr0 = (7 << SSI_CTRLR0_DFS_32_LSB) |     /* 8 bits per data frame */
-        (SSI_CTRLR0_TMOD_VALUE_TX_AND_RX << SSI_CTRLR0_TMOD_LSB);
+            (SSI_CTRLR0_TMOD_VALUE_TX_AND_RX << SSI_CTRLR0_TMOD_LSB);
 
     ssi_hw->baudr = 4;
     ssi_hw->ssienr = 1;
@@ -247,17 +247,17 @@ void flash_quad_cont_read_mode(void)
     ssi_hw->baudr = 4;
 
     ssi_hw->ctrlr0 = (SSI_CTRLR0_SPI_FRF_VALUE_QUAD << SSI_CTRLR0_SPI_FRF_LSB) |        /* Quad I/O mode */
-        (15 << SSI_CTRLR0_DFS_32_LSB) | /* 16 data bits */
-        (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ      /* Send INST/ADDR, Receive Data */
-         << SSI_CTRLR0_TMOD_LSB);
+            (15 << SSI_CTRLR0_DFS_32_LSB) | /* 16 data bits */
+            (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ      /* Send INST/ADDR, Receive Data */
+             << SSI_CTRLR0_TMOD_LSB);
 
     ssi_hw->ctrlr1 = 0;
 
     ssi_hw->spi_ctrlr0 = (ADDR_L << SSI_SPI_CTRLR0_ADDR_L_LSB) |   /* (Address + mode bits) / 4 */
-        (4u << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |        /* Hi-Z dummy clocks following address + mode */
-        (SSI_SPI_CTRLR0_INST_L_VALUE_8B << SSI_SPI_CTRLR0_INST_L_LSB) | /* 8-bit instruction */
-        (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_1C2A   /* Send Command in serial mode then address in Quad I/O mode */
-         << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
+            (4u << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |        /* Hi-Z dummy clocks following address + mode */
+            (SSI_SPI_CTRLR0_INST_L_VALUE_8B << SSI_SPI_CTRLR0_INST_L_LSB) | /* 8-bit instruction */
+            (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_1C2A   /* Send Command in serial mode then address in Quad I/O mode */
+             << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
 
     ssi_hw->ssienr = 1;
 
@@ -279,11 +279,11 @@ void flash_quad_cont_read_mode(void)
     ssi_hw->ssienr = 0;
 
     ssi_hw->spi_ctrlr0 = (MODE_CONTINUOS_READ << SSI_SPI_CTRLR0_XIP_CMD_LSB) | /* Mode bits to keep flash in continuous read mode */
-        (ADDR_L << SSI_SPI_CTRLR0_ADDR_L_LSB) |    /* (Address + mode bits) / 4 */
-        (4u << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |        /* Hi-Z dummy clocks following address + mode */
-        (SSI_SPI_CTRLR0_INST_L_VALUE_NONE << SSI_SPI_CTRLR0_INST_L_LSB) |       /* Do not send a command, instead send XIP_CMD as mode bits after address */
-        (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_2C2A   /* Send Address in Quad I/O mode (and Command but that is zero bits long) */
-         << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
+            (ADDR_L << SSI_SPI_CTRLR0_ADDR_L_LSB) |    /* (Address + mode bits) / 4 */
+            (4u << SSI_SPI_CTRLR0_WAIT_CYCLES_LSB) |        /* Hi-Z dummy clocks following address + mode */
+            (SSI_SPI_CTRLR0_INST_L_VALUE_NONE << SSI_SPI_CTRLR0_INST_L_LSB) |       /* Do not send a command, instead send XIP_CMD as mode bits after address */
+            (SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_2C2A   /* Send Address in Quad I/O mode (and Command but that is zero bits long) */
+             << SSI_SPI_CTRLR0_TRANS_TYPE_LSB);
 
     ssi_hw->ssienr = 1;
 

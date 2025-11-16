@@ -25,9 +25,9 @@ static uint32_t rotl(uint32_t x, int s)
 }
 
 #define STEP(OP, a, b, c, d, k, s, i) \
-do { \
+    do { \
     a = b + rotl(a + OP(b, c, d) + X[k] + i, s); \
-} while(0)
+    } while(0)
 
 #define TO_I32(x,i) ((x[i]) | (x[i+1]<<8) | (x[i+2]<<16) | (x[i+3]<<24))
 
@@ -132,12 +132,12 @@ void md5_init(md5_context* ctx)
 }
 
 #define TO_U8(x,o,i) \
-do { \
+    do { \
     o[i] = (x) & 0xFF; \
     o[i+1] = ((x) >> 8) & 0xFF; \
     o[i+2] = ((x) >> 16) & 0xFF; \
     o[i+3] = ((x) >> 24) & 0xFF; \
-} while(0)
+    } while(0)
 
 void md5_digest(md5_context* ctx, void* buffer, size_t size)
 {

@@ -566,8 +566,8 @@ static void cic_run(void)
     printf("CIC Emulator core finished!\r\n");
 #endif
 
-//    restore_rom_lookup();
-//    n64_pi_restart();
+    //    restore_rom_lookup();
+    //    n64_pi_restart();
     printf("reboot ...\n");
     watchdog_reboot(0, 0, 100);
 }

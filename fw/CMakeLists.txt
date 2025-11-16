@@ -70,7 +70,7 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(FIRMWARE_VERSION 0x010b)
+set(FIRMWARE_VERSION 0x010c)
 
 add_compile_options(
     -Wall

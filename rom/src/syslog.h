@@ -34,10 +34,10 @@
 extern "C" {
 #endif
 
-    void openlog(char *__ident, int __option, int __facility);
-    int setlogmask(int __mask);
-    void syslog(int __pri, const char *__fmt, ...);
-    void closelog(void);
+void openlog(char *__ident, int __option, int __facility);
+int setlogmask(int __mask);
+void syslog(int __pri, const char *__fmt, ...);
+void closelog(void);
 
 #ifdef __cplusplus
 }

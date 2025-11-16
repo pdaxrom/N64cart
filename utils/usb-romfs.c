@@ -337,9 +337,9 @@ static bool send_usb_cmd(uint16_t type, struct ack_header *ack)
     return true;
 }
 
-static char *find_filename(char *path)
+static const char *find_filename(const char *path)
 {
-    char *pos = strrchr(path, '/');
+    const char *pos = strrchr(path, '/');
     if (!pos) {
         return path;
     }
@@ -372,10 +372,13 @@ static void usage(void)
     fprintf(stderr, "%s bootloader\n", str);
     fprintf(stderr, "%s reboot\n", str);
     fprintf(stderr, "%s format\n", str);
-    fprintf(stderr, "%s list\n", str);
-    fprintf(stderr, "%s delete <remote filename>\n", str);
-    fprintf(stderr, "%s push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]\n", str);
-    fprintf(stderr, "%s pull <remote filename>[ <local filename>]\n", str);
+    fprintf(stderr, "%s list [-h] [path]\n", str);
+    fprintf(stderr, "%s delete <path>\n", str);
+    fprintf(stderr, "%s mkdir <path>\n", str);
+    fprintf(stderr, "%s rmdir <path>\n", str);
+    fprintf(stderr, "%s rename <source> <destination> [--create-dirs]\n", str);
+    fprintf(stderr, "%s push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote path>]\n", str);
+    fprintf(stderr, "%s pull <remote path>[ <local filename>]\n", str);
     fprintf(stderr, "%s free\n", str);
 }
 
@@ -467,26 +470,111 @@ int main(int argc, char *argv[])
                 char free_txt[128];
                 printf("Free %d bytes (%s)\n", free_mem, human_readable_size(free_mem, free_txt, sizeof(free_txt)));
             } else if (!strcmp(argv[1], "list")) {
-                romfs_file file;
-                char num_buf[128];
-                bool conv = (argc > 2 && !strcmp(argv[2], "-h")) ? true : false;
-                printf("\n");
-                if (romfs_list(&file, true) == ROMFS_NOERR) {
-                    do {
-                        if (conv) {
-                            printf("%0X %03X %10s %s\n", file.entry.attr.names.mode, file.entry.attr.names.type, human_readable_size(file.entry.size, num_buf, sizeof(num_buf)), file.entry.name);
-                        } else {
-                            printf("%0X %03X %10d %s\n", file.entry.attr.names.mode, file.entry.attr.names.type, file.entry.size, file.entry.name);
-                        }
-                    } while (romfs_list(&file, false) == ROMFS_NOERR);
+                const char *path = NULL;
+                bool conv = false;
+                for (int i = 2; i < argc; i++) {
+                    if (!strcmp(argv[i], "-h")) {
+                        conv = true;
+                    } else {
+                        path = argv[i];
+                    }
+                }
+
+                romfs_dir dir;
+                uint32_t err = path ? romfs_dir_open_path(path, &dir) : romfs_dir_root(&dir);
+                if (err != ROMFS_NOERR) {
+                    fprintf(stderr, "Error: [%s] %s!\n", path ? path : "/", romfs_strerror(err));
+                } else {
+                    romfs_file file = {0};
+                    char num_buf[128];
+                    printf("\n");
+                    uint32_t list_err = romfs_list_dir(&file, true, &dir, true);
+                    if (list_err == ROMFS_ERR_NO_FREE_ENTRIES) {
+                        printf("(empty)\n");
+                        retval = 0;
+                    } else if (list_err != ROMFS_NOERR) {
+                        fprintf(stderr, "Error listing directory: %s\n", romfs_strerror(list_err));
+                    } else {
+                        do {
+                            bool is_dir = (file.entry.attr.names.type == ROMFS_TYPE_DIR);
+                            const char *size_txt = conv ? human_readable_size(file.entry.size, num_buf, sizeof(num_buf)) : NULL;
+                            if (conv) {
+                                printf("%02X %03X %10s %s%s\n",
+                                       file.entry.attr.names.mode,
+                                       file.entry.attr.names.type,
+                                       is_dir ? "-" : size_txt,
+                                       file.entry.name,
+                                       is_dir ? "/" : "");
+                            } else {
+                                printf("%02X %03X %10u %s%s\n",
+                                       file.entry.attr.names.mode,
+                                       file.entry.attr.names.type,
+                                       is_dir ? 0u : file.entry.size,
+                                       file.entry.name,
+                                       is_dir ? "/" : "");
+                            }
+                        } while (romfs_list_dir(&file, false, &dir, true) == ROMFS_NOERR);
+                        retval = 0;
+                    }
+                    uint32_t free_mem = romfs_free();
+                    printf("\nFree %d bytes (%s)\n", free_mem, human_readable_size(free_mem, num_buf, sizeof(num_buf)));
+                }
+            } else if (!strcmp(argv[1], "delete")) {
+                if (argc < 3) {
+                    fprintf(stderr, "Usage: %s delete <path>\n", argv[0]);
+                    goto err_io;
+                }
+                uint32_t err;
+                if ((err = romfs_delete_path(argv[2])) != ROMFS_NOERR) {
+                    fprintf(stderr, "Error: [%s] %s!\n", argv[2], romfs_strerror(err));
+                } else {
                     retval = 0;
                 }
-                uint32_t free_mem = romfs_free();
-                printf("\nFree %d bytes (%s)\n", free_mem, human_readable_size(free_mem, num_buf, sizeof(num_buf)));
-            } else if (!strcmp(argv[1], "delete")) {
-                uint32_t err;
-                if ((err = romfs_delete(argv[2])) != ROMFS_NOERR) {
-                    fprintf(stderr, "Error: [%s] %s!\n", argv[3], romfs_strerror(err));
+            } else if (!strcmp(argv[1], "mkdir")) {
+                if (argc < 3) {
+                    fprintf(stderr, "Usage: %s mkdir <path>\n", argv[0]);
+                    goto err_io;
+                }
+                romfs_dir created;
+                uint32_t err = romfs_mkdir_path(argv[2], true, &created);
+                if (err != ROMFS_NOERR) {
+                    fprintf(stderr, "Error creating directory [%s]: %s\n", argv[2], romfs_strerror(err));
+                } else {
+                    retval = 0;
+                }
+            } else if (!strcmp(argv[1], "rmdir")) {
+                if (argc < 3) {
+                    fprintf(stderr, "Usage: %s rmdir <path>\n", argv[0]);
+                    goto err_io;
+                }
+                uint32_t err = romfs_rmdir_path(argv[2]);
+                if (err != ROMFS_NOERR) {
+                    fprintf(stderr, "Error removing directory [%s]: %s\n", argv[2], romfs_strerror(err));
+                } else {
+                    retval = 0;
+                }
+            } else if (!strcmp(argv[1], "rename")) {
+                if (argc < 4 || argc > 5) {
+                    fprintf(stderr, "Usage: %s rename <source> <destination> [--create-dirs]\n", argv[0]);
+                    goto err_io;
+                }
+
+                const char *src_path = argv[2];
+                const char *dst_path = argv[3];
+                bool create_dirs = false;
+
+                if (argc == 5) {
+                    if (!strcmp(argv[4], "--create-dirs")) {
+                        create_dirs = true;
+                    } else {
+                        fprintf(stderr, "Unknown option '%s'\n", argv[4]);
+                        goto err_io;
+                    }
+                }
+
+                uint32_t err = romfs_rename_path(src_path, dst_path, create_dirs);
+                if (err != ROMFS_NOERR) {
+                    fprintf(stderr, "Rename failed: %s\n", romfs_strerror(err));
                 } else {
                     retval = 0;
                 }
@@ -496,150 +584,204 @@ int main(int argc, char *argv[])
                 bool fix_pi_freq = false;
                 uint16_t pi_freq = 0xff;
 
-                if (argc > 2 && !strcmp(argv[2], "--fix-rom")) {
-                    fix_endian = true;
-                    argv++;
-                    argc--;
+                int argi = 2;
+                while (argi < argc) {
+                    const char *arg = argv[argi];
+                    if (!strcmp(arg, "--fix-rom")) {
+                        fix_endian = true;
+                        argi++;
+                    } else if (!strncmp(arg, "--fix-pi-bus-speed", 18)) {
+                        fix_pi_freq = true;
+                        if (arg[18] == '=') {
+                            pi_freq = strtoimax(&arg[19], NULL, 16) & 0xff;
+                            if (pi_freq < 0x12) {
+                                pi_freq = 0x12;
+                            }
+                        }
+                        argi++;
+                    } else {
+                        break;
+                    }
                 }
 
-                char *param = argv[2];
+                if (argi >= argc) {
+                    fprintf(stderr, "Usage: %s push [options] <local filename> [<remote path>]\n", argv[0]);
+                    goto err_io;
+                }
 
-                if (argc > 2 && !strncmp(param, "--fix-pi-bus-speed", 18)) {
-                    fix_pi_freq = true;
-                    if (param[18] == '=') {
-                        pi_freq = strtoimax(&param[19], NULL, 16) & 0xff;
-                        if (pi_freq < 0x12) {
-                            pi_freq = 0x12;
+                const char *local_path = argv[argi++];
+                const char *remote_arg = (argi < argc) ? argv[argi] : NULL;
+                const char *basename = find_filename(local_path);
+
+                char *remote_path = NULL;
+                if (!remote_arg || remote_arg[0] == '\0') {
+                    remote_path = strdup(basename);
+                } else {
+                    size_t arg_len = strlen(remote_arg);
+                    bool treat_as_dir = (arg_len > 0 && remote_arg[arg_len - 1] == '/');
+
+                    if (!treat_as_dir) {
+                        romfs_dir existing_dir;
+                        if (romfs_dir_open_path(remote_arg, &existing_dir) == ROMFS_NOERR) {
+                            treat_as_dir = true;
                         }
                     }
-                    argv++;
-                    argc--;
+
+                    if (treat_as_dir) {
+                        if (arg_len > 0 && remote_arg[arg_len - 1] == '/') {
+                            arg_len--; // trim trailing slash for concatenation
+                        }
+                        size_t new_len = arg_len + (arg_len ? 1 : 0) + strlen(basename);
+                        remote_path = malloc(new_len + 1);
+                        if (!remote_path) {
+                            fprintf(stderr, "Out of memory creating remote path\n");
+                            goto err_io;
+                        }
+                        if (arg_len) {
+                            memcpy(remote_path, remote_arg, arg_len);
+                            remote_path[arg_len++] = '/';
+                            memcpy(remote_path + arg_len, basename, strlen(basename) + 1);
+                        } else {
+                            strcpy(remote_path, basename);
+                        }
+                    } else {
+                        remote_path = strdup(remote_arg);
+                    }
                 }
 
-                if (argc > 2) {
-                    FILE *inf = fopen(argv[2], "rb");
-                    if (inf) {
-                        uint8_t buffer[4096];
-                        int ret;
-                        romfs_file file;
-                        if (romfs_create_file((argc > 3) ? argv[3] : find_filename(argv[2]), &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer) != ROMFS_NOERR) {
-                            fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
-                        } else {
-                            fseek(inf, 0, SEEK_END);
-                            int file_size = ftell(inf);
-                            fseek(inf, 0, SEEK_SET);
-                            int total = 0;
-                            printf("\n");
-                            while ((ret = fread(buffer, 1, 4096, inf)) > 0) {
-                                if (fix_endian) {
-                                    if (rom_type == -1) {
-                                        fprintf(stderr, "Detected ROM type: ");
-                                        if (buffer[0] == 0x80 && buffer[1] == 0x37 && buffer[2] == 0x12 && buffer[3] == 0x40) {
-                                            rom_type = 0;
-                                            fprintf(stderr, "Z64\n");
-                                        } else if (buffer[0] == 0x40 && buffer[1] == 0x12 && buffer[2] == 0x37 && buffer[3] == 0x80) {
-                                            rom_type = 1;
-                                            fprintf(stderr, "N64\n");
-                                        } else if (buffer[0] == 0x37 && buffer[1] == 0x80 && buffer[2] == 0x40 && buffer[3] == 0x12) {
-                                            rom_type = 2;
-                                            fprintf(stderr, "V64\n");
-                                        } else {
-                                            fprintf(stderr, "Unknown\n\nError!\n");
-                                            break;
-                                        }
-                                    }
+                FILE *inf = fopen(local_path, "rb");
+                if (!inf) {
+                    fprintf(stderr, "Cannot open file %s\n", local_path);
+                    free(remote_path);
+                    goto err_io;
+                }
 
-                                    if (ret % 4 != 0) {
-                                        fprintf(stderr, "Unaligned read from local file, error!\n");
-                                        break;
-                                    }
+                uint8_t buffer[4096];
+                int ret;
+                romfs_file file;
+                if (romfs_create_path(remote_path, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer, true) != ROMFS_NOERR) {
+                    fprintf(stderr, "romfs error creating %s: %s\n", remote_path ? remote_path : "<null>", romfs_strerror(file.err));
+                    fclose(inf);
+                    free(remote_path);
+                    goto err_io;
+                }
 
-                                    if (rom_type) {
-                                        for (int i = 0; i < ret; i += 4) {
-                                            uint8_t tmp;
-                                            if (rom_type == 1) {
-                                                tmp = buffer[i + 0];
-                                                buffer[i + 0] = buffer[i + 3];
-                                                buffer[i + 3] = tmp;
-                                                tmp = buffer[i + 2];
-                                                buffer[i + 2] = buffer[i + 1];
-                                                buffer[i + 1] = tmp;
-                                            } else {
-                                                tmp = buffer[i + 0];
-                                                buffer[i + 0] = buffer[i + 1];
-                                                buffer[i + 1] = tmp;
-                                                tmp = buffer[i + 2];
-                                                buffer[i + 2] = buffer[i + 3];
-                                                buffer[i + 3] = tmp;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (fix_pi_freq) {
-                                    if (buffer[0] == 0x80 && buffer[1] == 0x37 && buffer[3] == 0x40) {
-                                        printf("PI bus freq set to %02X\n", pi_freq);
-                                        buffer[2] = pi_freq;
-                                    } else {
-                                        fprintf(stderr, "Rom type is not Z64, use --fix-rom to convert to Z64 type!\n");
-                                        break;
-                                    }
-                                    fix_pi_freq = false;
-                                }
-
-                                if (romfs_write_file(buffer, ret, &file) == 0) {
-                                    break;
-                                }
-                                total += ret;
-                                printf("\rWrite %.1f%%", (double)total / (double)file_size * 100.);
-                                fflush(stdout);
-                            }
-                            printf("\n");
-
-                            if (file.err == ROMFS_NOERR) {
-                                if (romfs_close_file(&file) != ROMFS_NOERR) {
-                                    fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
-                                } else {
-                                    retval = 0;
-                                }
+                fseek(inf, 0, SEEK_END);
+                int file_size = ftell(inf);
+                fseek(inf, 0, SEEK_SET);
+                int total = 0;
+                printf("\n");
+                while ((ret = fread(buffer, 1, sizeof(buffer), inf)) > 0) {
+                    if (fix_endian) {
+                        if (rom_type == -1) {
+                            fprintf(stderr, "Detected ROM type: ");
+                            if (buffer[0] == 0x80 && buffer[1] == 0x37 && buffer[2] == 0x12 && buffer[3] == 0x40) {
+                                rom_type = 0;
+                                fprintf(stderr, "Z64\n");
+                            } else if (buffer[0] == 0x40 && buffer[1] == 0x12 && buffer[2] == 0x37 && buffer[3] == 0x80) {
+                                rom_type = 1;
+                                fprintf(stderr, "N64\n");
+                            } else if (buffer[0] == 0x37 && buffer[1] == 0x80 && buffer[2] == 0x40 && buffer[3] == 0x12) {
+                                rom_type = 2;
+                                fprintf(stderr, "V64\n");
                             } else {
-                                fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
+                                fprintf(stderr, "Unknown\n\nError!\n");
+                                break;
                             }
                         }
-                        fclose(inf);
+
+                        if (ret % 4 != 0) {
+                            fprintf(stderr, "Unaligned read from local file, error!\n");
+                            break;
+                        }
+
+                        if (rom_type) {
+                            for (int i = 0; i < ret; i += 4) {
+                                uint8_t tmp;
+                                if (rom_type == 1) {
+                                    tmp = buffer[i + 0];
+                                    buffer[i + 0] = buffer[i + 3];
+                                    buffer[i + 3] = tmp;
+                                    tmp = buffer[i + 2];
+                                    buffer[i + 2] = buffer[i + 1];
+                                    buffer[i + 1] = tmp;
+                                } else if (rom_type == 2) {
+                                    tmp = buffer[i + 0];
+                                    buffer[i + 0] = buffer[i + 1];
+                                    buffer[i + 1] = tmp;
+                                    tmp = buffer[i + 2];
+                                    buffer[i + 2] = buffer[i + 3];
+                                    buffer[i + 3] = tmp;
+                                }
+                            }
+                        }
+                    }
+
+                    if (fix_pi_freq) {
+                        if (buffer[0] == 0x80 && buffer[1] == 0x37 && buffer[3] == 0x40) {
+                            printf("PI bus freq set to %02X\n", pi_freq);
+                            buffer[2] = pi_freq;
+                        } else {
+                            fprintf(stderr, "Rom type is not Z64, use --fix-rom to convert to Z64 type!\n");
+                            break;
+                        }
+                        fix_pi_freq = false;
+                    }
+
+                    if (romfs_write_file(buffer, ret, &file) == 0) {
+                        break;
+                    }
+                    total += ret;
+                    printf("\rWrite %.1f%%", (double)total / (double)file_size * 100.);
+                    fflush(stdout);
+                }
+                printf("\n");
+
+                if (file.err == ROMFS_NOERR) {
+                    if (romfs_close_file(&file) != ROMFS_NOERR) {
+                        fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
                     } else {
-                        fprintf(stderr, "Cannot open file %s\n", argv[3]);
+                        retval = 0;
                     }
                 } else {
-                    fprintf(stderr, "Missed local filename\n");
+                    fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
                 }
-            } else if (!strcmp(argv[1], "pull")) {
-                if (argc > 2) {
-                    romfs_file file;
-                    if (romfs_open_file(argv[2], &file, romfs_flash_buffer) == ROMFS_NOERR) {
-                        FILE *outf = fopen((argc > 3) ? argv[3] : find_filename(argv[2]), "wb");
-                        if (outf) {
-                            uint8_t buffer[4096];
-                            int ret;
-                            printf("\n");
-                            while ((ret = romfs_read_file(buffer, 4096, &file)) > 0) {
-                                fwrite(buffer, 1, ret, outf);
-                                printf("\rRead %.1f%%", (double)file.read_offset / (double)file.entry.size * 100.);
-                                fflush(stdout);
-                            }
-                            printf("\n");
 
-                            if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
-                                fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
-                            } else {
-                                retval = 0;
-                            }
-                        } else {
-                            fprintf(stderr, "Cannot open file %s\n", argv[3]);
+                fclose(inf);
+                free(remote_path);
+            } else if (!strcmp(argv[1], "pull")) {
+                if (argc < 3) {
+                    fprintf(stderr, "Usage: %s pull <remote path> [<local filename>]\n", argv[0]);
+                    goto err_io;
+                }
+                const char *remote_path = argv[2];
+                const char *local_path = (argc > 3) ? argv[3] : find_filename(remote_path);
+                romfs_file file;
+                if (romfs_open_path(remote_path, &file, romfs_flash_buffer) == ROMFS_NOERR) {
+                    FILE *outf = fopen(local_path, "wb");
+                    if (outf) {
+                        uint8_t buffer[4096];
+                        int ret;
+                        printf("\n");
+                        while ((ret = romfs_read_file(buffer, sizeof(buffer), &file)) > 0) {
+                            fwrite(buffer, 1, ret, outf);
+                            printf("\rRead %.1f%%", (double)file.read_offset / (double)file.entry.size * 100.);
+                            fflush(stdout);
                         }
+                        printf("\n");
+
+                        if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
+                            fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
+                        } else {
+                            retval = 0;
+                        }
+                        fclose(outf);
                     } else {
-                        fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
+                        fprintf(stderr, "Cannot open file %s\n", local_path);
                     }
+                    romfs_close_file(&file);
+                } else {
+                    fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
                 }
             } else {
                 fprintf(stderr, "Error: Unknown command '%s'\n", argv[1]);

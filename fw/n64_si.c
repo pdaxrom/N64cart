@@ -104,7 +104,7 @@ static void cic_dclk_callback(void)
                                 }
                                 *((uint32_t *) & si_data_bits[si_out_pulses]) = 0x01010000;
                                 si_out_pulses += 4;
- cmd_error:
+cmd_error:
                             }
                         }
                     }

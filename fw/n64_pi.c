@@ -195,21 +195,21 @@ void n64_pi(void)
                         sram_address &= 0x3f;
                     } while (true);
                 } else if (fram_mode == FLASH_CMD_ID) {
-                        sram_address = 0;
-                        do {
-                            while ((pio->fstat & 0x100) != 0) {
-                            }
-                            addr = pio->rxf[0];
+                    sram_address = 0;
+                    do {
+                        while ((pio->fstat & 0x100) != 0) {
+                        }
+                        addr = pio->rxf[0];
 
-                            if (addr == 0) {
-                                pio->txf[0] = flash_id[sram_address++];
-                            } else if (addr & 1) {
-                                //flash_buffer[sram_address++] = addr >> 16;
-                            } else {
-                                break;
-                            }
-                            sram_address &= 0x3;
-                        } while (true);
+                        if (addr == 0) {
+                            pio->txf[0] = flash_id[sram_address++];
+                        } else if (addr & 1) {
+                            //flash_buffer[sram_address++] = addr >> 16;
+                        } else {
+                            break;
+                        }
+                        sram_address &= 0x3;
+                    } while (true);
                 } else {
                     fram_word = fram_status;
                     do {

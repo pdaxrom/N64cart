@@ -488,7 +488,7 @@ static void usb_set_device_configuration(volatile struct usb_setup_packet *pkt)
     usb_acknowledge_out_request();
     configured = true;
 
-// Get ready to rx from host
+    // Get ready to rx from host
 #ifdef DEBUG_INFO
     syslog(LOG_DEBUG, "USB Device configured");
 #endif

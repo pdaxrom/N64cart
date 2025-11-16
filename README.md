@@ -1,6 +1,7 @@
 # N64cart - N64 flash cartridge
 
 * [Intro](#intro)
+* [Contributor Guide](#contributor-guide)
 * [Concept](#concept)
   * [Project files](#project-files)
   * [Features](#features)
@@ -28,10 +29,14 @@ N64 cartridge connector footprint for Eagle CAD from [SummerCart64](https://gith
 
 N64 ROM boot code derived from [N64FlashcartMenu](https://github.com/Polprzewodnikowy/N64FlashcartMenu) and [N64 DreamOS ROM](https://github.com/khill25/Dreamdrive64/tree/main/sw/n64)
 
+## Contributor Guide
+
+Refer to the contributor playbook in [AGENTS.md](AGENTS.md) for coding standards, build/test workflows, and review expectations before opening a pull request.
+
 ## Concept
 
 The main idea is to make the cartridge as simple and cheap as possible. Contrary to Konrad's idea of multiplexed PSRAM chips and two RP2040, I decided to use one SPI flash memory chip and one RP2040. Modern flash chips allow to erase and flash data more than 100,000 times, which is more than enough for home use for many years. Since the RP2040 does not support SPI flash chips larger than 16MB, it was decided to use page mode with page switching through the Extended Address register (EA register). Unfortunately, this method has a problem with long switching of 16MB pages, because need to disable the XIP mode, enable the SPI mode to change the page and enable the XIP back. Therefore, it was decided to use QSPI with 32-bit addressing mode without XIP.
-To effectively work with cartridge flash chip, a special version of the filesystem was created - romfs, which allows to map sectors of saved files as a continuous data area, to which the N64 has access via the PI bus. At the moment, romfs does not support directories. The maximum memory size depends on the cartridge board version - 64 MB for version 2 with a soic-8/wson-8 8x6 flash chip package, 128 MB for version 3 with a soic-16 flash chip package.
+To effectively work with cartridge flash chip, a special version of the filesystem was created - [romfs](fw/romfs), which allows to map sectors of saved files as a continuous data area, to which the N64 has access via the PI bus. The maximum memory size depends on the cartridge board version - 64 MB for version 2 with a soic-8/wson-8 8x6 flash chip package, 128 MB for version 3 with a soic-16 flash chip package.
 
 ### Project files
 
@@ -241,8 +246,12 @@ Full list of the utility commands:
 ./usb-romfs format
 ./usb-romfs list
 ./usb-romfs delete <remote filename>
+./usb-romfs mkdir <remote path>
+./usb-romfs rmdir <remote path>
+./usb-romfs rename <source> <destination> [--create-dirs]
 ./usb-romfs push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]
 ./usb-romfs pull <remote filename>[ <local filename>]
+./usb-romfs free
 ```
 
 ### Remote access to cartridge
