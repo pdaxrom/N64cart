@@ -14,6 +14,7 @@
   * [Build](#build)
   * [How to use](#how-to-use)
   * [Remote access to cartridge](#remote-access-to-cartridge)
+* [ROMFS Manager](#romfs-manager)
 * [Total cartridge cost (32MB version)](#total-cartridge-cost-32mb-version)
 * [Photos version 2](#photos-version-2)
 * [BOM list for version 3](#bom-list-for-version-3)
@@ -281,6 +282,12 @@ Use remote-romfs on the working machine the same way as usb-romfs but specify th
 ```
 
 [Photos of remote access to the cartridge](#photos-of-remote-access-to-the-cartridge-from-sgi-indy)
+
+## ROMFS Manager
+
+[ROMFS Manager](utils/romfs-gui) is Qt-based desktop application. It lets you browse, upload, and download files on the N64cart over USB or the remote proxy.
+
+<img src="pics/romfs-manager.png" width="480" />
 
 ## Total cartridge cost (32MB version)
 
