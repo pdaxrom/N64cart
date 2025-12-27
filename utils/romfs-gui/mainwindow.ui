@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="windowTitle">
+   <string>ROMFS Manager</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <layout class="QHBoxLayout" name="pathLayout">
+      <item>
+       <widget class="QLabel" name="pathLabel">
+        <property name="text">
+         <string>Path:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="pathLineEdit">
+        <property name="placeholderText">
+         <string>/</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QToolButton" name="upButton">
+        <property name="text">
+         <string>Up</string>
+        </property>
+        <property name="icon">
+         <iconset resource="resources.qrc">
+          <normaloff>:/icons/up.svg</normaloff>:/icons/up.svg</iconset>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QStackedWidget" name="viewStack">
+      <widget class="RomfsView" name="treeView"/>
+      <widget class="RomfsIconView" name="iconView"/>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>&amp;File</string>
+    </property>
+    <addaction name="actionConnectUsb"/>
+    <addaction name="actionConnectRemote"/>
+    <addaction name="actionDisconnect"/>
+    <addaction name="separator"/>
+    <addaction name="actionReboot"/>
+    <addaction name="actionBootloader"/>
+    <addaction name="separator"/>
+    <addaction name="actionQuit"/>
+   </widget>
+   <widget class="QMenu" name="menuEdit">
+    <property name="title">
+     <string>&amp;Edit</string>
+    </property>
+    <addaction name="actionRefresh"/>
+    <addaction name="actionUpload"/>
+    <addaction name="actionDownload"/>
+    <addaction name="actionNewFolder"/>
+    <addaction name="actionRename"/>
+    <addaction name="actionDelete"/>
+   </widget>
+   <widget class="QMenu" name="menuTools">
+    <property name="title">
+     <string>&amp;Tools</string>
+    </property>
+    <addaction name="actionFormat"/>
+    <addaction name="actionSettings"/>
+   </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>&amp;View</string>
+    </property>
+    <addaction name="actionIconView"/>
+    <addaction name="actionListView"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>&amp;Help</string>
+    </property>
+    <addaction name="actionUsage"/>
+    <addaction name="actionAbout"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuEdit"/>
+   <addaction name="menuTools"/>
+   <addaction name="menuView"/>
+   <addaction name="menuHelp"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>Main Toolbar</string>
+   </property>
+   <property name="movable">
+    <bool>false</bool>
+   </property>
+   <addaction name="actionConnectUsb"/>
+   <addaction name="actionConnectRemote"/>
+   <addaction name="actionDisconnect"/>
+   <addaction name="separator"/>
+   <addaction name="actionRefresh"/>
+   <addaction name="actionUpload"/>
+   <addaction name="actionDownload"/>
+   <addaction name="actionNewFolder"/>
+   <addaction name="actionRename"/>
+   <addaction name="actionDelete"/>
+   <addaction name="separator"/>
+   <addaction name="actionIconView"/>
+   <addaction name="actionListView"/>
+  </widget>
+  <action name="actionConnectUsb">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/connect_usb.svg</normaloff>:/icons/connect_usb.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Connect USB</string>
+   </property>
+  </action>
+  <action name="actionConnectRemote">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/connect_remote.svg</normaloff>:/icons/connect_remote.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Connect Remote</string>
+   </property>
+  </action>
+  <action name="actionDisconnect">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/disconnect.svg</normaloff>:/icons/disconnect.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Disconnect</string>
+   </property>
+  </action>
+  <action name="actionRefresh">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/refresh.svg</normaloff>:/icons/refresh.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Refresh</string>
+   </property>
+   <property name="shortcut">
+    <string>F5</string>
+   </property>
+  </action>
+  <action name="actionUpload">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/upload.svg</normaloff>:/icons/upload.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Upload</string>
+   </property>
+  </action>
+  <action name="actionDownload">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/download.svg</normaloff>:/icons/download.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Download</string>
+   </property>
+  </action>
+  <action name="actionDelete">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/delete.svg</normaloff>:/icons/delete.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Delete</string>
+   </property>
+   <property name="shortcut">
+    <string>Del</string>
+   </property>
+  </action>
+  <action name="actionNewFolder">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/new_folder.svg</normaloff>:/icons/new_folder.svg</iconset>
+   </property>
+   <property name="text">
+    <string>New Folder</string>
+   </property>
+  </action>
+  <action name="actionRename">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/rename.svg</normaloff>:/icons/rename.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Rename</string>
+   </property>
+  </action>
+  <action name="actionFormat">
+   <property name="text">
+    <string>Format</string>
+   </property>
+  </action>
+  <action name="actionSettings">
+   <property name="text">
+    <string>Settings...</string>
+   </property>
+  </action>
+  <action name="actionUsage">
+   <property name="text">
+    <string>How to Use</string>
+   </property>
+  </action>
+  <action name="actionReboot">
+   <property name="text">
+    <string>Reboot</string>
+   </property>
+  </action>
+  <action name="actionBootloader">
+   <property name="text">
+    <string>Bootloader</string>
+   </property>
+  </action>
+  <action name="actionIconView">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/view_icon.svg</normaloff>:/icons/view_icon.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Icon View</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionListView">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/icons/view_list.svg</normaloff>:/icons/view_list.svg</iconset>
+   </property>
+   <property name="text">
+    <string>List View</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>About</string>
+   </property>
+  </action>
+  <action name="actionQuit">
+   <property name="text">
+    <string>Quit</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>RomfsView</class>
+   <extends>QTreeView</extends>
+   <header>romfsview.h</header>
+  </customwidget>
+  <customwidget>
+    <class>RomfsIconView</class>
+    <extends>QListView</extends>
+    <header>romfsiconview.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

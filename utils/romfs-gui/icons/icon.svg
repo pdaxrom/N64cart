@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+    <!-- Floppy Disk Body -->
+    <rect x="56" y="56" width="400" height="400" rx="20" ry="20" fill="#4A90E2" stroke="#333" stroke-width="2"/>
+    
+    <!-- Floppy Disk Shutter -->
+    <rect x="130" y="56" width="252" height="130" fill="#D3D3D3" stroke="#333" stroke-width="2"/>
+    <rect x="150" y="70" width="60" height="100" fill="#333" rx="5"/> <!-- Shutter Window Background -->
+    
+    <!-- Floppy Disk Label Area -->
+    <rect x="106" y="250" width="300" height="180" rx="5" fill="#F0F0F0" stroke="#333" stroke-width="1"/>
+    
+    <!-- 8-Pin DIP Chip Node (Rotated Group) -->
+    <g transform="translate(256, 256) rotate(45)">
+        <!-- Chip Pins (Left Side) -->
+        <g fill="#C0C0C0" stroke="#666" stroke-width="1">
+            <rect x="-70" y="-75" width="30" height="20"/>
+            <rect x="-70" y="-35" width="30" height="20"/>
+            <rect x="-70" y="5" width="30" height="20"/>
+            <rect x="-70" y="45" width="30" height="20"/>
+        </g>
+        
+        <!-- Chip Pins (Right Side) -->
+        <g fill="#C0C0C0" stroke="#666" stroke-width="1">
+            <rect x="40" y="-75" width="30" height="20"/>
+            <rect x="40" y="-35" width="30" height="20"/>
+            <rect x="40" y="5" width="30" height="20"/>
+            <rect x="40" y="45" width="30" height="20"/>
+        </g>
+
+        <!-- Chip Body -->
+        <rect x="-40" y="-90" width="80" height="170" fill="#222" rx="4"/>
+        
+        <!-- Chip Notch -->
+        <circle cx="0" cy="-80" r="6" fill="#111"/>
+        
+
+    </g>
+</svg>
