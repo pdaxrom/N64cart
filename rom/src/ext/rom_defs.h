@@ -110,10 +110,6 @@ typedef uint64_t sim_u64;
 #define	PI_DOMAIN1_REG		PI_BSD_DOM1_LAT_REG
 #define	PI_DOMAIN2_REG		PI_BSD_DOM2_LAT_REG
 
-#define	PI_STATUS_ERROR		0x04
-#define	PI_STATUS_IO_BUSY	0x02
-#define	PI_STATUS_DMA_BUSY	0x01
-
 #define                      DPC_START                    (DP_BASE_REG + 0x00)
 #define                      DPC_END                      (DP_BASE_REG + 0x04)
 #define                      DPC_CURRENT                  (DP_BASE_REG + 0x08)
