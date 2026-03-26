@@ -35,6 +35,7 @@
 
 #define FILE_NAME_SCROLL_DELAY  (5)
 #define KEYS_DELAY (3)
+#define AUTO_BOOT
 
 static void update_romfs_free_text(void);
 static void update_path_text(void);
@@ -45,7 +46,11 @@ enum {
     STEP_LOAD_BACKGROUND,
     STEP_SAVE_GAMESAVE,
     //STEP_USB_INIT,
-    STEP_FINISH
+    STEP_FINISH,
+
+#ifdef AUTO_BOOT
+    STEP_FAILED_MENU
+#endif
 };
 
 static const struct flash_chip flash_chip[] = {
@@ -946,8 +951,11 @@ int main(void)
             graphics_fill_screen(disp, 0);
         }
 
+#ifdef AUTO_BOOT
+        graphics_set_color(0x00000000, 0x00000000);
+#else
         graphics_set_color(0xeeeeee00, 0x00000000);
-
+#endif
 
         if (do_step == STEP_LOGO) {
             static int i = 0;
@@ -1019,7 +1027,6 @@ int main(void)
             display_show(disp);
 
             bg_img = image_load("background.jpg", scr_width, scr_height);
-
             do_step = STEP_SAVE_GAMESAVE;
             continue;
         }
@@ -1149,6 +1156,17 @@ int main(void)
                 continue;
             }
         }
+
+#ifdef AUTO_BOOT
+        if (do_step == STEP_FINISH) {
+            run_rom(disp, "/boot.z64", NULL, 0, 0);
+
+            do_step = STEP_FAILED_MENU;
+            static const char *fopen_error_1 = "Can't open ROM file!";
+            graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+            continue;
+        }
+#endif
 
         /* Scan for User input */
         joypad_poll();
