@@ -113,16 +113,14 @@ static unsigned char _CicSeed;
 static const unsigned char *_CicChecksum;
 
 /* NTSC initial RAM */
-static const unsigned char _CicRamInitNtsc[] =
-{
+static const unsigned char _CicRamInitNtsc[] = {
     0xE, 0x0, 0x9, 0xA, 0x1, 0x8, 0x5, 0xA, 0x1, 0x3, 0xE,
     0x1, 0x0, 0xD, 0xE, 0xC, 0x0, 0xB, 0x1, 0x4, 0xF, 0x8,
     0xB, 0x5, 0x7, 0xC, 0xD, 0x6, 0x1, 0xE, 0x9, 0x8
 };
 
 /* PAL initial RAM */
-static const unsigned char _CicRamInitPal[] =
-{
+static const unsigned char _CicRamInitPal[] = {
     0xE, 0x0, 0x4, 0xF, 0x5, 0x1, 0x2, 0x1, 0x7, 0x1, 0x9,
     0x8, 0x5, 0x7, 0x5, 0xA, 0x0, 0xB, 0x1, 0x2, 0x3, 0xF,
     0x8, 0x2, 0x7, 0x1, 0x9, 0x8, 0x1, 0x1, 0x5, 0xC
@@ -254,8 +252,9 @@ static void WriteSeed(void)
 static void WriteChecksum(void)
 {
     unsigned char i;
-    for (i = 0; i < 12; i++)
+    for (i = 0; i < 12; i++) {
         _CicMem[i + 4] = _CicChecksum[i];
+    }
 
     // wait for DCLK to go low
     // (doesn't seem to be necessary)
@@ -356,8 +355,9 @@ static void CicRound(unsigned char *m)
         b++;
         a &= 0xf;
         a += 8;
-        if (a < 16)
+        if (a < 16) {
             a += m[b];
+        }
         Exchange(&a, &m[b]);
         b++;
         do {
@@ -380,14 +380,17 @@ static void Cic6105Algo(void)
     unsigned char carry = 1;
     unsigned char i;
     for (i = 0; i < 30; ++i) {
-        if (!(_6105Mem[i] & 1))
+        if (!(_6105Mem[i] & 1)) {
             A += 8;
-        if (!(A & 2))
+        }
+        if (!(A & 2)) {
             A += 4;
+        }
         A = (A + _6105Mem[i]) & 0xf;
         _6105Mem[i] = A;
-        if (!carry)
+        if (!carry) {
             A += 7;
+        }
         A = (A + _6105Mem[i]) & 0xF;
         A = A + _6105Mem[i] + carry;
         if (A >= 0x10) {
@@ -417,8 +420,9 @@ static void CompareMode(unsigned char isPal)
 
     // 0x17 determines the start index (but never 0)
     ramPtr = _CicMem[0x17] & 0xf;
-    if (ramPtr == 0)
+    if (ramPtr == 0) {
         ramPtr = 1;
+    }
     ramPtr |= 0x10;
 
     do {
@@ -473,11 +477,13 @@ static void InitRam(unsigned char isPal)
     unsigned char i;
 
     if (!isPal) {
-        for (i = 0; i < 32; i++)
+        for (i = 0; i < 32; i++) {
             _CicMem[i] = _CicRamInitNtsc[i];
+        }
     } else {
-        for (i = 0; i < 32; i++)
+        for (i = 0; i < 32; i++) {
             _CicMem[i] = _CicRamInitPal[i];
+        }
     }
 }
 
@@ -515,8 +521,9 @@ static void cic_run(void)
 
     // send out the corresponding id
     unsigned char hello = 0x1;
-    if (isPal)
+    if (isPal) {
         hello |= 0x4;
+    }
 
     // printf("W: %02X\n", hello);
     WriteNibble(hello);
@@ -556,7 +563,7 @@ static void cic_run(void)
             break;
 
         case 1:
-            // 01 (die)
+        // 01 (die)
         default:
             return;
         }

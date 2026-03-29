@@ -76,14 +76,17 @@ private:
     bool confirm(const QString &title, const QString &text) const;
     void showError(const QString &message);
     void showInfo(const QString &message);
-    bool runWithProgress(const QString &title, const std::function<bool(QString &)> &operation, bool showCopyProgress = false, quint64 totalFiles = 0);
+    bool runWithProgress(const QString &title, const std::function<bool(QString &)> &operation,
+                         bool showCopyProgress = false, quint64 totalFiles = 0);
     QIcon getIcon(const QString &name) const;
-    bool uploadPathRecursive(const QString &localPath, const QString &remoteDir, QString *error, std::optional<bool> *fixRomDecision);
+    bool uploadPathRecursive(const QString &localPath, const QString &remoteDir, QString *error,
+                             std::optional<bool> *fixRomDecision);
     bool ensureRemoteDirectory(const QString &remotePath, QString *error);
     bool downloadEntryRecursive(const RomfsEntry &entry, const QString &targetDir, QString *error);
     bool downloadEntriesToDirectory(const QVector<RomfsEntry> &entries, const QString &targetDir);
     void setUiEnabled(bool enabled);
-    bool uploadFileWithSettings(const QString &localPath, const QString &remotePath, QString *error, std::optional<bool> *fixRomDecision);
+    bool uploadFileWithSettings(const QString &localPath, const QString &remotePath, QString *error,
+                                std::optional<bool> *fixRomDecision);
     bool isRomFile(const QString &path) const;
     enum class FixRomPromptResult {
         Fix,

@@ -41,7 +41,8 @@ public:
     TransportType transportType() const;
 
     QVector<RomfsEntry> list(const QString &path, QString *errorString = nullptr);
-    bool uploadFile(const QString &localPath, const QString &remotePath, bool fixRom, int piBusSpeed, QString *errorString = nullptr);
+    bool uploadFile(const QString &localPath, const QString &remotePath, bool fixRom, int piBusSpeed,
+                    QString *errorString = nullptr);
     bool downloadFile(const QString &remotePath, const QString &localPath, QString *errorString = nullptr);
     bool removeEntry(const QString &remotePath, QString *errorString = nullptr);
     bool makeDirectory(const QString &remotePath, QString *errorString = nullptr);

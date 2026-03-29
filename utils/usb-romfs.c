@@ -65,7 +65,8 @@ int tcp_write_all(tcp_channel *c, void *buf, size_t len)
 static libusb_context *ctx = NULL;
 static libusb_device_handle *dev_handle;
 
-static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoint, unsigned char *data, int length, int *transferred, unsigned int timeout)
+static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoint, unsigned char *data, int length,
+                         int *transferred, unsigned int timeout)
 {
     int ret;
     int try = 0;
@@ -91,7 +92,8 @@ bool romfs_flash_sector_erase(uint32_t offset)
     struct __attribute__((__packed__)) {
         uint16_t c;
         struct sector_info s;
-    } cmd;
+    }
+    cmd;
 
     cmd.c = htons(USB_ERASE_SECTOR);
     cmd.s.offset = htonl(offset);
@@ -146,7 +148,8 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
     struct __attribute__((__packed__)) {
         uint16_t c;
         struct sector_info s;
-    } cmd;
+    }
+    cmd;
 
     cmd.c = htons(USB_WRITE_SECTOR);
     cmd.s.offset = htonl(offset);
@@ -228,7 +231,8 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
     struct __attribute__((__packed__)) {
         uint16_t c;
         struct sector_info s;
-    } cmd;
+    }
+    cmd;
 
     cmd.c = htons(USB_READ_SECTOR);
     cmd.s.offset = htonl(offset);
@@ -296,7 +300,8 @@ static bool send_usb_cmd(uint16_t type, struct ack_header *ack)
     struct __attribute__((__packed__)) {
         uint16_t c;
         struct req_header romfs_req;
-    } cmd;
+    }
+    cmd;
 
     cmd.c = htons(USB_CMD);
     cmd.romfs_req.type = htons(type);
@@ -659,7 +664,8 @@ int main(int argc, char *argv[])
                 uint8_t buffer[4096];
                 int ret;
                 romfs_file file;
-                if (romfs_create_path(remote_path, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer, true) != ROMFS_NOERR) {
+                if (romfs_create_path(remote_path, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_flash_buffer,
+                                      true) != ROMFS_NOERR) {
                     fprintf(stderr, "romfs error creating %s: %s\n", remote_path ? remote_path : "<null>", romfs_strerror(file.err));
                     fclose(inf);
                     free(remote_path);
@@ -787,7 +793,7 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "Error: Unknown command '%s'\n", argv[1]);
             }
 
-        err_io:
+err_io:
             if (!send_usb_cmd(FLASH_QUAD_MODE, NULL)) {
                 fprintf(stderr, "cannot switch flash to quad mode, error!\n");
                 retval = 1;

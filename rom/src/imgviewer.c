@@ -107,7 +107,7 @@ sprite_t *image_load(char *name, int screen_w, int screen_h)
 
             if (w != screen_w || h != screen_h) {
                 stbi_uc *stbi_img_new = stbir_resize_uint8_linear(stbi_img, w, h, w * 4, NULL, screen_w, screen_h,
-                                                                  screen_w * 4, STBIR_RGBA);
+                                        screen_w * 4, STBIR_RGBA);
                 stbi_image_free(stbi_img);
                 stbi_img = stbi_img_new;
                 w = screen_w;

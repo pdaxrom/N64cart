@@ -19,7 +19,8 @@ inline void xxx_hw_write_masked(io_rw_32 *addr, uint32_t values, uint32_t write_
 void inline flash_cs_force(bool high)
 {
     uint32_t field_val = high ? IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_VALUE_HIGH : IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_VALUE_LOW;
-    xxx_hw_write_masked(&ioqspi_hw->io[1].ctrl, field_val << IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_LSB, IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_BITS);
+    xxx_hw_write_masked(&ioqspi_hw->io[1].ctrl, field_val << IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_LSB,
+                        IO_QSPI_GPIO_QSPI_SS_CTRL_OUTOVER_BITS);
 }
 
 void flash_spi_mode(void);

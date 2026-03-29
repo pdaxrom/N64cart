@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
 
     save_romfs(argv[1], memory, sizeof(memory));
 
- err:
+err:
 
     return 0;
 }

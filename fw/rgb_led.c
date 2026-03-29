@@ -67,13 +67,13 @@ void init_rgb_led(void)
 
     // Setup the channel and set it going
     dma_channel_configure(
-                pwm_dma_chan,
-                &pwm_dma_chan_config,
-                &pwm_hw->slice[led_pwm_slice_num].cc, // Write to PWM counter compare
-                pwm_buffer,
-                3 * 8 + 1,
-                true
-                );
+        pwm_dma_chan,
+        &pwm_dma_chan_config,
+        &pwm_hw->slice[led_pwm_slice_num].cc, // Write to PWM counter compare
+        pwm_buffer,
+        3 * 8 + 1,
+        true
+    );
 }
 
 #else

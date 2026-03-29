@@ -165,7 +165,8 @@ void usb_setup_endpoint(const struct usb_endpoint_configuration *ep)
     }
     // Get the data buffer as an offset of the USB controller's DPRAM
     uint32_t dpram_offset = usb_buffer_offset(ep->data_buffer);
-    uint32_t reg = EP_CTRL_ENABLE_BITS | EP_CTRL_INTERRUPT_PER_BUFFER | (ep->descriptor->bmAttributes << EP_CTRL_BUFFER_TYPE_LSB) | dpram_offset;
+    uint32_t reg = EP_CTRL_ENABLE_BITS | EP_CTRL_INTERRUPT_PER_BUFFER | (ep->descriptor->bmAttributes <<
+                   EP_CTRL_BUFFER_TYPE_LSB) | dpram_offset;
     *ep->endpoint_control = reg;
 }
 
@@ -308,7 +309,8 @@ void usb_handle_device_descriptor(volatile struct usb_setup_packet *pkt)
 void usb_handle_config_descriptor(volatile struct usb_setup_packet *pkt)
 {
 #ifdef USB_DEBUG
-    printf("config %02X %02X wIndex=%04X wValue=%04X wLength=%04X\n", pkt->bRequest, pkt->bmRequestType, pkt->wIndex, pkt->wValue, pkt->wLength);
+    printf("config %02X %02X wIndex=%04X wValue=%04X wLength=%04X\n", pkt->bRequest, pkt->bmRequestType, pkt->wIndex,
+           pkt->wValue, pkt->wLength);
 #endif
 
     uint8_t *buf = &ep0_buf[0];
@@ -362,7 +364,8 @@ void usb_handle_string_descriptor(volatile struct usb_setup_packet *pkt)
     uint8_t len = 0;
 
 #ifdef USB_DEBUG
-    printf("string %02X %02X wIndex=%04X wValue=%04X wLength=%04X\n", pkt->bRequest, pkt->bmRequestType, pkt->wIndex, pkt->wValue, pkt->wLength);
+    printf("string %02X %02X wIndex=%04X wValue=%04X wLength=%04X\n", pkt->bRequest, pkt->bmRequestType, pkt->wIndex,
+           pkt->wValue, pkt->wLength);
 #endif
 
     if (i == 0) {
@@ -657,7 +660,8 @@ void ep0_in_handler(uint8_t *buf, uint16_t len)
 }
 
 void ep0_out_handler(uint8_t *buf, uint16_t len)
-{;
+{
+    ;
 }
 
 static uint8_t *sector_buffer = pi_sram;
@@ -697,7 +701,8 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
             ackn.info.vers = FIRMWARE_VERSION;
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
-        } else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == BOOTLOADER_MODE || req->type == CART_REBOOT) {
+        } else if (req->type == FLASH_SPI_MODE || req->type == FLASH_QUAD_MODE || req->type == BOOTLOADER_MODE
+                   || req->type == CART_REBOOT) {
             if (req->type == FLASH_SPI_MODE) {
                 flash_quad_exit_cont_read_mode();
                 flash_spi_mode();

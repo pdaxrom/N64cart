@@ -95,7 +95,8 @@ void UsbTransport::disconnectDevice()
     }
 }
 
-int UsbTransport::bulkTransfer(unsigned char endpoint, unsigned char *data, int length, int *transferred, unsigned int timeout)
+int UsbTransport::bulkTransfer(unsigned char endpoint, unsigned char *data, int length, int *transferred,
+                               unsigned int timeout)
 {
     if (!handle_) {
         return LIBUSB_ERROR_NO_DEVICE;

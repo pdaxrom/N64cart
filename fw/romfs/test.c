@@ -100,7 +100,9 @@ static int get_file_list(char*** file_list_out)
                     char** new_list = realloc(file_list, capacity * sizeof(char*));
                     if (!new_list) {
                         fprintf(stderr, ANSI_COLOR_RED "Failed to reallocate memory for file list\n" ANSI_COLOR_RESET);
-                        for(int i=0; i<count; i++) free(file_list[i]);
+                        for(int i=0; i<count; i++) {
+                            free(file_list[i]);
+                        }
                         free(file_list);
                         return -1;
                     }
@@ -135,9 +137,11 @@ static int fill_drive(const char* prefix, int max_chunks_per_file, int chunk_siz
 
         if (romfs_create_file(filename, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_io_buffer) != ROMFS_NOERR) {
             if (file.err == ROMFS_ERR_NO_FREE_ENTRIES) {
-                 printf(ANSI_COLOR_YELLOW "\nCould not create new file: file list is full. Created %d files.\n" ANSI_COLOR_RESET, file_idx);
+                printf(ANSI_COLOR_YELLOW "\nCould not create new file: file list is full. Created %d files.\n" ANSI_COLOR_RESET,
+                       file_idx);
             } else {
-                 printf(ANSI_COLOR_YELLOW "\nCould not create new file entry. Filesystem full. Created %d files.\n" ANSI_COLOR_RESET, file_idx);
+                printf(ANSI_COLOR_YELLOW "\nCould not create new file entry. Filesystem full. Created %d files.\n" ANSI_COLOR_RESET,
+                       file_idx);
             }
             free(romfs_io_buffer);
             break;
@@ -147,17 +151,19 @@ static int fill_drive(const char* prefix, int max_chunks_per_file, int chunk_siz
         fflush(stdout);
 
         int chunks_this_file = random_size ? (1 + (rand() % max_chunks_per_file)) : max_chunks_per_file;
-        if (chunks_this_file == 0) chunks_this_file = 1;
+        if (chunks_this_file == 0) {
+            chunks_this_file = 1;
+        }
 
         bool write_error = false;
         for (int j = 0; j < chunks_this_file; j++) {
             create_test_data(test_data, chunk_size, file_idx, j);
             if (romfs_write_file(test_data, chunk_size, &file) == 0) {
-                 if(file.err != ROMFS_ERR_NO_SPACE) {
+                if(file.err != ROMFS_ERR_NO_SPACE) {
                     fprintf(stderr, ANSI_COLOR_RED "\nromfs write error on %s: %s\n" ANSI_COLOR_RESET, filename, romfs_strerror(file.err));
-                 }
-                 write_error = true;
-                 break;
+                }
+                write_error = true;
+                break;
             }
         }
 
@@ -234,7 +240,8 @@ static bool verify_drive(uint32_t chunk_size)
 
             uint32_t bytes_read = romfs_read_file(read_buffer, bytes_to_read, &file);
             if (bytes_read != bytes_to_read) {
-                fprintf(stderr, ANSI_COLOR_RED "\nRead error on %s, chunk %d. Expected %d, got %d\n" ANSI_COLOR_RESET, file_list[i], chunk_idx, bytes_to_read, bytes_read);
+                fprintf(stderr, ANSI_COLOR_RED "\nRead error on %s, chunk %d. Expected %d, got %d\n" ANSI_COLOR_RESET, file_list[i],
+                        chunk_idx, bytes_to_read, bytes_read);
                 file_ok = false;
                 break;
             }
@@ -255,13 +262,18 @@ static bool verify_drive(uint32_t chunk_size)
         }
     }
 
-    for(int i=0; i<file_count; i++) free(file_list[i]);
+    for(int i=0; i<file_count; i++) {
+        free(file_list[i]);
+    }
     free(file_list);
     free(read_buffer);
     free(expected_data);
 
-    if(success) printf(ANSI_COLOR_GREEN "\nVerification successful. All %d files are correct.\n" ANSI_COLOR_RESET, file_count);
-    else printf(ANSI_COLOR_RED "\nVerification FAILED.\n" ANSI_COLOR_RESET);
+    if(success) {
+        printf(ANSI_COLOR_GREEN "\nVerification successful. All %d files are correct.\n" ANSI_COLOR_RESET, file_count);
+    } else {
+        printf(ANSI_COLOR_RED "\nVerification FAILED.\n" ANSI_COLOR_RESET);
+    }
 
     return success;
 }
@@ -304,7 +316,8 @@ static bool test_large_io_transfer(void)
     }
 
     if (romfs_close_file(&file) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Close failed for large_test.bin after write: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Close failed for large_test.bin after write: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         goto cleanup_close_write;
     }
 
@@ -395,7 +408,8 @@ static bool test_seek_tell(void)
 
     romfs_file reader;
     if (romfs_open_file("seektest.bin", &reader, read_io) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to open seektest.bin for reading: %s\n" ANSI_COLOR_RESET, romfs_strerror(reader.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open seektest.bin for reading: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(reader.err));
         success = false;
         goto cleanup;
     }
@@ -421,7 +435,7 @@ static bool test_seek_tell(void)
 
     const uint32_t first_read = 200;
     if (romfs_read_file(read_buf, first_read, &reader) != first_read ||
-        memcmp(read_buf, &pattern[first_seek], first_read) != 0) {
+            memcmp(read_buf, &pattern[first_seek], first_read) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Data mismatch after SEEK_SET read\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup_reader;
@@ -448,7 +462,7 @@ static bool test_seek_tell(void)
 
     const uint32_t second_read = 100;
     if (romfs_read_file(read_buf, second_read, &reader) != second_read ||
-        memcmp(read_buf, &pattern[expected_pos], second_read) != 0) {
+            memcmp(read_buf, &pattern[expected_pos], second_read) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Data mismatch after SEEK_CUR read\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup_reader;
@@ -469,7 +483,7 @@ static bool test_seek_tell(void)
 
     const uint32_t third_read = 64;
     if (romfs_read_file(read_buf, third_read, &reader) != third_read ||
-        memcmp(read_buf, &pattern[expected_pos], third_read) != 0) {
+            memcmp(read_buf, &pattern[expected_pos], third_read) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Data mismatch after SEEK_END read\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup_reader;
@@ -496,7 +510,8 @@ cleanup_reader:
             fprintf(stderr, ANSI_COLOR_RED "Failed to create empty_seek.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
             success = false;
         } else if (romfs_close_file(&file) != ROMFS_NOERR) {
-            fprintf(stderr, ANSI_COLOR_RED "Failed to close empty_seek.bin after creation: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+            fprintf(stderr, ANSI_COLOR_RED "Failed to close empty_seek.bin after creation: %s\n" ANSI_COLOR_RESET,
+                    romfs_strerror(file.err));
             success = false;
         } else if (romfs_open_file("empty_seek.bin", &empty_file, read_io) != ROMFS_NOERR) {
             fprintf(stderr, ANSI_COLOR_RED "Failed to open empty_seek.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(empty_file.err));
@@ -588,14 +603,16 @@ static bool test_append_mode(void)
     }
 
     if (romfs_tell_file(&file, &pos) != ROMFS_NOERR || pos != part1_len) {
-        fprintf(stderr, ANSI_COLOR_RED "tell mismatch after initial append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos, part1_len);
+        fprintf(stderr, ANSI_COLOR_RED "tell mismatch after initial append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos,
+                part1_len);
         success = false;
         goto cleanup_close_file;
     }
 
 cleanup_close_file:
     if (romfs_close_file(&file) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to close append.bin after first write: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to close append.bin after first write: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
     }
     if (!success) {
@@ -605,12 +622,13 @@ cleanup_close_file:
     /* Verify initial contents */
     memset(&reader, 0, sizeof(reader));
     if (romfs_open_file("append.bin", &reader, read_io_buffer) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for verification: %s\n" ANSI_COLOR_RESET, romfs_strerror(reader.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for verification: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(reader.err));
         success = false;
         goto cleanup;
     }
     if (romfs_read_file(read_buffer, part1_len, &reader) != part1_len ||
-        memcmp(read_buffer, part1, part1_len) != 0) {
+            memcmp(read_buffer, part1, part1_len) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Initial append verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
@@ -622,7 +640,8 @@ cleanup_close_file:
     /* Step 2: append second chunk within same sector */
     memset(&file, 0, sizeof(file));
     if (romfs_open_append_path("append.bin", &file, ROMFS_TYPE_MISC, io_buffer, false) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for second append: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for second append: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
         goto cleanup;
     }
@@ -640,14 +659,16 @@ cleanup_close_file:
     }
 
     if (romfs_tell_file(&file, &pos) != ROMFS_NOERR || pos != part1_len + part2_len) {
-        fprintf(stderr, ANSI_COLOR_RED "tell mismatch after second append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos, part1_len + part2_len);
+        fprintf(stderr, ANSI_COLOR_RED "tell mismatch after second append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos,
+                part1_len + part2_len);
         success = false;
         goto cleanup_second_close;
     }
 
 cleanup_second_close:
     if (romfs_close_file(&file) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to close append.bin after second write: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to close append.bin after second write: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
     }
     if (!success) {
@@ -659,13 +680,14 @@ cleanup_second_close:
     memcpy(expected + part1_len, part2, part2_len);
     memset(&reader, 0, sizeof(reader));
     if (romfs_open_file("append.bin", &reader, read_io_buffer) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for second verification: %s\n" ANSI_COLOR_RESET, romfs_strerror(reader.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for second verification: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(reader.err));
         success = false;
         goto cleanup;
     }
     size_t current_size = part1_len + part2_len;
     if (romfs_read_file(read_buffer, current_size, &reader) != current_size ||
-        memcmp(read_buffer, expected, current_size) != 0) {
+            memcmp(read_buffer, expected, current_size) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Second append verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
@@ -677,13 +699,15 @@ cleanup_second_close:
     /* Step 3: append data crossing sector boundary */
     memset(&file, 0, sizeof(file));
     if (romfs_open_append_path("append.bin", &file, ROMFS_TYPE_MISC, io_buffer, false) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for large append: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen append.bin for large append: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
         goto cleanup;
     }
 
     if (romfs_tell_file(&file, &pos) != ROMFS_NOERR || pos != current_size) {
-        fprintf(stderr, ANSI_COLOR_RED "tell mismatch before large append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos, current_size);
+        fprintf(stderr, ANSI_COLOR_RED "tell mismatch before large append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos,
+                current_size);
         success = false;
         goto cleanup_large_close;
     }
@@ -695,14 +719,16 @@ cleanup_second_close:
     }
 
     if (romfs_tell_file(&file, &pos) != ROMFS_NOERR || pos != current_size + big_len) {
-        fprintf(stderr, ANSI_COLOR_RED "tell mismatch after large append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos, current_size + big_len);
+        fprintf(stderr, ANSI_COLOR_RED "tell mismatch after large append (got %u, expected %zu)\n" ANSI_COLOR_RESET, pos,
+                current_size + big_len);
         success = false;
         goto cleanup_large_close;
     }
 
 cleanup_large_close:
     if (romfs_close_file(&file) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to close append.bin after large append: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to close append.bin after large append: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
     }
     if (!success) {
@@ -713,12 +739,13 @@ cleanup_large_close:
     memcpy(expected + current_size, big_data, big_len);
     memset(&reader, 0, sizeof(reader));
     if (romfs_open_file("append.bin", &reader, read_io_buffer) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to open append.bin for final verification: %s\n" ANSI_COLOR_RESET, romfs_strerror(reader.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open append.bin for final verification: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(reader.err));
         success = false;
         goto cleanup;
     }
     if (romfs_read_file(read_buffer, total_expected, &reader) != total_expected ||
-        memcmp(read_buffer, expected, total_expected) != 0) {
+            memcmp(read_buffer, expected, total_expected) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Final append verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
@@ -730,7 +757,8 @@ cleanup_large_close:
     /* Flat namespace append helper */
     memset(&file, 0, sizeof(file));
     if (romfs_open_append("flat.bin", &file, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to open flat.bin via romfs_open_append: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open flat.bin via romfs_open_append: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
         goto cleanup;
     }
@@ -745,7 +773,7 @@ cleanup_large_close:
         goto cleanup;
     }
     if (romfs_read_file(read_buffer, part1_len, &reader) != part1_len ||
-        memcmp(read_buffer, part1, part1_len) != 0) {
+            memcmp(read_buffer, part1, part1_len) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Verification of flat.bin append failed\n" ANSI_COLOR_RESET);
         success = false;
     }
@@ -757,12 +785,14 @@ cleanup_large_close:
     /* Ensure create_dirs parameter works */
     memset(&file, 0, sizeof(file));
     if (romfs_open_append_path("logs/session/log.txt", &file, ROMFS_TYPE_MISC, io_buffer, true) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to append with implicit directory creation: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to append with implicit directory creation: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
         goto cleanup;
     }
     if (romfs_close_file(&file) != ROMFS_NOERR) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to close log.txt in append test: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        fprintf(stderr, ANSI_COLOR_RED "Failed to close log.txt in append test: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
         success = false;
         goto cleanup;
     }
@@ -809,21 +839,22 @@ static bool test_rename_api(void)
 
     romfs_dir alpha, beta;
     if (romfs_dir_create(&root, "alpha", &alpha) != ROMFS_NOERR ||
-        romfs_dir_create(&root, "beta", &beta) != ROMFS_NOERR) {
+            romfs_dir_create(&root, "beta", &beta) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to create test directories for rename test\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
     }
 
     romfs_file file;
-    if (romfs_create_file_in_dir(&alpha, "note.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+    if (romfs_create_file_in_dir(&alpha, "note.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
+                                 io_buffer) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to create initial file for rename test\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
     }
 
     if (romfs_write_file(payload, sizeof(payload), &file) != sizeof(payload) ||
-        romfs_close_file(&file) != ROMFS_NOERR) {
+            romfs_close_file(&file) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to populate note.bin\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -837,8 +868,8 @@ static bool test_rename_api(void)
 
     romfs_file reader;
     if (romfs_open_file_in_dir(&alpha, "memo.bin", &reader, io_buffer) != ROMFS_NOERR ||
-        (reader_open = true, romfs_read_file(read_buffer, sizeof(payload), &reader) != sizeof(payload)) ||
-        memcmp(read_buffer, payload, sizeof(payload)) != 0) {
+            (reader_open = true, romfs_read_file(read_buffer, sizeof(payload), &reader) != sizeof(payload)) ||
+            memcmp(read_buffer, payload, sizeof(payload)) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Verification after rename within directory failed\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup_reader;
@@ -860,8 +891,8 @@ static bool test_rename_api(void)
     }
 
     if (romfs_open_file_in_dir(&beta, "memo.bin", &reader, io_buffer) != ROMFS_NOERR ||
-        (reader_open = true, romfs_read_file(read_buffer, sizeof(payload), &reader) != sizeof(payload)) ||
-        memcmp(read_buffer, payload, sizeof(payload)) != 0) {
+            (reader_open = true, romfs_read_file(read_buffer, sizeof(payload), &reader) != sizeof(payload)) ||
+            memcmp(read_buffer, payload, sizeof(payload)) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Verification after cross-directory rename failed\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup_reader;
@@ -870,8 +901,9 @@ static bool test_rename_api(void)
     reader_open = false;
 
     // Conflict detection
-    if (romfs_create_file_in_dir(&beta, "other.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR ||
-        romfs_close_file(&file) != ROMFS_NOERR) {
+    if (romfs_create_file_in_dir(&beta, "other.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
+                                 io_buffer) != ROMFS_NOERR ||
+            romfs_close_file(&file) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to create conflict file for rename test\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -892,8 +924,8 @@ static bool test_rename_api(void)
     }
 
     if (romfs_open_path("/logs/session/archive.bin", &reader, io_buffer) != ROMFS_NOERR ||
-        (reader_open = true, romfs_read_file(read_buffer, sizeof(payload), &reader) != sizeof(payload)) ||
-        memcmp(read_buffer, payload, sizeof(payload)) != 0) {
+            (reader_open = true, romfs_read_file(read_buffer, sizeof(payload), &reader) != sizeof(payload)) ||
+            memcmp(read_buffer, payload, sizeof(payload)) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Verification after path rename failed\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup_reader;
@@ -909,7 +941,7 @@ static bool test_rename_api(void)
         goto cleanup;
     }
     if (romfs_write_file(payload, sizeof(payload), &file) != sizeof(payload) ||
-        romfs_close_file(&file) != ROMFS_NOERR) {
+            romfs_close_file(&file) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to populate flat_rename.bin\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -927,7 +959,7 @@ static bool test_rename_api(void)
         goto cleanup;
     }
     if (romfs_read_file(read_buffer, sizeof(payload), &reader) != sizeof(payload) ||
-        memcmp(read_buffer, payload, sizeof(payload)) != 0) {
+            memcmp(read_buffer, payload, sizeof(payload)) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Verification of romfs_rename target failed\n" ANSI_COLOR_RESET);
         success = false;
     }
@@ -1086,7 +1118,8 @@ static bool test_random_fill_to_capacity(void)
         if (!write_ok) {
             romfs_delete(filename);
             free(io_buffer);
-            printf(ANSI_COLOR_YELLOW "Stopping creation due to write failure (likely full) at file %d\n" ANSI_COLOR_RESET, file_idx);
+            printf(ANSI_COLOR_YELLOW "Stopping creation due to write failure (likely full) at file %d\n" ANSI_COLOR_RESET,
+                   file_idx);
             break;
         }
 
@@ -1127,7 +1160,8 @@ static bool test_random_fill_to_capacity(void)
             for (size_t i = 0; i < entry_count && success; i++) {
                 romfs_file file;
                 if (romfs_open_file(entries[i].name, &file, io_buffer) != ROMFS_NOERR) {
-                    fprintf(stderr, ANSI_COLOR_RED "Failed to open %s for verification: %s\n" ANSI_COLOR_RESET, entries[i].name, romfs_strerror(file.err));
+                    fprintf(stderr, ANSI_COLOR_RED "Failed to open %s for verification: %s\n" ANSI_COLOR_RESET, entries[i].name,
+                            romfs_strerror(file.err));
                     success = false;
                     break;
                 }
@@ -1216,7 +1250,8 @@ static bool test_directory_api(void)
     }
 
     romfs_file file;
-    if (romfs_create_path("/games/nintendo/zelda.z64", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer, false) != ROMFS_NOERR) {
+    if (romfs_create_path("/games/nintendo/zelda.z64", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer,
+                          false) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to create file inside /games/nintendo\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -1243,7 +1278,7 @@ static bool test_directory_api(void)
 
     uint8_t readback[sizeof(payload)] = {0};
     if (romfs_read_file(readback, sizeof(readback), &read_file) != sizeof(readback) ||
-        memcmp(readback, payload, sizeof(payload)) != 0) {
+            memcmp(readback, payload, sizeof(payload)) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Payload mismatch when reading zelda.z64\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -1258,7 +1293,7 @@ static bool test_directory_api(void)
 
     romfs_file list_entry;
     if (romfs_list_dir(&list_entry, true, &nintendo_dir, false) != ROMFS_NOERR ||
-        strcmp(list_entry.entry.name, "zelda.z64") != 0) {
+            strcmp(list_entry.entry.name, "zelda.z64") != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Directory listing did not return expected file\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -1298,14 +1333,15 @@ static bool test_directory_api(void)
         goto cleanup;
     }
 
-    if (romfs_create_path("/saves/profile/slot1.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer, true) != ROMFS_NOERR) {
+    if (romfs_create_path("/saves/profile/slot1.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer,
+                          true) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to create file with implicit directories\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
     }
 
     if (romfs_write_file(payload, sizeof(payload), &file) != sizeof(payload) ||
-        romfs_close_file(&file) != ROMFS_NOERR) {
+            romfs_close_file(&file) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to populate slot1.bin\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -1326,7 +1362,7 @@ static bool test_directory_api(void)
     }
 
     if (romfs_list_dir(&list_entry, true, &profile_dir, false) != ROMFS_NOERR ||
-        strcmp(list_entry.entry.name, "slot1.bin") != 0) {
+            strcmp(list_entry.entry.name, "slot1.bin") != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Unexpected contents when listing /saves/profile\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -1339,7 +1375,7 @@ static bool test_directory_api(void)
     }
 
     if (romfs_dir_remove(&profile_dir) != ROMFS_NOERR ||
-        romfs_dir_remove(&saves_dir) != ROMFS_NOERR) {
+            romfs_dir_remove(&saves_dir) != ROMFS_NOERR) {
         fprintf(stderr, ANSI_COLOR_RED "Failed to remove /saves hierarchy\n" ANSI_COLOR_RESET);
         success = false;
         goto cleanup;
@@ -1359,7 +1395,9 @@ static bool test_interleaved_delete_write(void)
     // 1. Fill the drive about halfway to have something to work with.
     printf("Pre-filling drive to 50%% capacity...\n");
     int initial_files = fill_drive("file", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, true);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) return false;
+    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
+        return false;
+    }
 
     char** file_list = NULL;
     int file_count = get_file_list(&file_list);
@@ -1369,7 +1407,7 @@ static bool test_interleaved_delete_write(void)
     }
 
     // 2. Interleave operations
-    int files_to_create = initial_files; 
+    int files_to_create = initial_files;
     int new_file_idx = 0;
     const int delete_batch_size = 5;
 
@@ -1485,7 +1523,9 @@ static void run_test_suite(uint32_t flash_size_mb)
     romfs_format();
     printf("Initial free space: %u bytes\n", romfs_free());
     fill_drive("file", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, false);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) goto cleanup;
+    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
+        goto cleanup;
+    }
 
     printf("\nSequentially deleting files...\n");
     char** file_list = NULL;
@@ -1505,7 +1545,9 @@ static void run_test_suite(uint32_t flash_size_mb)
     // --- Test 2: Fixed Size Refill, Verify, Random Delete with Verification ---
     printf(ANSI_COLOR_YELLOW "\n--- Running Refill (Fixed Size) / Random Delete Test ---\n" ANSI_COLOR_RESET);
     fill_drive("rfile", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, false);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) goto cleanup;
+    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
+        goto cleanup;
+    }
 
     printf("\nRandomly deleting files with verification...\n");
     file_list = NULL;
@@ -1541,7 +1583,9 @@ static void run_test_suite(uint32_t flash_size_mb)
     printf(ANSI_COLOR_YELLOW "\n--- Running Fill (Random Size) / Verify / Delete Test ---\n" ANSI_COLOR_RESET);
     romfs_format();
     fill_drive("rndfile", NORMAL_CHUNKS_PER_FILE * 2, NORMAL_CHUNK_SIZE, true);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) goto cleanup;
+    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
+        goto cleanup;
+    }
 
     printf("\nRandomly deleting all random-sized files...\n");
     file_list = NULL;
@@ -1559,12 +1603,16 @@ static void run_test_suite(uint32_t flash_size_mb)
     }
     printf("Free space after random delete: %u bytes\n", romfs_free());
 
-    if (!test_random_fill_to_capacity()) goto cleanup;
+    if (!test_random_fill_to_capacity()) {
+        goto cleanup;
+    }
 
 
     // --- Test 4: Interleaved Delete and Write ---
     romfs_format();
-    if (!test_interleaved_delete_write()) goto cleanup;
+    if (!test_interleaved_delete_write()) {
+        goto cleanup;
+    }
 
     // --- Test 5: File List Limit ---
     printf(ANSI_COLOR_YELLOW "\n--- Running File List Limit Test ---\n" ANSI_COLOR_RESET);

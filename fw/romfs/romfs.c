@@ -60,7 +60,8 @@ static int romfs_dir_alloc_id(void);
 static void romfs_dir_release_id(uint8_t id);
 static bool romfs_dir_id_valid(uint8_t id);
 static bool romfs_dir_is_empty_internal(uint8_t dir_id);
-static uint32_t romfs_resolve_parent(const char *path, bool create_dirs, romfs_dir *parent_dir, char *leaf, size_t leaf_len);
+static uint32_t romfs_resolve_parent(const char *path, bool create_dirs, romfs_dir *parent_dir, char *leaf,
+                                     size_t leaf_len);
 static bool romfs_valid_entry_name(const char *name, size_t len);
 static int romfs_dir_parent_id(uint8_t id);
 static void romfs_flush(void);
@@ -203,7 +204,8 @@ static bool romfs_dir_is_empty_internal(uint8_t dir_id)
 
 void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t *map_size, uint32_t *list_size)
 {
-    flash_map_size = ((rom_size / ROMFS_FLASH_SECTOR) * sizeof(uint16_t) + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1);
+    flash_map_size = ((rom_size / ROMFS_FLASH_SECTOR) * sizeof(uint16_t) + (ROMFS_FLASH_SECTOR - 1)) & ~
+                     (ROMFS_FLASH_SECTOR - 1);
     if (flash_map_size <  ROMFS_FLASH_SECTOR) {
         flash_map_size = ROMFS_FLASH_SECTOR;
     }
@@ -333,7 +335,8 @@ uint32_t romfs_free(void)
     return free_sectors * ROMFS_FLASH_SECTOR;
 }
 
-static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_deleted, uint8_t parent_filter, uint8_t include_mask)
+static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_deleted, uint8_t parent_filter,
+                                    uint8_t include_mask)
 {
     if (first) {
         file->nentry = 0;
@@ -449,7 +452,8 @@ static uint32_t romfs_last_sector(uint32_t start)
 
 uint32_t romfs_list(romfs_file *file, bool first)
 {
-    return romfs_list_internal(file, first, false, ROMFS_DIR_FILTER_ANY, ROMFS_LIST_INCLUDE_FILES | ROMFS_LIST_INCLUDE_DIRS);
+    return romfs_list_internal(file, first, false, ROMFS_DIR_FILTER_ANY,
+                               ROMFS_LIST_INCLUDE_FILES | ROMFS_LIST_INCLUDE_DIRS);
 }
 
 static void romfs_unallocate_sectors_chain(romfs_file *file)
@@ -732,7 +736,7 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
     }
 
     uint32_t readable = (file->read_offset + size > file->entry.size) ?
-                (file->entry.size - file->read_offset) : size;
+                        (file->entry.size - file->read_offset) : size;
     uint8_t *dst = (uint8_t *)buffer;
     uint32_t total_read = 0;
 
@@ -861,7 +865,8 @@ uint32_t romfs_seek_file(romfs_file *file, int32_t offset, int whence)
     return ROMFS_NOERR;
 }
 
-static uint32_t romfs_resolve_parent(const char *path, bool create_dirs, romfs_dir *parent_dir, char *leaf, size_t leaf_len)
+static uint32_t romfs_resolve_parent(const char *path, bool create_dirs, romfs_dir *parent_dir, char *leaf,
+                                     size_t leaf_len)
 {
     if (!path || !parent_dir || !leaf || leaf_len == 0) {
         return ROMFS_ERR_DIR_INVALID;
@@ -1102,7 +1107,8 @@ uint32_t romfs_list_dir(romfs_file *entry, bool first, const romfs_dir *dir, boo
     return romfs_list_internal(entry, first, false, dir->id, mask);
 }
 
-uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer)
+uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t mode,
+                                  uint16_t type, uint8_t *io_buffer)
 {
     if (!file || !dir || !name) {
         return ROMFS_ERR_DIR_INVALID;
@@ -1187,7 +1193,8 @@ uint32_t romfs_open_file_in_dir(const romfs_dir *dir, const char *name, romfs_fi
     return (file->err = res);
 }
 
-uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type, uint8_t *io_buffer)
+uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type,
+                                  uint8_t *io_buffer)
 {
     if (!file || !dir || !name) {
         return ROMFS_ERR_DIR_INVALID;
@@ -1436,7 +1443,8 @@ uint32_t romfs_open_append_path(const char *path, romfs_file *file, uint16_t typ
     return romfs_open_append_in_dir(&parent, leaf, file, type, io_buffer);
 }
 
-uint32_t romfs_create_path(const char *path, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer, bool create_dirs)
+uint32_t romfs_create_path(const char *path, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer,
+                           bool create_dirs)
 {
     char leaf[ROMFS_MAX_NAME_LEN];
     romfs_dir parent;

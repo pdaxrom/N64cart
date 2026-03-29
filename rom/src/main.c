@@ -49,13 +49,13 @@ enum {
 };
 
 static const struct flash_chip flash_chip[] = {
-{ 0xc2, 0x201b, 128, "MX66L1G45G" },
-{ 0xef, 0x4020, 64, "W25Q512" },
-{ 0xef, 0x4019, 32, "W25Q256" },
-{ 0xef, 0x4018, 16, "W25Q128" },
-{ 0xef, 0x4017, 8, "W25Q64" },
-{ 0xef, 0x4016, 4, "W25Q32" },
-{ 0xef, 0x4015, 2, "W25Q16" }
+    { 0xc2, 0x201b, 128, "MX66L1G45G" },
+    { 0xef, 0x4020, 64, "W25Q512" },
+    { 0xef, 0x4019, 32, "W25Q256" },
+    { 0xef, 0x4018, 16, "W25Q128" },
+    { 0xef, 0x4017, 8, "W25Q64" },
+    { 0xef, 0x4016, 4, "W25Q32" },
+    { 0xef, 0x4015, 2, "W25Q16" }
 };
 
 static const struct flash_chip *used_flash_chip = NULL;
@@ -217,7 +217,8 @@ static int check_file_extension(char *file, char *ext)
     return strcasecmp(&str_file[strlen(str_file) - strlen(str_ext)], str_ext);
 }
 
-static void print_bytes(uint8_t bytes[16], char *title) {
+static void print_bytes(uint8_t bytes[16], char *title)
+{
     char hex[33] = { 0 };
     for (int i = 0; i < 16; i++) {
         snprintf(&hex[i * 2], 3, "%02X", bytes[i]);
@@ -611,7 +612,8 @@ static void update_path_text(void)
         safe_append(txt_current_path, sizeof(txt_current_path), display);
     }
 }
-static void run_rom(display_context_t disp, const char *path, const char *addon_path, const int addon_offset, int addon_save_type)
+static void run_rom(display_context_t disp, const char *path, const char *addon_path, const int addon_offset,
+                    int addon_save_type)
 {
     romfs_file file;
     uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
@@ -686,191 +688,192 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
                     rom_detected = true;
                     save_type = save_type_conv[opts >> 4];
                 } else {
-                            rom_detected = get_cic_save(&save_name[strlen(saves_dir) + 1], &cic_id, &save_type);
-                }
-                }
-                }
-
-                            syslog(LOG_INFO, "rom detected %d, cic_id %d, save_type %d", rom_detected, cic_id, save_type);
-
-                            if (rom_detected) {
-                            syslog(LOG_INFO, "eeprom save name: %s", save_name);
-                            uint8_t erase_byte = 0xff;
-
-                            int save_file_size = 0;
-                            uint32_t pi_addr = 0;
-                            switch (save_type) {
-                            case 1:
-                            strcat(save_name, ".sra");
-                            save_file_size = 32768;
-                            pi_addr = N64CART_SRAM;
-                            erase_byte = 0;
-                            break;
-                            case 2:
-                            strcat(save_name, ".sra");
-                            save_file_size = 131072;
-                            pi_addr = N64CART_SRAM;
-                            erase_byte = 0;
-                            break;
-                            case 3:
-                            strcat(save_name, ".eep");
-                            save_file_size = 512;
-                            n64cart_eeprom_16kbit(false);
-                            pi_addr = N64CART_EEPROM;
-                            break;
-                            case 4:
-                            strcat(save_name, ".eep");
-                            save_file_size = 2048;
-                            n64cart_eeprom_16kbit(true);
-                            pi_addr = N64CART_EEPROM;
-                            break;
-                            case 5:
-                            strcat(save_name, ".fla");
-                            save_file_size = 131072;
-                            pi_addr = N64CART_SRAM;
-                            break;
-                            case 6:
-                            strcat(save_name, ".sra");
-                            save_file_size = 98304;
-                            pi_addr = N64CART_SRAM;
-                            erase_byte = 0;
-                            break;
-                            default:
-                            save_name[0] = '\0';
-                            save_file_size = 0;
-                            pi_addr = 0;
-                }
-
-                            n64cart_sram_unlock();
-                            io_write(N64CART_RMRAM, pi_addr);
-                            io_write(N64CART_RMRAM + 4, save_file_size);
-
-                            if (strlen(save_name) > 0) {
-                            syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, pi_addr, save_file_size);
-
-                            for (int i = 0; i < sizeof(save_name); i += 4) {
-                            io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) &save_name[i]));
-                }
-                            n64cart_sram_lock();
-
-                            char save_full_path[ROMFS_PATH_MAX + 8];
-                            build_romfs_prefixed_path(save_name, save_full_path, sizeof(save_full_path));
-
-                            FILE *save_file = fopen(save_full_path, "rb");
-                            if (save_file) {
-                            syslog(LOG_INFO, "Reading save file...");
-
-                            static const char *load_data_txt = "Reading save file...";
-                            graphics_draw_text(disp, valign(load_data_txt), 120 * scr_scale, load_data_txt);
-                            display_show(disp);
-
-                            int rbytes = 0;
-                            while (rbytes < save_file_size) {
-                            size_t chunk = save_file_size - rbytes;
-                            if (chunk > 4096) {
-                            chunk = 4096;
-                }
-                            size_t read = fread(&save_data[rbytes], 1, chunk, save_file);
-                            if (read == 0) {
-                        break;
-                    }
-                    rbytes += (int)read;
-                }
-                fclose(save_file);
-
-                syslog(LOG_INFO, "read %d bytes", rbytes);
-
-                if (rbytes <= 2048) {
-                    // eeprom byte swap
-                    for (int i = 0; i < rbytes; i += 2) {
-                        uint8_t tmp = save_data[i];
-                        save_data[i] = save_data[i + 1];
-                        save_data[i + 1] = tmp;
-                    }
-                } else {
-                    // sram word swap
-                    for (int i = 0; i < rbytes; i += 4) {
-                        uint8_t tmp = save_data[i];
-                        save_data[i] = save_data[i + 3];
-                        save_data[i + 3] = tmp;
-                        tmp = save_data[i + 2];
-                        save_data[i + 2] = save_data[i + 1];
-                        save_data[i + 1] = tmp;
-                    }
-                }
-
-                uint8_t md5_actual[16] = {0};
-                calc_md5(save_data, save_file_size, md5_actual);
-                print_bytes(md5_actual, "save file");
-
-                n64cart_sram_unlock();
-                for (int i = 0; i < 16; i += 4) {
-                    io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
-                }
-
-                // dma_wait();
-                // data_cache_hit_writeback(save_data, sizeof(save_data));
-                // dma_write(save_data, N64CART_EEPROM, sizeof(save_data));
-                for (int i = 0; i < save_file_size; i += 4) {
-                    io_write(pi_addr + i, *((uint32_t *) & save_data[i]));
-                }
-            } else {
-                syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
-                memset(save_data, erase_byte, sizeof(save_data));
-
-                uint8_t md5_actual[16] = {0};
-                calc_md5(save_data, save_file_size, md5_actual);
-                print_bytes(md5_actual, "save file");
-
-                n64cart_sram_unlock();
-                for (int i = 0; i < 16; i += 4) {
-                    io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
-                }
-
-                for (int i = 0; i < save_file_size; i += 4) {
-                    io_write(pi_addr + i, 0);
+                    rom_detected = get_cic_save(&save_name[strlen(saves_dir) + 1], &cic_id, &save_type);
                 }
             }
         }
-        n64cart_sram_lock();
-    } else {
-        n64cart_sram_unlock();
-        io_write(N64CART_RMRAM, 0);
-        n64cart_sram_lock();
+
+        syslog(LOG_INFO, "rom detected %d, cic_id %d, save_type %d", rom_detected, cic_id, save_type);
+
+        if (rom_detected) {
+            syslog(LOG_INFO, "eeprom save name: %s", save_name);
+            uint8_t erase_byte = 0xff;
+
+            int save_file_size = 0;
+            uint32_t pi_addr = 0;
+            switch (save_type) {
+            case 1:
+                strcat(save_name, ".sra");
+                save_file_size = 32768;
+                pi_addr = N64CART_SRAM;
+                erase_byte = 0;
+                break;
+            case 2:
+                strcat(save_name, ".sra");
+                save_file_size = 131072;
+                pi_addr = N64CART_SRAM;
+                erase_byte = 0;
+                break;
+            case 3:
+                strcat(save_name, ".eep");
+                save_file_size = 512;
+                n64cart_eeprom_16kbit(false);
+                pi_addr = N64CART_EEPROM;
+                break;
+            case 4:
+                strcat(save_name, ".eep");
+                save_file_size = 2048;
+                n64cart_eeprom_16kbit(true);
+                pi_addr = N64CART_EEPROM;
+                break;
+            case 5:
+                strcat(save_name, ".fla");
+                save_file_size = 131072;
+                pi_addr = N64CART_SRAM;
+                break;
+            case 6:
+                strcat(save_name, ".sra");
+                save_file_size = 98304;
+                pi_addr = N64CART_SRAM;
+                erase_byte = 0;
+                break;
+            default:
+                save_name[0] = '\0';
+                save_file_size = 0;
+                pi_addr = 0;
+            }
+
+            n64cart_sram_unlock();
+            io_write(N64CART_RMRAM, pi_addr);
+            io_write(N64CART_RMRAM + 4, save_file_size);
+
+            if (strlen(save_name) > 0) {
+                syslog(LOG_INFO, "save name: %s, pi_addr %08lX, size %d", save_name, pi_addr, save_file_size);
+
+                for (int i = 0; i < sizeof(save_name); i += 4) {
+                    io_write(N64CART_RMRAM + 8 + i, *((uint32_t *) &save_name[i]));
+                }
+                n64cart_sram_lock();
+
+                char save_full_path[ROMFS_PATH_MAX + 8];
+                build_romfs_prefixed_path(save_name, save_full_path, sizeof(save_full_path));
+
+                FILE *save_file = fopen(save_full_path, "rb");
+                if (save_file) {
+                    syslog(LOG_INFO, "Reading save file...");
+
+                    static const char *load_data_txt = "Reading save file...";
+                    graphics_draw_text(disp, valign(load_data_txt), 120 * scr_scale, load_data_txt);
+                    display_show(disp);
+
+                    int rbytes = 0;
+                    while (rbytes < save_file_size) {
+                        size_t chunk = save_file_size - rbytes;
+                        if (chunk > 4096) {
+                            chunk = 4096;
+                        }
+                        size_t read = fread(&save_data[rbytes], 1, chunk, save_file);
+                        if (read == 0) {
+                            break;
+                        }
+                        rbytes += (int)read;
+                    }
+                    fclose(save_file);
+
+                    syslog(LOG_INFO, "read %d bytes", rbytes);
+
+                    if (rbytes <= 2048) {
+                        // eeprom byte swap
+                        for (int i = 0; i < rbytes; i += 2) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
+                        }
+                    } else {
+                        // sram word swap
+                        for (int i = 0; i < rbytes; i += 4) {
+                            uint8_t tmp = save_data[i];
+                            save_data[i] = save_data[i + 3];
+                            save_data[i + 3] = tmp;
+                            tmp = save_data[i + 2];
+                            save_data[i + 2] = save_data[i + 1];
+                            save_data[i + 1] = tmp;
+                        }
+                    }
+
+                    uint8_t md5_actual[16] = {0};
+                    calc_md5(save_data, save_file_size, md5_actual);
+                    print_bytes(md5_actual, "save file");
+
+                    n64cart_sram_unlock();
+                    for (int i = 0; i < 16; i += 4) {
+                        io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
+                    }
+
+                    // dma_wait();
+                    // data_cache_hit_writeback(save_data, sizeof(save_data));
+                    // dma_write(save_data, N64CART_EEPROM, sizeof(save_data));
+                    for (int i = 0; i < save_file_size; i += 4) {
+                        io_write(pi_addr + i, *((uint32_t *) & save_data[i]));
+                    }
+                } else {
+                    syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
+                    memset(save_data, erase_byte, sizeof(save_data));
+
+                    uint8_t md5_actual[16] = {0};
+                    calc_md5(save_data, save_file_size, md5_actual);
+                    print_bytes(md5_actual, "save file");
+
+                    n64cart_sram_unlock();
+                    for (int i = 0; i < 16; i += 4) {
+                        io_write(N64CART_RMRAM + 8 + sizeof(save_name) + i, *((uint32_t *) &md5_actual[i]));
+                    }
+
+                    for (int i = 0; i < save_file_size; i += 4) {
+                        io_write(pi_addr + i, 0);
+                    }
+                }
+            }
+            n64cart_sram_lock();
+        } else {
+            n64cart_sram_unlock();
+            io_write(N64CART_RMRAM, 0);
+            n64cart_sram_lock();
+        }
+
+        if (save_type == 5) {
+            syslog(LOG_INFO, "switch to Flash RAM mode");
+            n64cart_fram_mode();
+        }
+
+        OS_INFO->tv_type = get_tv_type();
+        OS_INFO->reset_type = RESET_COLD;
+        OS_INFO->mem_size = get_memory_size();
+
+        syslog(LOG_INFO, "cic_id %d", cic_id);
+        syslog(LOG_INFO, "tv_type %ld", OS_INFO->tv_type);
+        syslog(LOG_INFO, "device_type %ld", OS_INFO->device_type);
+        syslog(LOG_INFO, "device_base %8lX", OS_INFO->device_base);
+        syslog(LOG_INFO, "reset_type %ld", OS_INFO->reset_type);
+        syslog(LOG_INFO, "cic_id %ld", OS_INFO->cic_id);
+        syslog(LOG_INFO, "version %ld", OS_INFO->version);
+        syslog(LOG_INFO, "mem_size %ld", OS_INFO->mem_size);
+
+        joypad_close();
+        display_close();
+
+        usbd_finish();
+
+        disable_interrupts();
+
+        simulate_boot(cic_id, 2);
     }
-
-    if (save_type == 5) {
-        syslog(LOG_INFO, "switch to Flash RAM mode");
-        n64cart_fram_mode();
-    }
-
-    OS_INFO->tv_type = get_tv_type();
-    OS_INFO->reset_type = RESET_COLD;
-    OS_INFO->mem_size = get_memory_size();
-
-    syslog(LOG_INFO, "cic_id %d", cic_id);
-    syslog(LOG_INFO, "tv_type %ld", OS_INFO->tv_type);
-    syslog(LOG_INFO, "device_type %ld", OS_INFO->device_type);
-    syslog(LOG_INFO, "device_base %8lX", OS_INFO->device_base);
-    syslog(LOG_INFO, "reset_type %ld", OS_INFO->reset_type);
-    syslog(LOG_INFO, "cic_id %ld", OS_INFO->cic_id);
-    syslog(LOG_INFO, "version %ld", OS_INFO->version);
-    syslog(LOG_INFO, "mem_size %ld", OS_INFO->mem_size);
-
-    joypad_close();
-    display_close();
-
-    usbd_finish();
-
-    disable_interrupts();
-
-    simulate_boot(cic_id, 2);
-}
 }
 
 int main(void)
 {
-    syslog(LOG_INFO, "N64cart manager fw v%d.%d (" GIT_HASH ") by pdaXrom!", FIRMWARE_VERSION / 256, FIRMWARE_VERSION % 256);
+    syslog(LOG_INFO, "N64cart manager fw v%d.%d (" GIT_HASH ") by pdaXrom!", FIRMWARE_VERSION / 256,
+           FIRMWARE_VERSION % 256);
     usbd_start();
 
     bool is_hires = is_memory_expanded();
@@ -914,7 +917,8 @@ int main(void)
 #endif
 
     if (used_flash_chip) {
-        snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_size);
+        snprintf(txt_rom_info, sizeof(txt_rom_info) - 1, "Flash chip: %s (%d MB)", used_flash_chip->name,
+                 used_flash_chip->rom_size);
     } else {
         strncpy(txt_rom_info, "Unknown flash chip", sizeof(txt_rom_info) - 1);
     }
@@ -1324,7 +1328,8 @@ int main(void)
         } else if (menu_sel >= menu_page_size && (pressed.l || (held.l && !keys_delay_counter))) {
             menu_sel -= menu_page_size;
             keys_delay_counter = KEYS_DELAY * (is_hires ? 1 : 4);
-        } else if ((menu_sel - menu_sel % menu_page_size) + menu_page_size < num_files && (pressed.r || (held.r && !keys_delay_counter))) {
+        } else if ((menu_sel - menu_sel % menu_page_size) + menu_page_size < num_files && (pressed.r || (held.r
+                   && !keys_delay_counter))) {
             menu_sel += menu_page_size;
             menu_sel = (menu_sel < num_files) ? menu_sel : (num_files - 1);
             keys_delay_counter = KEYS_DELAY * (is_hires ? 1 : 4);
@@ -1372,7 +1377,8 @@ int main(void)
                 sprintf(tStr, "%02d: ", i);
             }
             graphics_draw_text(disp, 40 * scr_scale, (120 + (i - first_file) * 10) * scr_scale, tStr);
-            surface_t text_fb = surface_make_sub(disp, (40 + 4 * font_width) * scr_scale, (120 + (i - first_file) * 10) * scr_scale, font_width * 26 * scr_scale, 10 * scr_scale);
+            surface_t text_fb = surface_make_sub(disp, (40 + 4 * font_width) * scr_scale, (120 + (i - first_file) * 10) * scr_scale,
+                                                 font_width * 26 * scr_scale, 10 * scr_scale);
             graphics_draw_text(&text_fb, files[i].scroll_pos, 0, label);
         }
 

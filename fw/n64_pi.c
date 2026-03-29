@@ -366,7 +366,8 @@ void n64_pi(void)
                 addr = pio->rxf[0];
 
                 if (addr == 0) {
-                    pio->txf[0] = ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02) | ((uart_get_hw(UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01) | 0x00f0;
+                    pio->txf[0] = ((uart_get_hw(UART_ID)->fr & UART_UARTFR_TXFF_BITS) ? 0x00 : 0x02) | ((uart_get_hw(
+                                      UART_ID)->fr & UART_UARTFR_RXFE_BITS) ? 0x00 : 0x01) | 0x00f0;
                 } else if (addr & 1) {
                     word = (addr >> 16) | word;
                 } else {

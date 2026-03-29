@@ -69,7 +69,8 @@ enum {
     ROMFS_ERR_DIR_NOT_EMPTY,
 };
 
-typedef struct __attribute__((packed)) {
+typedef struct __attribute__((packed))
+{
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     uint16_t mode:3;
     uint16_t type:5;
@@ -81,9 +82,11 @@ typedef struct __attribute__((packed)) {
     uint16_t type:5;
     uint16_t mode:3;
 #endif
-} attr_by_names;
+}
+attr_by_names;
 
-typedef struct __attribute__((packed)) {
+typedef struct __attribute__((packed))
+{
     char name[ROMFS_MAX_NAME_LEN];
     union {
         attr_by_names names;
@@ -91,7 +94,8 @@ typedef struct __attribute__((packed)) {
     } attr;
     uint32_t start;
     uint32_t size;
-} romfs_entry;
+}
+romfs_entry;
 
 typedef struct {
     uint32_t op;
@@ -132,10 +136,13 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_tell_file(romfs_file *file, uint32_t *position);
 uint32_t romfs_seek_file(romfs_file *file, int32_t offset, int whence);
 uint32_t romfs_open_append(const char *name, romfs_file *file, uint16_t type, uint8_t *io_buffer);
-uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type, uint8_t *io_buffer);
-uint32_t romfs_open_append_path(const char *path, romfs_file *file, uint16_t type, uint8_t *io_buffer, bool create_dirs);
+uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type,
+                                  uint8_t *io_buffer);
+uint32_t romfs_open_append_path(const char *path, romfs_file *file, uint16_t type, uint8_t *io_buffer,
+                                bool create_dirs);
 uint32_t romfs_rename(const char *src_name, const char *dst_name);
-uint32_t romfs_rename_in_dir(const romfs_dir *src_dir, const char *src_name, const romfs_dir *dst_dir, const char *dst_name);
+uint32_t romfs_rename_in_dir(const romfs_dir *src_dir, const char *src_name, const romfs_dir *dst_dir,
+                             const char *dst_name);
 uint32_t romfs_rename_path(const char *src_path, const char *dst_path, bool create_dirs);
 uint32_t romfs_get_entry(const char *name, romfs_entry *out_entry);
 uint32_t romfs_get_entry_in_dir(const romfs_dir *dir, const char *name, romfs_entry *out_entry);
@@ -146,11 +153,13 @@ uint32_t romfs_dir_open(const romfs_dir *parent, const char *name, romfs_dir *ou
 uint32_t romfs_dir_create(const romfs_dir *parent, const char *name, romfs_dir *out);
 uint32_t romfs_dir_remove(const romfs_dir *dir);
 uint32_t romfs_list_dir(romfs_file * entry, bool first, const romfs_dir *dir, bool include_dirs);
-uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer);
+uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_file * file, uint16_t mode,
+                                  uint16_t type, uint8_t * io_buffer);
 uint32_t romfs_open_file_in_dir(const romfs_dir *dir, const char *name, romfs_file * file, uint8_t * io_buffer);
 uint32_t romfs_delete_in_dir(const romfs_dir *dir, const char *name);
 uint32_t romfs_open_path(const char *path, romfs_file * file, uint8_t * io_buffer);
-uint32_t romfs_create_path(const char *path, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer, bool create_dirs);
+uint32_t romfs_create_path(const char *path, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer,
+                           bool create_dirs);
 uint32_t romfs_mkdir_path(const char *path, bool create_parents, romfs_dir *out_dir);
 uint32_t romfs_rmdir_path(const char *path);
 uint32_t romfs_dir_open_path(const char *path, romfs_dir *out_dir);

@@ -57,7 +57,8 @@ QVariant RomfsModel::data(const QModelIndex &index, int role) const
         return QString::number(entry.size);
     case Qt::DecorationRole:
         if (index.column() == 0) {
-            QIcon icon = entry.isDirectory ? QIcon::fromTheme(QStringLiteral("folder")) : QIcon::fromTheme(QStringLiteral("text-x-generic"));
+            QIcon icon = entry.isDirectory ? QIcon::fromTheme(QStringLiteral("folder")) : QIcon::fromTheme(
+                             QStringLiteral("text-x-generic"));
             if (icon.isNull() && qApp) {
                 icon = qApp->style()->standardIcon(entry.isDirectory ? QStyle::SP_DirIcon : QStyle::SP_FileIcon);
             }

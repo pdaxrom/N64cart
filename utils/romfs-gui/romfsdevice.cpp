@@ -147,7 +147,8 @@ QVector<RomfsEntry> RomfsDevice::list(const QString &path, QString *errorString)
     return entries;
 }
 
-bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath, bool fixRom, int piBusSpeed, QString *errorString)
+bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath, bool fixRom, int piBusSpeed,
+                             QString *errorString)
 {
     QFileInfo info(localPath);
     if (!info.exists()) {
@@ -164,7 +165,8 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
 
         QByteArray remoteBytes = toPathBytes(remotePath);
         romfs_file romFile;
-        uint32_t res = romfs_create_path(remoteBytes.constData(), &romFile, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, reinterpret_cast<uint8_t *>(flashBuffer_.data()), true);
+        uint32_t res = romfs_create_path(remoteBytes.constData(), &romFile, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
+                                         reinterpret_cast<uint8_t *>(flashBuffer_.data()), true);
         if (res != ROMFS_NOERR) {
             setError(QStringLiteral("ROMFS create failed: %1").arg(QString::fromUtf8(romfs_strerror(res))), err);
             return false;
@@ -281,7 +283,8 @@ bool RomfsDevice::downloadFile(const QString &remotePath, const QString &localPa
 
         QByteArray remoteBytes = toPathBytes(remotePath);
         romfs_file romFile;
-        if (romfs_open_path(remoteBytes.constData(), &romFile, reinterpret_cast<uint8_t *>(flashBuffer_.data())) != ROMFS_NOERR) {
+        if (romfs_open_path(remoteBytes.constData(), &romFile,
+                            reinterpret_cast<uint8_t *>(flashBuffer_.data())) != ROMFS_NOERR) {
             setError(QStringLiteral("Cannot open %1: %2").arg(remotePath, QString::fromUtf8(romfs_strerror(romFile.err))), err);
             return false;
         }

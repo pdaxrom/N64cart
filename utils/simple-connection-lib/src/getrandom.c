@@ -45,10 +45,10 @@ int simple_connection_get_random(void *buf, size_t buflen, unsigned int flags)
     int ret = -1;
     HCRYPTPROV hProvider = 0;
     if (!CryptAcquireContextW(&hProvider, 0, 0, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT | CRYPT_SILENT)) {
-	return -1;
+        return -1;
     }
     if (CryptGenRandom(hProvider, buflen, buf)) {
-	ret = buflen;
+        ret = buflen;
     }
     CryptReleaseContext(hProvider, 0);
     return ret;
@@ -78,17 +78,17 @@ int simple_connection_get_random(void *buf, size_t buflen, unsigned int flags)
 
     ret = (int)syscall(SYS_getrandom, buf, buflen, flags);
     if (ret != -1) {
-	return ret;
+        return ret;
     }
 #endif
     inf = fopen("/dev/urandom", "rb");
     if (!inf) {
-	return -1;
+        return -1;
     }
     ret = fread(buf, 1, buflen, inf);
     fclose(inf);
     if (ret != buflen) {
-	ret = -1;
+        ret = -1;
     }
     return ret;
 #endif

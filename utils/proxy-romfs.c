@@ -29,7 +29,8 @@
 static libusb_context *ctx = NULL;
 static libusb_device_handle *dev_handle;
 
-static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoint, unsigned char *data, int length, int *transferred, unsigned int timeout)
+static int bulk_transfer(struct libusb_device_handle *devh, unsigned char endpoint, unsigned char *data, int length,
+                         int *transferred, unsigned int timeout)
 {
     int ret;
     int try = 0;
