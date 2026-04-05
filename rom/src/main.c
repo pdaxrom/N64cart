@@ -91,6 +91,8 @@ static sprite_t *bg_img = NULL;
 
 static int do_step = STEP_LOGO;
 
+static bool force_fram = false;
+
 bool romfs_flash_sector_erase(uint32_t offset)
 {
 #ifdef DEBUG_FS
@@ -841,7 +843,7 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
             n64cart_sram_lock();
         }
 
-        if (save_type == 5) {
+        if (save_type == 5 || (save_type == 0 && force_fram)) {
             syslog(LOG_INFO, "switch to Flash RAM mode");
             n64cart_fram_mode();
         }
@@ -925,7 +927,6 @@ int main(void)
 
     static const char *tv_type_str[] = { "PAL", "NTSC", "M-PAL" };
     static char txt_tv_type_msg[64];
-    snprintf(txt_tv_type_msg, sizeof(txt_tv_type_msg), "%s mode", tv_type_str[get_tv_type()]);
 
     static display_context_t disp = 0;
 
@@ -1168,6 +1169,8 @@ int main(void)
             continue;
         }
 
+        snprintf(txt_tv_type_msg, sizeof(txt_tv_type_msg), "%s mode, default %s save", tv_type_str[get_tv_type()], force_fram ? "FRAM" : "SRAM");
+
         /* Text */
         graphics_draw_text(disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
         graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
@@ -1222,24 +1225,24 @@ int main(void)
                 static const char *fopen_error_1 = "Can't open ROM file!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "NES")) {
-                run_rom(disp, "neon64bu.rom", files[menu_sel].path, 0x200000, 6);
+                run_rom(disp, "/emuls/neon64bu.rom", files[menu_sel].path, 0x200000, 6);
                 static const char *fopen_error_1 = "NES emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "SFC") || !check_file_extension(files[menu_sel].name, "SMC")) {
-                run_rom(disp, "sodium64.z64", files[menu_sel].path, 0x200000, 2);
+                run_rom(disp, "/emuls/sodium64.z64", files[menu_sel].path, 0x200000, 2);
                 static const char *fopen_error_1 = "SNES emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "GB")) {
-                run_rom(disp, "gb.v64", files[menu_sel].path, 0x200000, 6);
+                run_rom(disp, "/emuls/gb.v64", files[menu_sel].path, 0x200000, 5);
                 static const char *fopen_error_1 = "GB emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "GBC")) {
-                run_rom(disp, "gbc.v64", files[menu_sel].path, 0x200000, 6);
+                run_rom(disp, "/emuls/gbc.v64", files[menu_sel].path, 0x200000, 5);
                 static const char *fopen_error_1 = "GBC emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else if (!check_file_extension(files[menu_sel].name, "SMS") || !check_file_extension(files[menu_sel].name, "GG") ||
                        !check_file_extension(files[menu_sel].name, "SG")) {
-                run_rom(disp, "TotalSMS.z64", files[menu_sel].path, 0x200000, 6);
+                run_rom(disp, "/emuls/TotalSMS.z64", files[menu_sel].path, 0x200000, 6);
                 static const char *fopen_error_1 = "SEGA 8bit emulation error!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             } else {
@@ -1261,6 +1264,8 @@ int main(void)
             }
 
             continue;
+        } else if (pressed.c_up) {
+            force_fram = !force_fram;
         }
 #ifndef NO_FILE_DELETION
         else if (pressed.c_left) {

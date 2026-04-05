@@ -162,8 +162,8 @@ void n64_pi(void)
                     }
                 } while (true);
             } else if (!(last_addr & 0x00010000)) {
-                if (fram_mode == FLASH_CMD_READ_ARRAY) {
-                    sram_address = last_addr & 0xffff;
+                if (fram_mode == FLASH_CMD_READ_ARRAY || fram_mode == FLASH_CMD_PAGE_PROGRAM) {
+                    sram_address = (fram_mode == FLASH_CMD_READ_ARRAY) ? (last_addr & 0xffff) : ((last_addr & 0x7f) >> 1);
                     do {
                         while ((pio->fstat & 0x100) != 0) {
                         }
@@ -172,27 +172,11 @@ void n64_pi(void)
                         if (addr == 0) {
                             pio->txf[0] = sram_16[sram_address++];
                         } else if (addr & 1) {
-                            //sram_16[sram_address++] = addr >> 16;
-                        } else {
-                            break;
-                        }
-                        sram_address &= 0xffff;
-                    } while (true);
-                } else if (fram_mode == FLASH_CMD_PAGE_PROGRAM) {
-                    sram_address = (last_addr & 0x3f) >> 1;
-                    do {
-                        while ((pio->fstat & 0x100) != 0) {
-                        }
-                        addr = pio->rxf[0];
-
-                        if (addr == 0) {
-                            pio->txf[0] = 0;
-                        } else if (addr & 1) {
                             flash_buffer[sram_address++] = addr >> 16;
                         } else {
                             break;
                         }
-                        sram_address &= 0x3f;
+                        sram_address &= 0xffff;
                     } while (true);
                 } else if (fram_mode == FLASH_CMD_ID) {
                     sram_address = 0;
