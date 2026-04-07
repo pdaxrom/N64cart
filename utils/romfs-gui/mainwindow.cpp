@@ -38,6 +38,10 @@
 #include "settingsdialog.h"
 #include "ui_mainwindow.h"
 
+#ifndef ROMFS_GUI_GIT_HASH
+#define ROMFS_GUI_GIT_HASH ""
+#endif
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
     setupUi();
@@ -533,11 +537,15 @@ void MainWindow::openAbout()
     const QString version = QCoreApplication::applicationVersion().isEmpty()
                             ? QStringLiteral("1.0")
                             : QCoreApplication::applicationVersion();
+    const QString buildHash = QStringLiteral(ROMFS_GUI_GIT_HASH);
     const QString url = QStringLiteral("https://github.com/pdaxrom/N64cart");
+    const QString buildLine = buildHash.isEmpty()
+                              ? QString()
+                              : tr("<br/><center>build %1</center>").arg(buildHash);
     const QString text =
         tr("<center><b>ROMFS Manager</b></center><br/><center>Version "
-       "%1</center><br/><center><a href=\"%2\">%2</a></center>")
-        .arg(version, url);
+           "%1</center>%2<br/><center><a href=\"%3\">%3</a></center>")
+        .arg(version, buildLine, url);
     QMessageBox::about(this, tr("About ROMFS Manager"), text);
 }
 

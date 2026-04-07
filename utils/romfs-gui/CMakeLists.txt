@@ -11,6 +11,18 @@ set(CMAKE_AUTORCC ON)
 option(ENABLE_SYSTEM_LIBUSB "Enable system libusb" OFF)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network LinguistTools)
+find_package(Git QUIET)
+
+set(ROMFS_GUI_GIT_HASH "")
+if(GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../.."
+        OUTPUT_VARIABLE ROMFS_GUI_GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
 
 if(WIN32)
     set(LIBUSB_INCLUDE_DIRS "vcpkg/installed/x64-windows/include/libusb-1.0")
@@ -190,6 +202,10 @@ target_link_libraries(romfs-gui PRIVATE
     Qt6::Network
     ${LIBUSB_LIBRARIES}
 )
+
+if(ROMFS_GUI_GIT_HASH)
+    target_compile_definitions(romfs-gui PRIVATE ROMFS_GUI_GIT_HASH="${ROMFS_GUI_GIT_HASH}")
+endif()
 
 if (WIN32)
     target_link_libraries(romfs-gui PRIVATE ws2_32)
