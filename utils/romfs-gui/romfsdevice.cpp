@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
@@ -38,6 +39,17 @@ static QString buildChildPath(const QString &parent, const QString &name)
         return parent + name;
     }
     return parent + QLatin1Char('/') + name;
+}
+
+static QString combineErrors(const QString &primary, const QString &secondary)
+{
+    if (primary.isEmpty()) {
+        return secondary;
+    }
+    if (secondary.isEmpty()) {
+        return primary;
+    }
+    return QStringLiteral("%1 Cleanup failed: %2").arg(primary, secondary);
 }
 }
 
@@ -106,15 +118,14 @@ void RomfsDevice::disconnect()
         return;
     }
 
-    leaveSpiMode();
+    QString error;
+    if (!leaveSpiMode(&error)) {
+        qWarning() << "Failed to switch flash back to quad mode:" << error;
+    }
     if (transport_) {
         transport_->disconnectDevice();
     }
-    transport_.reset();
-    registerRomfsTransport(nullptr);
-    currentTransport_ = TransportType::None;
-    flashInSpiMode_ = false;
-    emit connectionStateChanged(false);
+    resetConnectionState(true);
 }
 
 bool RomfsDevice::isConnected() const
@@ -164,7 +175,7 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
         }
 
         QByteArray remoteBytes = toPathBytes(remotePath);
-        romfs_file romFile;
+        romfs_file romFile = {};
         uint32_t res = romfs_create_path(remoteBytes.constData(), &romFile, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
                                          reinterpret_cast<uint8_t *>(flashBuffer_.data()), true);
         if (res != ROMFS_NOERR) {
@@ -179,7 +190,11 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
         bool fixPiFreq = (piBusSpeed >= 0);
         while (true) {
             qint64 read = in.read(chunk.data(), chunk.size());
-            if (read <= 0) {
+            if (read < 0) {
+                setError(QStringLiteral("Cannot read %1").arg(localPath), err);
+                return false;
+            }
+            if (read == 0) {
                 break;
             }
 
@@ -195,14 +210,17 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
                             romType = 2; // V64
                         } else {
                             setError(QStringLiteral("Unknown ROM byte order"), err);
-                            break;
+                            return false;
                         }
+                    } else {
+                        setError(QStringLiteral("ROM file is too small"), err);
+                        return false;
                     }
                 }
 
                 if (read % 4 != 0) {
                     setError(QStringLiteral("Unaligned ROM data chunk"), err);
-                    break;
+                    return false;
                 }
 
                 if (romType == 1 || romType == 2) {
@@ -226,7 +244,7 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
                     fixPiFreq = false;
                 } else {
                     setError(QStringLiteral("PI bus fix requires Z64 byte order"), err);
-                    break;
+                    return false;
                 }
             }
 
@@ -275,17 +293,18 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
 bool RomfsDevice::downloadFile(const QString &remotePath, const QString &localPath, QString *errorString)
 {
     return runRomfsOperation([&](QString *err) {
-        QFile out(localPath);
-        if (!out.open(QIODevice::WriteOnly)) {
-            setError(QStringLiteral("Cannot open %1 for writing").arg(localPath), err);
-            return false;
-        }
-
         QByteArray remoteBytes = toPathBytes(remotePath);
-        romfs_file romFile;
+        romfs_file romFile = {};
         if (romfs_open_path(remoteBytes.constData(), &romFile,
                             reinterpret_cast<uint8_t *>(flashBuffer_.data())) != ROMFS_NOERR) {
             setError(QStringLiteral("Cannot open %1: %2").arg(remotePath, QString::fromUtf8(romfs_strerror(romFile.err))), err);
+            return false;
+        }
+
+        QSaveFile out(localPath);
+        if (!out.open(QIODevice::WriteOnly)) {
+            setError(QStringLiteral("Cannot open %1 for writing").arg(localPath), err);
+            romfs_close_file(&romFile);
             return false;
         }
 
@@ -295,7 +314,12 @@ bool RomfsDevice::downloadFile(const QString &remotePath, const QString &localPa
             if (read <= 0) {
                 break;
             }
-            out.write(chunk.constData(), read);
+            if (out.write(chunk.constData(), read) != read) {
+                setError(QStringLiteral("Cannot write %1").arg(localPath), err);
+                romfs_close_file(&romFile);
+                out.cancelWriting();
+                return false;
+            }
             emit operationProgress(tr("Downloading %1").arg(remotePath), romFile.read_offset, romFile.entry.size);
             QCoreApplication::processEvents();
         }
@@ -303,10 +327,15 @@ bool RomfsDevice::downloadFile(const QString &remotePath, const QString &localPa
         if (romFile.err != ROMFS_NOERR && romFile.err != ROMFS_ERR_EOF) {
             setError(QStringLiteral("Read failed: %1").arg(QString::fromUtf8(romfs_strerror(romFile.err))), err);
             romfs_close_file(&romFile);
+            out.cancelWriting();
             return false;
         }
 
         romfs_close_file(&romFile);
+        if (!out.commit()) {
+            setError(QStringLiteral("Cannot save %1").arg(localPath), err);
+            return false;
+        }
         return true;
     }, errorString);
 }
@@ -395,6 +424,10 @@ bool RomfsDevice::reboot(QString *errorString)
     if (!transport_->sendCommand(CART_REBOOT, nullptr, errorString)) {
         return false;
     }
+    if (transport_) {
+        transport_->disconnectDevice();
+    }
+    resetConnectionState(true);
     return true;
 }
 
@@ -406,6 +439,10 @@ bool RomfsDevice::bootloader(QString *errorString)
     if (!transport_->sendCommand(BOOTLOADER_MODE, nullptr, errorString)) {
         return false;
     }
+    if (transport_) {
+        transport_->disconnectDevice();
+    }
+    resetConnectionState(true);
     return true;
 }
 
@@ -427,28 +464,33 @@ bool RomfsDevice::enterSpiMode(QString *errorString)
     if (!transport_->sendCommand(FLASH_SPI_MODE, nullptr, errorString)) {
         return false;
     }
+    flashInSpiMode_ = true;
 
     if (!restartRomfs(errorString)) {
+        const QString restartError = errorString ? *errorString : lastError_;
+        QString leaveError;
+        if (!leaveSpiMode(&leaveError)) {
+            setError(combineErrors(restartError, leaveError), errorString);
+        } else if (errorString && errorString->isEmpty()) {
+            *errorString = restartError;
+        }
         return false;
     }
-
-    flashInSpiMode_ = true;
     return true;
 }
 
-bool RomfsDevice::leaveSpiMode()
+bool RomfsDevice::leaveSpiMode(QString *errorString)
 {
     if (!transport_ || !flashInSpiMode_) {
         return true;
     }
 
-    QString error;
-    bool ok = transport_->sendCommand(FLASH_QUAD_MODE, nullptr, &error);
-    if (!ok) {
-        qWarning() << "Failed to switch flash back to quad mode:" << error;
+    if (!transport_->sendCommand(FLASH_QUAD_MODE, nullptr, errorString)) {
+        return false;
     }
+
     flashInSpiMode_ = false;
-    return ok;
+    return true;
 }
 
 bool RomfsDevice::restartRomfs(QString *errorString)
@@ -482,13 +524,19 @@ bool RomfsDevice::runRomfsOperation(const std::function<bool(QString *)> &operat
         return false;
     }
 
-    QString opError;
-    bool ok = operation(errorString ? errorString : &opError);
+    QString internalError;
+    QString *targetError = errorString ? errorString : &internalError;
+    bool ok = operation(targetError);
+    const QString operationError = targetError->isEmpty() ? lastError_ : *targetError;
 
-    leaveSpiMode();
+    QString leaveError;
+    if (!leaveSpiMode(&leaveError)) {
+        setError(combineErrors(ok ? QString() : operationError, leaveError), targetError);
+        return false;
+    }
 
-    if (!ok && errorString && errorString->isEmpty()) {
-        *errorString = opError;
+    if (!ok && targetError->isEmpty()) {
+        setError(operationError, targetError);
     }
 
     return ok;
@@ -534,6 +582,23 @@ QVector<RomfsEntry> RomfsDevice::readDirectory(const QString &path, QString *err
     } while (romfs_list_dir(&file, false, &dir, true) == ROMFS_NOERR);
 
     return entries;
+}
+
+void RomfsDevice::resetConnectionState(bool emitSignal)
+{
+    const bool wasConnected = (currentTransport_ != TransportType::None);
+
+    registerRomfsTransport(nullptr);
+    transport_.reset();
+    currentTransport_ = TransportType::None;
+    flashInSpiMode_ = false;
+    cartInfo_ = {};
+    flashMap_.clear();
+    flashList_.clear();
+
+    if (emitSignal && wasConnected) {
+        emit connectionStateChanged(false);
+    }
 }
 
 void RomfsDevice::setError(const QString &message, QString *errorString)

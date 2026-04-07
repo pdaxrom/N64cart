@@ -66,11 +66,12 @@ signals:
 private:
     bool ensureTransport(QString *errorString);
     bool enterSpiMode(QString *errorString);
-    bool leaveSpiMode();
+    bool leaveSpiMode(QString *errorString = nullptr);
     bool restartRomfs(QString *errorString);
     bool runRomfsOperation(const std::function<bool(QString *)> &operation, QString *errorString);
     QVector<RomfsEntry> readDirectory(const QString &path, QString *errorString);
     QByteArray normalizePath(const QString &path) const;
+    void resetConnectionState(bool emitSignal = true);
     void setError(const QString &message, QString *errorString = nullptr);
 
     TransportType currentTransport_ = TransportType::None;
