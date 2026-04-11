@@ -84,7 +84,7 @@ static int num_files = 0;
 static int menu_sel = 0;
 
 #define ROMFS_PATH_MAX 256
-#define CLEAN_INIT
+static bool consumer_mode = true;
 
 static int dir_depth = 0; // 0 == root
 static char current_path[ROMFS_PATH_MAX];
@@ -493,6 +493,16 @@ static int file_entry_cmp(const void *lhs, const void *rhs)
     return strcasecmp(a->name, b->name);
 }
 
+static bool has_extension(const char *filename, const char *ext)
+{
+    if (!filename || !ext) return false;
+
+    const char *dot = strrchr(filename, '.');
+    if (!dot) return false;
+
+    return strcmp(dot, ext) == 0;
+}
+
 static void refresh_file_list(void)
 {
     clear_file_list();
@@ -519,6 +529,15 @@ static void refresh_file_list(void)
         if (base_name && base_name[0] != '\0' && strcmp(base_name, ".") != 0 && strcmp(base_name, "..") != 0) {
             if (num_files >= (int)(sizeof(files) / sizeof(files[0]))) {
                 break;
+            }
+
+            if (consumer_mode) {
+                if (has_extension(base_name, ".z64")) {
+                    if (!strcmp(base_name, "n64cart-manager.z64")) goto SKIP;
+                }
+                else {
+                    goto SKIP;
+                }
             }
 
             char path_buf[ROMFS_PATH_MAX];
@@ -572,6 +591,7 @@ static void refresh_file_list(void)
             }
         }
 
+        SKIP:;
         res = dir_findnext(dir_path, &dir_entry);
     }
 
@@ -1036,8 +1056,14 @@ int main(void)
         }
 
         if (do_step == STEP_LOAD_BACKGROUND) {
-            static const char *save_data_txt = "Loading background...";
-            graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            if (consumer_mode) {
+                static const char *save_data_txt = "Loading...";
+                graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            }
+            else {
+                static const char *save_data_txt = "Loading background...";
+                graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            }
             display_show(disp);
 
             bg_img = image_load("background.jpg", scr_width, scr_height);
@@ -1199,7 +1225,7 @@ int main(void)
         }
 
         /* Text */
-        if (!settings.consumer_mode) {
+        if (!consumer_mode) {
             graphics_draw_text(disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
             graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
 
@@ -1295,7 +1321,7 @@ int main(void)
             continue;
         }
 #ifndef NO_FILE_DELETION
-        else if (pressed.c_left && !settings.consumer_mode) {
+        else if (pressed.c_left && !consumer_mode) {
             if (files[menu_sel].is_parent && files[menu_sel].is_dir) {
                 display_show(disp);
                 continue;
@@ -1396,7 +1422,7 @@ int main(void)
                         }
                     }
                 }
-                if (settings.consumer_mode) sprintf(tStr, "*");
+                if (consumer_mode) sprintf(tStr, "   *");
                 else sprintf(tStr, "%02d:*", i);
             } else {
                 if (files[i].scroll_pos != 0) {
@@ -1406,7 +1432,7 @@ int main(void)
                     files[i].scroll_dir = 1;
                     files[i].scroll_delay = FILE_NAME_SCROLL_DELAY;
                 }
-                if (settings.consumer_mode) sprintf(tStr, " ");
+                if (consumer_mode) sprintf(tStr, "    ");
                 else sprintf(tStr, "%02d: ", i);
             }
             graphics_draw_text(disp, 40 * scr_scale, (120 + (i - first_file) * 10) * scr_scale, tStr);
