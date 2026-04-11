@@ -32,6 +32,7 @@
 #include "syslog.h"
 #include "md5.h"
 #include "imgviewer.h"
+#include "settings.h"
 
 #define FILE_NAME_SCROLL_DELAY  (5)
 #define KEYS_DELAY (3)
@@ -877,6 +878,11 @@ int main(void)
 {
     syslog(LOG_INFO, "N64cart manager fw v%d.%d (" GIT_HASH ") by pdaXrom!", FIRMWARE_VERSION / 256, FIRMWARE_VERSION % 256);
     usbd_start();
+
+    boot_settings settings = {0};
+    if (!boot_settings_load(&settings)) {
+        syslog(LOG_INFO, "No settings loaded");
+    }
 
     bool is_hires = is_memory_expanded();
 
