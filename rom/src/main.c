@@ -36,7 +36,6 @@
 
 #define FILE_NAME_SCROLL_DELAY  (5)
 #define KEYS_DELAY (3)
-#define AUTO_BOOT
 
 static void update_romfs_free_text(void);
 static void update_path_text(void);
@@ -44,14 +43,14 @@ static void update_path_text(void);
 enum {
     STEP_LOGO = 0,
     STEP_ROMFS_INIT,
+    STEP_LOAD_SETTINGS,
     STEP_LOAD_BACKGROUND,
     STEP_SAVE_GAMESAVE,
     //STEP_USB_INIT,
     STEP_FINISH,
 
-#ifdef AUTO_BOOT
+    // used in auto_boot mode
     STEP_FAILED_MENU
-#endif
 };
 
 static const struct flash_chip flash_chip[] = {
@@ -94,6 +93,7 @@ static char txt_current_path[ROMFS_PATH_MAX];
 static uint8_t __attribute__((aligned(16))) save_data[131072];
 
 static sprite_t *bg_img = NULL;
+boot_settings settings = {0};
 
 static int do_step = STEP_LOGO;
 
@@ -879,11 +879,6 @@ int main(void)
     syslog(LOG_INFO, "N64cart manager fw v%d.%d (" GIT_HASH ") by pdaXrom!", FIRMWARE_VERSION / 256, FIRMWARE_VERSION % 256);
     usbd_start();
 
-    boot_settings settings = {0};
-    if (!boot_settings_load(&settings)) {
-        syslog(LOG_INFO, "No settings loaded");
-    }
-
     bool is_hires = is_memory_expanded();
 
     display_init(is_hires ? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
@@ -957,11 +952,8 @@ int main(void)
             graphics_fill_screen(disp, 0);
         }
 
-#ifdef AUTO_BOOT
-        graphics_set_color(0x00000000, 0x00000000);
-#else
-        graphics_set_color(0xeeeeee00, 0x00000000);
-#endif
+        if (settings.auto_boot) graphics_set_color(0x00000000, 0x00000000);
+        else graphics_set_color(0xeeeeee00, 0x00000000);
 
         if (do_step == STEP_LOGO) {
             static int i = 0;
@@ -1023,7 +1015,15 @@ int main(void)
             update_romfs_free_text();
             update_path_text();
 
-            do_step = STEP_LOAD_BACKGROUND;
+            do_step = STEP_LOAD_SETTINGS;
+            continue;
+        }
+
+        if (do_step == STEP_LOAD_SETTINGS) {
+            if (!boot_settings_load(&settings)) {
+                syslog(LOG_INFO, "No settings loaded");
+            }
+            do_step = settings.auto_boot ? STEP_SAVE_GAMESAVE : STEP_LOAD_BACKGROUND;
             continue;
         }
 
@@ -1163,16 +1163,16 @@ int main(void)
             }
         }
 
-#ifdef AUTO_BOOT
-        if (do_step == STEP_FINISH) {
-            run_rom(disp, "/boot.z64", NULL, 0, 0);
+        if (do_step == STEP_FINISH && settings.auto_boot) {
+            run_rom(disp, "boot.z64", NULL, 0, 0);
 
             do_step = STEP_FAILED_MENU;
+            settings.auto_boot = false;
+            graphics_set_color(0xeeeeee00, 0x00000000);
             static const char *fopen_error_1 = "Can't open ROM file!";
             graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
             continue;
         }
-#endif
 
         /* Scan for User input */
         joypad_poll();

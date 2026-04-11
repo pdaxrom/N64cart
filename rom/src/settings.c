@@ -32,21 +32,24 @@ static void build_boot_settings_prefixed_path(const char *path, char *out, size_
 
 bool boot_settings_load(boot_settings* settings) {
     memset(settings, 0, sizeof(boot_settings));
-    char path[ROMFS_PATH_MAX + 8];
-    build_boot_settings_prefixed_path("settings.txt", path, sizeof(path));
 
-    FILE *file = fopen(path, "r");
-    if (!file) {
+    char path[ROMFS_PATH_MAX + 8];
+    const char *file_name = "settings.txt";
+    build_boot_settings_prefixed_path(file_name, path, sizeof(path));
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
         syslog(LOG_ERR, "cannot open settings %s (errno %d)", path, errno);
         return false;
     }
 
-    char line[32];
-    while (fgets(line, sizeof(line), file) != NULL) {
+    char line[32] = {0};
+    while (fgets(line, sizeof(line), fp) != NULL) {
         if (!strcmp(line, "auto_boot")) settings->auto_boot = true;
         else if (!strcmp(line, "consumer_mode")) settings->consumer_mode = true;
+        memset(line, 0, sizeof(line));
     }
-
-    fclose(file);
+    settings->auto_boot = true;
+    fclose(fp);
     return true;
 }
