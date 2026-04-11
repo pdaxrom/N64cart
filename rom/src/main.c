@@ -70,6 +70,7 @@ static int scr_height;
 static int scr_scale;
 
 static struct File_Rec {
+    char* friendly_name;
     char *name;       // base entry name (no path)
     char *path;       // full path from root (no trailing slash)
     size_t size;
@@ -84,7 +85,6 @@ static int num_files = 0;
 static int menu_sel = 0;
 
 #define ROMFS_PATH_MAX 256
-static bool consumer_mode = true;
 
 static int dir_depth = 0; // 0 == root
 static char current_path[ROMFS_PATH_MAX];
@@ -94,7 +94,8 @@ static char txt_current_path[ROMFS_PATH_MAX];
 static uint8_t __attribute__((aligned(16))) save_data[131072];
 
 static sprite_t *bg_img = NULL;
-boot_settings settings = {0};
+static bool consumer_mode = true;
+static bool auto_boot = false;
 
 static int do_step = STEP_LOGO;
 
@@ -503,6 +504,14 @@ static bool has_extension(const char *filename, const char *ext)
     return strcmp(dot, ext) == 0;
 }
 
+static void remove_extension(char *filename)
+{
+    if (!filename) return;
+
+    char *dot = strrchr(filename, '.');
+    if (dot && dot != filename) *dot = '\0';
+}
+
 static void refresh_file_list(void)
 {
     clear_file_list();
@@ -531,6 +540,10 @@ static void refresh_file_list(void)
                 break;
             }
 
+            // detect auto-boot
+            if (!strcmp(base_name, "boot.z64")) auto_boot = true;
+
+            // reduce noise for consume mode
             if (consumer_mode) {
                 if (has_extension(base_name, ".z64")) {
                     if (!strcmp(base_name, "n64cart-manager.z64")) goto SKIP;
@@ -578,6 +591,10 @@ static void refresh_file_list(void)
                     free(path_dup);
                     break;
                 }
+
+                char *friendly_name = strdup(base_name);
+                remove_extension(friendly_name);
+                files[num_files].friendly_name = friendly_name;
 
                 files[num_files].name = name_dup;
                 files[num_files].path = path_dup;
@@ -954,11 +971,7 @@ int main(void)
 
     bool hide_menu = false;
 
-#ifdef CLEAN_INIT
-    do_step = STEP_ROMFS_INIT;
-#else
-    do_step = STEP_LOGO;
-#endif
+    do_step = consumer_mode ? STEP_ROMFS_INIT : STEP_LOGO;
 
     int keys_delay_counter = 0;
 
@@ -977,7 +990,7 @@ int main(void)
             graphics_fill_screen(disp, 0);
         }
 
-        if (settings.auto_boot) graphics_set_color(0x00000000, 0x00000000);
+        if (auto_boot) graphics_set_color(0x00000000, 0x00000000);
         else graphics_set_color(0xeeeeee00, 0x00000000);
 
         if (do_step == STEP_LOGO) {
@@ -1000,10 +1013,10 @@ int main(void)
         }
 
         if (do_step == STEP_ROMFS_INIT) {
-#ifndef CLEAN_INIT
-            static const char *save_data_txt = "ROM FS starting...";
-            graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
-#endif
+            if (!consumer_mode) {
+                static const char *save_data_txt = "ROM FS starting...";
+                graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            }
             display_show(disp);
 
             uint32_t flash_map_size, flash_list_size;
@@ -1047,11 +1060,11 @@ int main(void)
         }
 
         if (do_step == STEP_LOAD_SETTINGS) {
-            if (!boot_settings_load(&settings)) {
+            /*if (!boot_settings_load(&settings)) {
                 syslog(LOG_INFO, "No settings loaded");
-            }
+            }*/
             display_show(disp);
-            do_step = settings.auto_boot ? STEP_SAVE_GAMESAVE : STEP_LOAD_BACKGROUND;
+            do_step = auto_boot ? STEP_SAVE_GAMESAVE : STEP_LOAD_BACKGROUND;
             continue;
         }
 
@@ -1197,12 +1210,12 @@ int main(void)
             }
         }
 
-        if (settings.auto_boot) {
+        if (auto_boot) {
             if (do_step == STEP_FINISH) {
                 run_rom(disp, "boot.z64", NULL, 0, 0);
 
                 do_step = STEP_FAILED_MENU;
-                settings.auto_boot = false;
+                auto_boot = false;
                 graphics_set_color(0xeeeeee00, 0x00000000);
                 static const char *fopen_error_1 = "Can't open ROM file!";
                 graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
@@ -1397,12 +1410,13 @@ int main(void)
         total_files_to_show = (total_files_to_show > num_files) ? num_files : total_files_to_show;
 
         for (int i = first_file; i < total_files_to_show; i++) {
-            const char *label = files[i].name ? files[i].name : "";
+            const char* name = consumer_mode ? files[i].friendly_name : files[i].name;
+            const char *label = name ? name : "";
             char display_buf[ROMFS_MAX_NAME_LEN + 4];
             if (files[i].is_parent) {
                 label = "..";
             } else if (files[i].is_dir) {
-                snprintf(display_buf, sizeof(display_buf), "%s/", files[i].name);
+                snprintf(display_buf, sizeof(display_buf), "%s/", name);
                 label = display_buf;
             }
 
