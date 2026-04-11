@@ -45,11 +45,12 @@ bool boot_settings_load(boot_settings* settings) {
 
     char line[32] = {0};
     while (fgets(line, sizeof(line), fp) != NULL) {
+        line[strcspn(line, "\r\n")] = '\0';
         if (!strcmp(line, "auto_boot")) settings->auto_boot = true;
         else if (!strcmp(line, "consumer_mode")) settings->consumer_mode = true;
         memset(line, 0, sizeof(line));
     }
-    settings->auto_boot = true;
+
     fclose(fp);
     return true;
 }

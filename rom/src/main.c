@@ -84,6 +84,7 @@ static int num_files = 0;
 static int menu_sel = 0;
 
 #define ROMFS_PATH_MAX 256
+#define CLEAN_INIT
 
 static int dir_depth = 0; // 0 == root
 static char current_path[ROMFS_PATH_MAX];
@@ -933,7 +934,11 @@ int main(void)
 
     bool hide_menu = false;
 
+#ifdef CLEAN_INIT
+    do_step = STEP_ROMFS_INIT;
+#else
     do_step = STEP_LOGO;
+#endif
 
     int keys_delay_counter = 0;
 
@@ -975,8 +980,10 @@ int main(void)
         }
 
         if (do_step == STEP_ROMFS_INIT) {
+#ifndef CLEAN_INIT
             static const char *save_data_txt = "ROM FS starting...";
             graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+#endif
             display_show(disp);
 
             uint32_t flash_map_size, flash_list_size;
@@ -1023,6 +1030,7 @@ int main(void)
             if (!boot_settings_load(&settings)) {
                 syslog(LOG_INFO, "No settings loaded");
             }
+            display_show(disp);
             do_step = settings.auto_boot ? STEP_SAVE_GAMESAVE : STEP_LOAD_BACKGROUND;
             continue;
         }
@@ -1163,15 +1171,17 @@ int main(void)
             }
         }
 
-        if (do_step == STEP_FINISH && settings.auto_boot) {
-            run_rom(disp, "boot.z64", NULL, 0, 0);
+        if (settings.auto_boot) {
+            if (do_step == STEP_FINISH) {
+                run_rom(disp, "boot.z64", NULL, 0, 0);
 
-            do_step = STEP_FAILED_MENU;
-            settings.auto_boot = false;
-            graphics_set_color(0xeeeeee00, 0x00000000);
-            static const char *fopen_error_1 = "Can't open ROM file!";
-            graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
-            continue;
+                do_step = STEP_FAILED_MENU;
+                settings.auto_boot = false;
+                graphics_set_color(0xeeeeee00, 0x00000000);
+                static const char *fopen_error_1 = "Can't open ROM file!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+                continue;
+            }
         }
 
         /* Scan for User input */
@@ -1189,16 +1199,18 @@ int main(void)
         }
 
         /* Text */
-        graphics_draw_text(disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
-        graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
+        if (!settings.consumer_mode) {
+            graphics_draw_text(disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
+            graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
 
-        graphics_draw_text(disp, valign(txt_tv_type_msg), 30 * scr_scale, txt_tv_type_msg);
-        graphics_draw_text(disp, valign(txt_rom_info), 40 * scr_scale, txt_rom_info);
-        graphics_draw_text(disp, valign(txt_romfs_free), 50 * scr_scale, txt_romfs_free);
-        graphics_draw_text(disp, valign(txt_current_path), 60 * scr_scale, txt_current_path);
+            graphics_draw_text(disp, valign(txt_tv_type_msg), 30 * scr_scale, txt_tv_type_msg);
+            graphics_draw_text(disp, valign(txt_rom_info), 40 * scr_scale, txt_rom_info);
+            graphics_draw_text(disp, valign(txt_romfs_free), 50 * scr_scale, txt_romfs_free);
+            graphics_draw_text(disp, valign(txt_current_path), 60 * scr_scale, txt_current_path);
 
-        graphics_draw_text(disp, valign(txt_menu_info_1), 90 * scr_scale, txt_menu_info_1);
-        graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);
+            graphics_draw_text(disp, valign(txt_menu_info_1), 90 * scr_scale, txt_menu_info_1);
+            graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);
+        }
 
         if (pressed.a) {
             graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
@@ -1283,7 +1295,7 @@ int main(void)
             continue;
         }
 #ifndef NO_FILE_DELETION
-        else if (pressed.c_left) {
+        else if (pressed.c_left && !settings.consumer_mode) {
             if (files[menu_sel].is_parent && files[menu_sel].is_dir) {
                 display_show(disp);
                 continue;
@@ -1384,7 +1396,8 @@ int main(void)
                         }
                     }
                 }
-                sprintf(tStr, "%02d:*", i);
+                if (settings.consumer_mode) sprintf(tStr, "*");
+                else sprintf(tStr, "%02d:*", i);
             } else {
                 if (files[i].scroll_pos != 0) {
                     files[i].scroll_pos += (files[i].scroll_pos > 0) ? -1 : 1;
@@ -1393,7 +1406,8 @@ int main(void)
                     files[i].scroll_dir = 1;
                     files[i].scroll_delay = FILE_NAME_SCROLL_DELAY;
                 }
-                sprintf(tStr, "%02d: ", i);
+                if (settings.consumer_mode) sprintf(tStr, " ");
+                else sprintf(tStr, "%02d: ", i);
             }
             graphics_draw_text(disp, 40 * scr_scale, (120 + (i - first_file) * 10) * scr_scale, tStr);
             surface_t text_fb = surface_make_sub(disp, (40 + 4 * font_width) * scr_scale, (120 + (i - first_file) * 10) * scr_scale, font_width * 26 * scr_scale, 10 * scr_scale);
