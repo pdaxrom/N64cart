@@ -1,0 +1,12 @@
+{
+  "name": "romfs-gui",
+  "version-string": "1.0.0",
+  "builtin-baseline": "4b77da7fed37817f124936239197833469f1b9a8",
+  "dependencies": [
+    "libusb",
+    {
+      "name": "pkgconf",
+      "host": true
+    }
+  ]
+}

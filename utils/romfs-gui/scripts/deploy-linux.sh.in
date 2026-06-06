@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="@PROJECT_NAME@"
+DEFAULT_BINARY="@CMAKE_CURRENT_BINARY_DIR@/@ROMFS_GUI_APP_NAME@"
+QT_QMAKE_EXECUTABLE="@QT_QMAKE_EXECUTABLE@"
+LIBUSB_LIBDIR="@LIBUSB_LIBDIR@"
+
+usage() {
+    cat <<EOF
+Usage: $0 [app-binary] [bundle-dir] [archive-path]
+
+Defaults:
+  app-binary   ${DEFAULT_BINARY}
+  bundle-dir   @CMAKE_CURRENT_BINARY_DIR@/deploy/${APP_NAME}-linux-portable
+  archive-path @CMAKE_CURRENT_BINARY_DIR@/deploy/${APP_NAME}-linux-portable.tar.gz
+EOF
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+APP_BINARY_PATH="${1:-$DEFAULT_BINARY}"
+BUNDLE_ROOT="${2:-@CMAKE_CURRENT_BINARY_DIR@/deploy/${APP_NAME}-linux-portable}"
+ARCHIVE_PATH="${3:-@CMAKE_CURRENT_BINARY_DIR@/deploy/${APP_NAME}-linux-portable.tar.gz}"
+
+if [[ ! -x "$APP_BINARY_PATH" ]]; then
+    echo "error: app binary not found or not executable: $APP_BINARY_PATH" >&2
+    exit 1
+fi
+
+if [[ -z "$QT_QMAKE_EXECUTABLE" || ! -x "$QT_QMAKE_EXECUTABLE" ]]; then
+    echo "error: Qt qmake executable is not configured: $QT_QMAKE_EXECUTABLE" >&2
+    exit 1
+fi
+
+QT_BIN_DIR="$(cd "$(dirname "$QT_QMAKE_EXECUTABLE")" && pwd)"
+QT_ROOT="$(cd "${QT_BIN_DIR}/.." && pwd)"
+DEPLOY_DIR="$(dirname "$BUNDLE_ROOT")"
+APP_DIR="${BUNDLE_ROOT}/app"
+APP_BINARY_NAME="$(basename "$APP_BINARY_PATH")"
+APP_BINARY_DIR="$(cd "$(dirname "$APP_BINARY_PATH")" && pwd)"
+
+echo "Deploying ${APP_BINARY_NAME}"
+echo "  binary:  ${APP_BINARY_PATH}"
+echo "  qt root: ${QT_ROOT}"
+echo "  bundle:  ${BUNDLE_ROOT}"
+
+rm -rf "$BUNDLE_ROOT"
+mkdir -p "$APP_DIR/lib" "$APP_DIR/plugins" "$APP_DIR/qml" "$APP_DIR/translations"
+
+cp -a "$APP_BINARY_PATH" "${APP_DIR}/${APP_BINARY_NAME}"
+
+if [[ -d "${APP_BINARY_DIR}/translations" ]]; then
+    cp -a "${APP_BINARY_DIR}/translations/." "${APP_DIR}/translations/"
+fi
+
+if [[ -d "${QT_ROOT}/plugins" ]]; then
+    cp -a "${QT_ROOT}/plugins/." "${APP_DIR}/plugins/"
+fi
+
+if [[ -d "${QT_ROOT}/qml" ]]; then
+    cp -a "${QT_ROOT}/qml/." "${APP_DIR}/qml/"
+fi
+
+if [[ -d "${QT_ROOT}/translations" ]]; then
+    cp -a "${QT_ROOT}/translations/." "${APP_DIR}/translations/"
+fi
+
+while IFS= read -r -d '' lib_path; do
+    cp -a "$lib_path" "${APP_DIR}/lib/"
+done < <(
+    find "${QT_ROOT}/lib" -maxdepth 1 \
+        \( -type f -o -type l \) \
+        \( -name 'libQt6*.so*' -o -name 'libicu*.so*' \) \
+        -print0
+)
+
+if [[ -n "${LIBUSB_LIBDIR}" && -d "${LIBUSB_LIBDIR}" ]]; then
+    while IFS= read -r -d '' lib_path; do
+        cp -a "$lib_path" "${APP_DIR}/lib/"
+    done < <(
+        find "${LIBUSB_LIBDIR}" -maxdepth 1 \
+            \( -type f -o -type l \) \
+            -name 'libusb-1.0.so*' \
+            -print0
+    )
+fi
+
+cat > "${APP_DIR}/qt.conf" <<'EOF'
+[Paths]
+Prefix=.
+Libraries=lib
+Plugins=plugins
+QmlImports=qml
+Imports=qml
+Translations=translations
+EOF
+
+cat > "${BUNDLE_ROOT}/romfs-manager" <<'EOF'
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+APP_DIR="${SCRIPT_DIR}/app"
+
+export LD_LIBRARY_PATH="${APP_DIR}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export QT_PLUGIN_PATH="${APP_DIR}/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="${APP_DIR}/plugins/platforms"
+export QML2_IMPORT_PATH="${APP_DIR}/qml"
+export QT_QML_IMPORT_PATH="${APP_DIR}/qml"
+export QT_TRANSLATION_PATH="${APP_DIR}/translations"
+
+exec "${APP_DIR}/@ROMFS_GUI_APP_NAME@" "$@"
+EOF
+chmod +x "${BUNDLE_ROOT}/romfs-manager"
+
+mkdir -p "$DEPLOY_DIR"
+rm -f "$ARCHIVE_PATH"
+tar -C "$DEPLOY_DIR" -czf "$ARCHIVE_PATH" "$(basename "$BUNDLE_ROOT")"
+
+echo "Portable bundle created:"
+echo "  dir:     ${BUNDLE_ROOT}"
+echo "  archive: ${ARCHIVE_PATH}"

@@ -2,16 +2,38 @@ cmake_minimum_required(VERSION 3.16)
 
 project(romfs_gui LANGUAGES C CXX)
 
+set(ROMFS_GUI_APP_NAME "ROMFS Manager")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-option(ENABLE_SYSTEM_LIBUSB "Enable system libusb" OFF)
-
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network LinguistTools)
 find_package(Git QUIET)
+set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH ON)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
+pkg_get_variable(LIBUSB_PREFIX libusb-1.0 prefix)
+pkg_get_variable(LIBUSB_LIBDIR libusb-1.0 libdir)
+
+set(LIBUSB_RUNTIME_FILES "")
+if(WIN32 AND LIBUSB_PREFIX)
+    file(GLOB LIBUSB_RUNTIME_FILES CONFIGURE_DEPENDS
+        "${LIBUSB_PREFIX}/bin/libusb-1.0.dll"
+        "${LIBUSB_PREFIX}/bin/liblibusb-1.0.dll"
+    )
+elseif(APPLE AND LIBUSB_LIBDIR)
+    file(GLOB LIBUSB_RUNTIME_FILES CONFIGURE_DEPENDS
+        "${LIBUSB_LIBDIR}/libusb-1.0*.dylib"
+    )
+elseif(UNIX AND LIBUSB_LIBDIR)
+    file(GLOB LIBUSB_RUNTIME_FILES CONFIGURE_DEPENDS
+        "${LIBUSB_LIBDIR}/libusb-1.0.so*"
+    )
+endif()
+list(REMOVE_DUPLICATES LIBUSB_RUNTIME_FILES)
 
 set(ROMFS_GUI_GIT_HASH "")
 if(GIT_FOUND)
@@ -24,32 +46,6 @@ if(GIT_FOUND)
     )
 endif()
 
-if(WIN32)
-    set(LIBUSB_INCLUDE_DIRS "vcpkg/installed/x64-windows/include/libusb-1.0")
-    set(LIBUSB_LIBRARY_DIRS "vcpkg/installed/x64-windows/lib")
-    set(LIBUSB_LIBRARIES "usb-1.0")
-elseif(APPLE AND NOT ENABLE_SYSTEM_LIBUSB)
-    include(ExternalProject)
-
-    ExternalProject_Add(
-        libusb
-        SOURCE_DIR ${CMAKE_SOURCE_DIR}/../libusb-1.0.26
-        BINARY_DIR ${CMAKE_BINARY_DIR}/_build/libusb-1.0.26
-        INSTALL_DIR ${CMAKE_BINARY_DIR}/_install
-
-        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR}/_build/libusb-1.0.26 ${CMAKE_SOURCE_DIR}/../libusb-1.0.26/configure --prefix=${CMAKE_BINARY_DIR}/_install
-        BUILD_COMMAND make
-        INSTALL_COMMAND make install
-    )
-
-    set(LIBUSB_INCLUDE_DIRS "${CMAKE_BINARY_DIR}/_install/include/libusb-1.0")
-    set(LIBUSB_LIBRARY_DIRS "${CMAKE_BINARY_DIR}/_install/lib")
-    set(LIBUSB_LIBRARIES "usb-1.0")
-else()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
-endif()
-
 set(ROMFS_SOURCES
     ../../fw/romfs/romfs.c
     ../simple-connection-lib/src/tcp.c
@@ -60,6 +56,7 @@ set(ROMFS_SOURCES
 qt_add_executable(romfs-gui
     WIN32
     MACOSX_BUNDLE
+    MANUAL_FINALIZATION
     main.cpp
     mainwindow.cpp
     mainwindow.h
@@ -140,15 +137,11 @@ qt_add_lrelease(romfs-gui
 # MANUAL_FINALIZATION
 
 if(APPLE)
-    if(NOT ENABLE_SYSTEM_LIBUSB)
-        add_dependencies(romfs-gui libusb)
-    endif()
-
     set_target_properties(romfs-gui PROPERTIES
-        OUTPUT_NAME "ROMFS Manager"
+        OUTPUT_NAME "${ROMFS_GUI_APP_NAME}"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.pdaxrom.romfsmanager"
-        MACOSX_BUNDLE_BUNDLE_NAME "ROMFS Manager"
-        MACOSX_BUNDLE_INFO_STRING "ROMFS Manager"
+        MACOSX_BUNDLE_BUNDLE_NAME "${ROMFS_GUI_APP_NAME}"
+        MACOSX_BUNDLE_INFO_STRING "${ROMFS_GUI_APP_NAME}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
         MACOSX_BUNDLE_BUNDLE_VERSION "1.0"
         MACOSX_BUNDLE_ICON_FILE "icon.icns"
@@ -157,31 +150,9 @@ if(APPLE)
     set(MACOSX_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/icons/icon.icns")
     set_source_files_properties(${MACOSX_ICON_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
     target_sources(romfs-gui PRIVATE ${MACOSX_ICON_FILE})
-
-    if(ROMFS_QM_FILES OR QTBASE_QM_FILES)
-        set(_translation_dest "$<TARGET_BUNDLE_DIR:romfs-gui>/Contents/Resources/translations")
-        set(_translation_commands
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${_translation_dest}"
-        )
-        if(ROMFS_QM_FILES)
-            list(APPEND _translation_commands
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ROMFS_QM_FILES} "${_translation_dest}"
-            )
-        endif()
-        if(QTBASE_QM_FILES)
-            list(APPEND _translation_commands
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${QTBASE_QM_FILES} "${_translation_dest}"
-            )
-        endif()
-        add_custom_command(TARGET romfs-gui POST_BUILD
-            ${_translation_commands}
-            COMMENT "Copying translations into app bundle"
-            VERBATIM
-        )
-    endif()
 else()
     set_target_properties(romfs-gui PROPERTIES
-        OUTPUT_NAME "ROMFS Manager"
+        OUTPUT_NAME "${ROMFS_GUI_APP_NAME}"
     )
 endif()
 
@@ -190,50 +161,168 @@ target_include_directories(romfs-gui PRIVATE
     ../../fw/romfs
     ../simple-connection-lib/src
     ../
-    ${LIBUSB_INCLUDE_DIRS}
-)
-
-target_link_directories(romfs-gui PRIVATE
-    ${LIBUSB_LIBRARY_DIRS}
 )
 
 target_link_libraries(romfs-gui PRIVATE
     Qt6::Widgets
     Qt6::Network
-    ${LIBUSB_LIBRARIES}
+    PkgConfig::LIBUSB
 )
 
 if(ROMFS_GUI_GIT_HASH)
     target_compile_definitions(romfs-gui PRIVATE ROMFS_GUI_GIT_HASH="${ROMFS_GUI_GIT_HASH}")
 endif()
 
+if(LIBUSB_LIBDIR AND UNIX)
+    set_property(TARGET romfs-gui APPEND PROPERTY BUILD_RPATH "${LIBUSB_LIBDIR}")
+endif()
+
+if(ROMFS_QM_FILES OR QTBASE_QM_FILES)
+    if(APPLE)
+        set(_translation_dest "$<TARGET_BUNDLE_DIR:romfs-gui>/Contents/Resources/translations")
+    else()
+        set(_translation_dest "$<TARGET_FILE_DIR:romfs-gui>/translations")
+    endif()
+
+    set(_translation_commands
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_translation_dest}"
+    )
+    if(ROMFS_QM_FILES)
+        list(APPEND _translation_commands
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ROMFS_QM_FILES} "${_translation_dest}"
+        )
+    endif()
+    if(QTBASE_QM_FILES)
+        list(APPEND _translation_commands
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${QTBASE_QM_FILES} "${_translation_dest}"
+        )
+    endif()
+
+    add_custom_command(TARGET romfs-gui POST_BUILD
+        ${_translation_commands}
+        COMMENT "Copying translations into runtime directory"
+        VERBATIM
+    )
+endif()
+
 if (WIN32)
     target_link_libraries(romfs-gui PRIVATE ws2_32)
     target_sources(romfs-gui PRIVATE romfs-gui.rc)
+    if(LIBUSB_RUNTIME_FILES)
+        add_custom_command(TARGET romfs-gui POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${LIBUSB_RUNTIME_FILES}
+                    "$<TARGET_FILE_DIR:romfs-gui>"
+            COMMENT "Copying libusb runtime DLL"
+            VERBATIM
+        )
+    endif()
 endif()
 
-# qt_finalize_executable(romfs-gui)
+set(_qt_bin_dir "")
+set(_qt_qmake "")
+if(TARGET Qt6::qmake)
+    get_target_property(_qt_qmake Qt6::qmake IMPORTED_LOCATION)
+endif()
 
-# set(QT_DEPLOY_BIN_DIR "")
-# if(TARGET Qt6::qmake)
-#     get_target_property(QT6_QMAKE_PATH Qt6::qmake IMPORTED_LOCATION)
-#     if(QT6_QMAKE_PATH)
-#         get_filename_component(QT_DEPLOY_BIN_DIR "${QT6_QMAKE_PATH}" DIRECTORY)
-#     endif()
-# endif()
+set(QT_QMAKE_EXECUTABLE "${_qt_qmake}")
+if(_qt_qmake)
+    get_filename_component(_qt_bin_dir "${_qt_qmake}" DIRECTORY)
+endif()
 
-# if(APPLE AND QT_DEPLOY_BIN_DIR)
-#     set(QT_DEPLOY_TOOL "${QT_DEPLOY_BIN_DIR}/macdeployqt")
-#     add_custom_command(TARGET romfs-gui POST_BUILD
-#         COMMAND "${QT_DEPLOY_TOOL}" "$<TARGET_BUNDLE_DIR:romfs-gui>" -always-overwrite
-#         COMMENT "Deploying Qt frameworks into app bundle"
-#         VERBATIM
-#     )
-# elseif(WIN32 AND QT_DEPLOY_BIN_DIR)
-#     set(QT_DEPLOY_TOOL "${QT_DEPLOY_BIN_DIR}/windeployqt")
-#     add_custom_command(TARGET romfs-gui POST_BUILD
-#         COMMAND "${QT_DEPLOY_TOOL}" --no-translations --no-opengl-sw "$<TARGET_FILE:romfs-gui>"
-#         COMMENT "Deploying Qt runtime dependencies"
-#         VERBATIM
-#     )
-# endif()
+if(NOT QT_QMAKE_EXECUTABLE)
+    set(_qt_qmake_hints)
+    if(_qt_bin_dir)
+        list(APPEND _qt_qmake_hints "${_qt_bin_dir}")
+    endif()
+    if(Qt6_DIR)
+        get_filename_component(_qt_prefix_from_dir "${Qt6_DIR}" DIRECTORY)
+        get_filename_component(_qt_prefix_from_dir "${_qt_prefix_from_dir}" DIRECTORY)
+        get_filename_component(_qt_prefix_from_dir "${_qt_prefix_from_dir}" DIRECTORY)
+        list(APPEND _qt_qmake_hints "${_qt_prefix_from_dir}/bin")
+    endif()
+    foreach(_cmake_prefix IN LISTS CMAKE_PREFIX_PATH)
+        list(APPEND _qt_qmake_hints "${_cmake_prefix}/bin")
+    endforeach()
+
+    find_program(QT_QMAKE_EXECUTABLE
+        NAMES qmake qmake6 qmake-qt6
+        HINTS ${_qt_qmake_hints}
+    )
+    if(QT_QMAKE_EXECUTABLE AND NOT _qt_bin_dir)
+        get_filename_component(_qt_bin_dir "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
+    endif()
+endif()
+
+qt_finalize_executable(romfs-gui)
+
+if(WIN32)
+    find_program(QT_WINDEPLOYQT_EXECUTABLE
+        NAMES windeployqt
+        HINTS "${_qt_bin_dir}"
+    )
+    if(QT_WINDEPLOYQT_EXECUTABLE)
+        set(_deploy_commands
+            COMMAND "${QT_WINDEPLOYQT_EXECUTABLE}"
+                    "$<TARGET_FILE:romfs-gui>"
+        )
+        if(LIBUSB_RUNTIME_FILES)
+            list(APPEND _deploy_commands
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${LIBUSB_RUNTIME_FILES}
+                        "$<TARGET_FILE_DIR:romfs-gui>"
+            )
+        endif()
+        add_custom_target(deploy
+            ${_deploy_commands}
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            DEPENDS romfs-gui
+            COMMENT "Running windeployqt on ${ROMFS_GUI_APP_NAME}"
+            VERBATIM
+        )
+    endif()
+elseif(APPLE)
+    find_program(QT_MACDEPLOYQT_EXECUTABLE
+        NAMES macdeployqt
+        HINTS "${_qt_bin_dir}"
+    )
+    if(QT_MACDEPLOYQT_EXECUTABLE)
+        set(_deploy_commands
+            COMMAND "${QT_MACDEPLOYQT_EXECUTABLE}"
+                    "$<TARGET_BUNDLE_DIR:romfs-gui>"
+                    -no-strip
+        )
+        if(LIBUSB_RUNTIME_FILES)
+            set(_deploy_commands
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "$<TARGET_BUNDLE_DIR:romfs-gui>/Contents/Frameworks"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        ${LIBUSB_RUNTIME_FILES}
+                        "$<TARGET_BUNDLE_DIR:romfs-gui>/Contents/Frameworks"
+                ${_deploy_commands}
+            )
+        endif()
+        add_custom_target(deploy
+            ${_deploy_commands}
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            DEPENDS romfs-gui
+            COMMENT "Running macdeployqt on ${ROMFS_GUI_APP_NAME}"
+            VERBATIM
+        )
+    endif()
+elseif(UNIX)
+    set(ROMFS_GUI_LINUX_DEPLOY_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/deploy-linux.sh")
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/deploy-linux.sh.in
+                   ${ROMFS_GUI_LINUX_DEPLOY_SCRIPT}
+                   @ONLY)
+    add_custom_target(deploy
+        COMMAND bash "${ROMFS_GUI_LINUX_DEPLOY_SCRIPT}"
+                "$<TARGET_FILE:romfs-gui>"
+                "${CMAKE_CURRENT_BINARY_DIR}/deploy/${PROJECT_NAME}-linux-portable"
+                "${CMAKE_CURRENT_BINARY_DIR}/deploy/${PROJECT_NAME}-linux-portable.tar.gz"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        DEPENDS romfs-gui
+        COMMENT "Bundling portable Linux package for ${ROMFS_GUI_APP_NAME}"
+        VERBATIM
+    )
+endif()
