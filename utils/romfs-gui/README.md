@@ -79,7 +79,8 @@ cmake -B build-win -S . -G "Ninja" `
 cmake --build build-win
 ```
 
-Run `cmake --build build-win --target deploy` to execute `windeployqt` and copy `libusb` next to the `.exe`.
+Run `cmake --build build-win --target deploy` to execute `windeployqt`/`windeployqt6` and copy `libusb` next to the `.exe`.
+Running `windeployqt6.exe` manually deploys Qt runtime only; `libusb-1.0.dll` is copied by the project build/deploy logic.
 
 Use `cmake --build <build-dir> --target romfs-gui_lupdate` if you change strings; `romfs-gui_lrelease` regenerates QM files.
 

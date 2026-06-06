@@ -17,13 +17,83 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
 pkg_get_variable(LIBUSB_PREFIX libusb-1.0 prefix)
 pkg_get_variable(LIBUSB_LIBDIR libusb-1.0 libdir)
+pkg_get_variable(LIBUSB_BINDIR libusb-1.0 bindir)
 
 set(LIBUSB_RUNTIME_FILES "")
-if(WIN32 AND LIBUSB_PREFIX)
-    file(GLOB LIBUSB_RUNTIME_FILES CONFIGURE_DEPENDS
-        "${LIBUSB_PREFIX}/bin/libusb-1.0.dll"
-        "${LIBUSB_PREFIX}/bin/liblibusb-1.0.dll"
+set(LIBUSB_RUNTIME_FILE_RELEASE "")
+set(LIBUSB_RUNTIME_FILE_DEBUG "")
+if(WIN32)
+    set(_libusb_runtime_release_hints)
+    set(_libusb_runtime_debug_hints)
+    if(LIBUSB_BINDIR)
+        list(APPEND _libusb_runtime_release_hints "${LIBUSB_BINDIR}")
+        list(APPEND _libusb_runtime_debug_hints "${LIBUSB_BINDIR}")
+    endif()
+    if(LIBUSB_PREFIX)
+        list(APPEND _libusb_runtime_release_hints
+            "${LIBUSB_PREFIX}/bin"
+            "${LIBUSB_PREFIX}/debug/bin"
+        )
+        list(APPEND _libusb_runtime_debug_hints
+            "${LIBUSB_PREFIX}/debug/bin"
+            "${LIBUSB_PREFIX}/bin"
+        )
+    endif()
+    if(LIBUSB_LIBDIR)
+        list(APPEND _libusb_runtime_release_hints
+            "${LIBUSB_LIBDIR}/../bin"
+            "${LIBUSB_LIBDIR}"
+            "${LIBUSB_LIBDIR}/../debug/bin"
+        )
+        list(APPEND _libusb_runtime_debug_hints
+            "${LIBUSB_LIBDIR}/../debug/bin"
+            "${LIBUSB_LIBDIR}/../bin"
+            "${LIBUSB_LIBDIR}"
+        )
+    endif()
+    if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+        list(APPEND _libusb_runtime_release_hints
+            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
+            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin"
+        )
+        list(APPEND _libusb_runtime_debug_hints
+            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin"
+            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
+        )
+    endif()
+    list(REMOVE_DUPLICATES _libusb_runtime_release_hints)
+    list(REMOVE_DUPLICATES _libusb_runtime_debug_hints)
+
+    find_file(LIBUSB_RUNTIME_FILE_RELEASE
+        NAMES libusb-1.0.dll liblibusb-1.0.dll
+        HINTS ${_libusb_runtime_release_hints}
+        PATH_SUFFIXES .
+        NO_DEFAULT_PATH
     )
+    find_file(LIBUSB_RUNTIME_FILE_DEBUG
+        NAMES libusb-1.0.dll liblibusb-1.0.dll
+        HINTS ${_libusb_runtime_debug_hints}
+        PATH_SUFFIXES .
+        NO_DEFAULT_PATH
+    )
+
+    set(_libusb_runtime_release_selected "${LIBUSB_RUNTIME_FILE_RELEASE}")
+    if(NOT _libusb_runtime_release_selected)
+        set(_libusb_runtime_release_selected "${LIBUSB_RUNTIME_FILE_DEBUG}")
+    endif()
+
+    set(_libusb_runtime_debug_selected "${LIBUSB_RUNTIME_FILE_DEBUG}")
+    if(NOT _libusb_runtime_debug_selected)
+        set(_libusb_runtime_debug_selected "${LIBUSB_RUNTIME_FILE_RELEASE}")
+    endif()
+
+    foreach(_runtime_file IN ITEMS
+            "${_libusb_runtime_release_selected}"
+            "${_libusb_runtime_debug_selected}")
+        if(_runtime_file)
+            list(APPEND LIBUSB_RUNTIME_FILES "${_runtime_file}")
+        endif()
+    endforeach()
 elseif(APPLE AND LIBUSB_LIBDIR)
     file(GLOB LIBUSB_RUNTIME_FILES CONFIGURE_DEPENDS
         "${LIBUSB_LIBDIR}/libusb-1.0*.dylib"
@@ -208,14 +278,16 @@ endif()
 if (WIN32)
     target_link_libraries(romfs-gui PRIVATE ws2_32)
     target_sources(romfs-gui PRIVATE romfs-gui.rc)
-    if(LIBUSB_RUNTIME_FILES)
+    if(_libusb_runtime_release_selected OR _libusb_runtime_debug_selected)
         add_custom_command(TARGET romfs-gui POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    ${LIBUSB_RUNTIME_FILES}
+                    "$<IF:$<CONFIG:Debug>,${_libusb_runtime_debug_selected},${_libusb_runtime_release_selected}>"
                     "$<TARGET_FILE_DIR:romfs-gui>"
             COMMENT "Copying libusb runtime DLL"
             VERBATIM
         )
+    else()
+        message(WARNING "libusb runtime DLL was not found during configure. The application may fail to start until libusb-1.0.dll is copied next to the executable.")
     endif()
 endif()
 
@@ -258,7 +330,7 @@ qt_finalize_executable(romfs-gui)
 
 if(WIN32)
     find_program(QT_WINDEPLOYQT_EXECUTABLE
-        NAMES windeployqt
+        NAMES windeployqt windeployqt6
         HINTS "${_qt_bin_dir}"
     )
     if(QT_WINDEPLOYQT_EXECUTABLE)
@@ -266,10 +338,10 @@ if(WIN32)
             COMMAND "${QT_WINDEPLOYQT_EXECUTABLE}"
                     "$<TARGET_FILE:romfs-gui>"
         )
-        if(LIBUSB_RUNTIME_FILES)
+        if(_libusb_runtime_release_selected OR _libusb_runtime_debug_selected)
             list(APPEND _deploy_commands
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        ${LIBUSB_RUNTIME_FILES}
+                        "$<IF:$<CONFIG:Debug>,${_libusb_runtime_debug_selected},${_libusb_runtime_release_selected}>"
                         "$<TARGET_FILE_DIR:romfs-gui>"
             )
         endif()
