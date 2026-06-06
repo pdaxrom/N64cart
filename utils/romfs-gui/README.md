@@ -12,7 +12,7 @@ This directory contains the Qt-based ROMFS Manager desktop application. It lets 
 
 `utils/romfs-gui/vcpkg.json` declares:
 - `libusb`
-- host-side `pkgconf` for `pkg-config` based discovery
+- host-side `pkgconf` for `pkg-config` based discovery on macOS and Linux
 
 If your local vcpkg clone lives at `/Users/sash/Work/vcpkg`, set:
 
@@ -75,10 +75,14 @@ The Linux `deploy` target creates:
 ```powershell
 cd utils\romfs-gui
 cmake -B build-win -S . -G "Ninja" `
-  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
+  -DVCPKG_TARGET_TRIPLET=x64-mingw-dynamic
 cmake --build build-win
 ```
 
+Notes:
+- Windows does not use `pkg-config`; `libusb` is discovered directly from the vcpkg toolchain prefixes.
+- Use `x64-mingw-dynamic` with the `Qt ... mingw_64` kit. `x64-windows` is for MSVC builds.
 Run `cmake --build build-win --target deploy` to execute `windeployqt`/`windeployqt6` and copy `libusb` next to the `.exe`.
 Running `windeployqt6.exe` manually deploys Qt runtime only; `libusb-1.0.dll` is copied by the project build/deploy logic.
 

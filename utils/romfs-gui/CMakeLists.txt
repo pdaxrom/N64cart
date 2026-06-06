@@ -12,55 +12,95 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network LinguistTools)
 find_package(Git QUIET)
-set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH ON)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
-pkg_get_variable(LIBUSB_PREFIX libusb-1.0 prefix)
-pkg_get_variable(LIBUSB_LIBDIR libusb-1.0 libdir)
-pkg_get_variable(LIBUSB_BINDIR libusb-1.0 bindir)
+set(ROMFS_GUI_LIBUSB_INCLUDE_DIRS "")
+set(ROMFS_GUI_LIBUSB_LINK_LIBRARIES "")
+set(LIBUSB_PREFIX "")
+set(LIBUSB_LIBDIR "")
+set(LIBUSB_BINDIR "")
 
 set(LIBUSB_RUNTIME_FILES "")
 set(LIBUSB_RUNTIME_FILE_RELEASE "")
 set(LIBUSB_RUNTIME_FILE_DEBUG "")
 if(WIN32)
+    include(FindPackageHandleStandardArgs)
+
+    set(_libusb_prefix_hints)
+    if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+        list(APPEND _libusb_prefix_hints
+            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}"
+        )
+    endif()
+    foreach(_cmake_prefix IN LISTS CMAKE_PREFIX_PATH)
+        list(APPEND _libusb_prefix_hints "${_cmake_prefix}")
+    endforeach()
+    list(REMOVE_DUPLICATES _libusb_prefix_hints)
+
+    find_path(LIBUSB_INCLUDE_DIR
+        NAMES libusb.h
+        HINTS ${_libusb_prefix_hints}
+        PATH_SUFFIXES include/libusb-1.0 include
+    )
+    find_library(LIBUSB_LIBRARY_RELEASE
+        NAMES usb-1.0 libusb-1.0
+        HINTS ${_libusb_prefix_hints}
+        PATH_SUFFIXES lib bin
+    )
+    find_library(LIBUSB_LIBRARY_DEBUG
+        NAMES usb-1.0 libusb-1.0
+        HINTS ${_libusb_prefix_hints}
+        PATH_SUFFIXES debug/lib debug/bin lib bin
+    )
+
+    set(_libusb_link_release_selected "${LIBUSB_LIBRARY_RELEASE}")
+    if(NOT _libusb_link_release_selected)
+        set(_libusb_link_release_selected "${LIBUSB_LIBRARY_DEBUG}")
+    endif()
+
+    set(_libusb_link_debug_selected "${LIBUSB_LIBRARY_DEBUG}")
+    if(NOT _libusb_link_debug_selected)
+        set(_libusb_link_debug_selected "${LIBUSB_LIBRARY_RELEASE}")
+    endif()
+
+    find_package_handle_standard_args(LibUSB
+        REQUIRED_VARS
+            LIBUSB_INCLUDE_DIR
+            _libusb_link_release_selected
+    )
+
+    set(ROMFS_GUI_LIBUSB_INCLUDE_DIRS "${LIBUSB_INCLUDE_DIR}")
+    set(ROMFS_GUI_LIBUSB_LINK_LIBRARIES
+        "$<IF:$<CONFIG:Debug>,${_libusb_link_debug_selected},${_libusb_link_release_selected}>"
+    )
+
     set(_libusb_runtime_release_hints)
     set(_libusb_runtime_debug_hints)
-    if(LIBUSB_BINDIR)
-        list(APPEND _libusb_runtime_release_hints "${LIBUSB_BINDIR}")
-        list(APPEND _libusb_runtime_debug_hints "${LIBUSB_BINDIR}")
-    endif()
-    if(LIBUSB_PREFIX)
+    foreach(_cmake_prefix IN LISTS _libusb_prefix_hints)
         list(APPEND _libusb_runtime_release_hints
-            "${LIBUSB_PREFIX}/bin"
-            "${LIBUSB_PREFIX}/debug/bin"
+            "${_cmake_prefix}/bin"
+            "${_cmake_prefix}/debug/bin"
         )
         list(APPEND _libusb_runtime_debug_hints
-            "${LIBUSB_PREFIX}/debug/bin"
-            "${LIBUSB_PREFIX}/bin"
+            "${_cmake_prefix}/debug/bin"
+            "${_cmake_prefix}/bin"
         )
-    endif()
-    if(LIBUSB_LIBDIR)
-        list(APPEND _libusb_runtime_release_hints
-            "${LIBUSB_LIBDIR}/../bin"
-            "${LIBUSB_LIBDIR}"
-            "${LIBUSB_LIBDIR}/../debug/bin"
-        )
-        list(APPEND _libusb_runtime_debug_hints
-            "${LIBUSB_LIBDIR}/../debug/bin"
-            "${LIBUSB_LIBDIR}/../bin"
-            "${LIBUSB_LIBDIR}"
-        )
-    endif()
-    if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
-        list(APPEND _libusb_runtime_release_hints
-            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
-            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin"
-        )
-        list(APPEND _libusb_runtime_debug_hints
-            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin"
-            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
-        )
-    endif()
+    endforeach()
+    foreach(_libusb_link_file IN ITEMS
+            "${_libusb_link_release_selected}"
+            "${_libusb_link_debug_selected}")
+        if(_libusb_link_file)
+            get_filename_component(_libusb_link_dir "${_libusb_link_file}" DIRECTORY)
+            list(APPEND _libusb_runtime_release_hints
+                "${_libusb_link_dir}"
+                "${_libusb_link_dir}/../bin"
+                "${_libusb_link_dir}/../debug/bin"
+            )
+            list(APPEND _libusb_runtime_debug_hints
+                "${_libusb_link_dir}/../debug/bin"
+                "${_libusb_link_dir}/../bin"
+                "${_libusb_link_dir}"
+            )
+        endif()
+    endforeach()
     list(REMOVE_DUPLICATES _libusb_runtime_release_hints)
     list(REMOVE_DUPLICATES _libusb_runtime_debug_hints)
 
@@ -94,7 +134,17 @@ if(WIN32)
             list(APPEND LIBUSB_RUNTIME_FILES "${_runtime_file}")
         endif()
     endforeach()
-elseif(APPLE AND LIBUSB_LIBDIR)
+else()
+    set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH ON)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
+    pkg_get_variable(LIBUSB_PREFIX libusb-1.0 prefix)
+    pkg_get_variable(LIBUSB_LIBDIR libusb-1.0 libdir)
+    pkg_get_variable(LIBUSB_BINDIR libusb-1.0 bindir)
+    set(ROMFS_GUI_LIBUSB_LINK_LIBRARIES PkgConfig::LIBUSB)
+endif()
+
+if(APPLE AND LIBUSB_LIBDIR)
     file(GLOB LIBUSB_RUNTIME_FILES CONFIGURE_DEPENDS
         "${LIBUSB_LIBDIR}/libusb-1.0*.dylib"
     )
@@ -231,12 +281,13 @@ target_include_directories(romfs-gui PRIVATE
     ../../fw/romfs
     ../simple-connection-lib/src
     ../
+    ${ROMFS_GUI_LIBUSB_INCLUDE_DIRS}
 )
 
 target_link_libraries(romfs-gui PRIVATE
     Qt6::Widgets
     Qt6::Network
-    PkgConfig::LIBUSB
+    ${ROMFS_GUI_LIBUSB_LINK_LIBRARIES}
 )
 
 if(ROMFS_GUI_GIT_HASH)
