@@ -120,6 +120,10 @@
         <translation>Մասին</translation>
     </message>
     <message>
+        <source>About %1</source>
+        <translation>%1-ի մասին</translation>
+    </message>
+    <message>
         <source>Quit</source>
         <translation>Ելք</translation>
     </message>
@@ -192,12 +196,12 @@
         <translation>&lt;b&gt;ROMFS Manager&lt;/b&gt; թույլ է տալիս կառավարել ձեր N64cart-ում պահված ֆայլերը։&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Հիմնական հնարավորություններ.&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Դիտարկել քարտրիջի պարունակությունը ցանկի կամ պատկերակների ցանցի տեսքով&lt;/li&gt;&lt;li&gt;Վերբեռնել ֆայլեր քարտրիջ և ներբեռնել դրանք հետ ձեր համակարգիչ&lt;/li&gt;&lt;li&gt;Ջնջել, վերանվանել, ստեղծել պանակներ և ձևաչափել ROMFS ծավալը&lt;/li&gt;&lt;li&gt;Քաշել և գցել ֆայլերը ծրագրի և ձեր ֆայլային կառավարիչի միջև&lt;/li&gt;&lt;/ul&gt;Գործողություններ կատարելու համար օգտագործեք Ֆայլ/Գործիքներ մենյուները կամ տարրի համատեքստային մենյուն։</translation>
     </message>
     <message>
-        <source>&lt;center&gt;&lt;b&gt;ROMFS Manager&lt;/b&gt;&lt;/center&gt;&lt;br/&gt;&lt;center&gt;Version %1&lt;/center&gt;&lt;br/&gt;&lt;center&gt;&lt;a href=&quot;%2&quot;&gt;%2&lt;/a&gt;&lt;/center&gt;</source>
-        <translation>&lt;center&gt;&lt;b&gt;ROMFS Manager&lt;/b&gt;&lt;/center&gt;&lt;br/&gt;&lt;center&gt;Տարբերակ %1&lt;/center&gt;&lt;br/&gt;&lt;center&gt;&lt;a href=&quot;%2&quot;&gt;%2&lt;/a&gt;&lt;/center&gt;</translation>
+        <source>Version %1</source>
+        <translation>Տարբերակ %1</translation>
     </message>
     <message>
-        <source>About ROMFS Manager</source>
-        <translation>ROMFS Manager-ի մասին</translation>
+        <source>build %1</source>
+        <translation>հավաքում %1</translation>
     </message>
     <message>
         <source> | %1/%2</source>

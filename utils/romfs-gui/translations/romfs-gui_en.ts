@@ -155,6 +155,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>About %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../mainwindow.ui" line="227"/>
         <source>Quit</source>
         <translation type="unfinished"></translation>
@@ -247,13 +251,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="500"/>
-        <source>&lt;center&gt;&lt;b&gt;ROMFS Manager&lt;/b&gt;&lt;/center&gt;&lt;br/&gt;&lt;center&gt;Version %1&lt;/center&gt;&lt;br/&gt;&lt;center&gt;&lt;a href=&quot;%2&quot;&gt;%2&lt;/a&gt;&lt;/center&gt;</source>
+        <source>Version %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="501"/>
-        <source>About ROMFS Manager</source>
+        <source>build %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

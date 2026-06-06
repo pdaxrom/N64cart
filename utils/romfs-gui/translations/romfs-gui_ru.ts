@@ -155,6 +155,10 @@
         <translation>О программе</translation>
     </message>
     <message>
+        <source>About %1</source>
+        <translation>О %1</translation>
+    </message>
+    <message>
         <location filename="../mainwindow.ui" line="227"/>
         <source>Quit</source>
         <translation>Выход</translation>
@@ -247,14 +251,12 @@
         <translation>&lt;b&gt;ROMFS Менеджер&lt;/b&gt; позволяет управлять файлами на вашем N64cart.&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Основные особенности:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Просматривать содержимое картриджа в виде списка или значков&lt;/li&gt;&lt;li&gt;Загружать файлы на картридж и скачивать их обратно на компьютер&lt;/li&gt;&lt;li&gt;Удалять, переименовывать, создавать директрии и форматировать ROMFS накопитель&lt;/li&gt;&lt;li&gt;Перетаскивать файлы между приложением и файловым менеджером&lt;/li&gt;&lt;/ul&gt;Используйте меню Файл/Инструменты или контекстное меню для совершения действий.</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="500"/>
-        <source>&lt;center&gt;&lt;b&gt;ROMFS Manager&lt;/b&gt;&lt;/center&gt;&lt;br/&gt;&lt;center&gt;Version %1&lt;/center&gt;&lt;br/&gt;&lt;center&gt;&lt;a href=&quot;%2&quot;&gt;%2&lt;/a&gt;&lt;/center&gt;</source>
-        <translation>&lt;center&gt;&lt;b&gt;ROMFS Менеджер&lt;/b&gt;&lt;/center&gt;&lt;br/&gt;&lt;center&gt;Версия %1&lt;/center&gt;&lt;br/&gt;&lt;center&gt;&lt;a href=&quot;%2&quot;&gt;%2&lt;/a&gt;&lt;/center&gt;</translation>
+        <source>Version %1</source>
+        <translation>Версия %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="501"/>
-        <source>About ROMFS Manager</source>
-        <translation>О ROMFS Менеджер</translation>
+        <source>build %1</source>
+        <translation>сборка %1</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="569"/>

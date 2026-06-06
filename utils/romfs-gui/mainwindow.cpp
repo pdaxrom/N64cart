@@ -187,6 +187,13 @@ void MainWindow::setupActions()
     aboutAction_ = ui_->actionAbout;
     connect(aboutAction_, &QAction::triggered, this, &MainWindow::openAbout);
 
+#if defined(Q_OS_MACOS)
+    aboutAction_->setText(tr("About %1").arg(QCoreApplication::applicationName()));
+    settingsAction_->setMenuRole(QAction::PreferencesRole);
+    aboutAction_->setMenuRole(QAction::AboutRole);
+    ui_->actionQuit->setMenuRole(QAction::QuitRole);
+#endif
+
     rebootAction_ = ui_->actionReboot;
     connect(rebootAction_, &QAction::triggered, this, &MainWindow::rebootCart);
 
@@ -546,14 +553,17 @@ void MainWindow::openAbout()
                             : QCoreApplication::applicationVersion();
     const QString buildHash = QStringLiteral(ROMFS_GUI_GIT_HASH);
     const QString url = QStringLiteral("https://github.com/pdaxrom/N64cart");
-    const QString buildLine = buildHash.isEmpty()
-                              ? QString()
-                              : tr("<br/><center>build %1</center>").arg(buildHash);
-    const QString text =
-        tr("<center><b>ROMFS Manager</b></center><br/><center>Version "
-           "%1</center>%2<br/><center><a href=\"%3\">%3</a></center>")
-        .arg(version, buildLine, url);
-    QMessageBox::about(this, tr("About ROMFS Manager"), text);
+    QStringList lines;
+    lines << QStringLiteral("<center><b>%1</b></center>").arg(tr("ROMFS Manager"));
+    lines << QStringLiteral("<center>%1</center>").arg(tr("Version %1").arg(version));
+    if (!buildHash.isEmpty()) {
+        lines << QStringLiteral("<center>%1</center>").arg(tr("build %1").arg(buildHash));
+    }
+    lines << QStringLiteral("<center><a href=\"%1\">%1</a></center>").arg(url);
+
+    QMessageBox::about(this,
+                       tr("About %1").arg(tr("ROMFS Manager")),
+                       lines.join(QStringLiteral("<br/>")));
 }
 
 void MainWindow::handleDroppedUrls(const QList<QUrl> &urls)

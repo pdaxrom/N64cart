@@ -120,6 +120,10 @@
         <translation>درباره</translation>
     </message>
     <message>
+        <source>About %1</source>
+        <translation>درباره %1</translation>
+    </message>
+    <message>
         <source>Quit</source>
         <translation>خروج</translation>
     </message>
@@ -192,12 +196,12 @@
         <translation>&lt;b&gt;ROMFS Manager&lt;/b&gt; به شما امکان می‌دهد پرونده‌های ذخیره‌شده روی N64cart را مدیریت کنید.&lt;br/&gt;&lt;br/&gt;&lt;b&gt;قابلیت‌های اصلی:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;مرور محتوای کارتریج به‌صورت فهرست یا شبکه‌ای از آیکون‌ها&lt;/li&gt;&lt;li&gt;بارگذاری پرونده‌ها روی کارتریج و دانلود دوباره آن‌ها روی رایانه&lt;/li&gt;&lt;li&gt;حذف، تغییر نام، ایجاد پوشه و فرمت‌کردن حجم ROMFS&lt;/li&gt;&lt;li&gt;کشیدن و رها کردن پرونده‌ها بین برنامه و مدیر فایل شما&lt;/li&gt;&lt;/ul&gt;برای انجام عملیات از منوهای پرونده/ابزار یا منوی زمینه استفاده کنید.</translation>
     </message>
     <message>
-        <source>&lt;center&gt;&lt;b&gt;ROMFS Manager&lt;/b&gt;&lt;/center&gt;&lt;br/&gt;&lt;center&gt;Version %1&lt;/center&gt;&lt;br/&gt;&lt;center&gt;&lt;a href=&quot;%2&quot;&gt;%2&lt;/a&gt;&lt;/center&gt;</source>
-        <translation>&lt;center&gt;&lt;b&gt;ROMFS Manager&lt;/b&gt;&lt;/center&gt;&lt;br/&gt;&lt;center&gt;نسخه %1&lt;/center&gt;&lt;br/&gt;&lt;center&gt;&lt;a href=&quot;%2&quot;&gt;%2&lt;/a&gt;&lt;/center&gt;</translation>
+        <source>Version %1</source>
+        <translation>نسخه %1</translation>
     </message>
     <message>
-        <source>About ROMFS Manager</source>
-        <translation>درباره ROMFS Manager</translation>
+        <source>build %1</source>
+        <translation>بیلد %1</translation>
     </message>
     <message>
         <source> | %1/%2</source>

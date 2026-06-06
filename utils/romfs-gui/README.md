@@ -102,3 +102,7 @@ Use `cmake --build <build-dir> --target romfs-gui_lupdate` if you change strings
 - macOS: launch `build-macos/ROMFS Manager.app`
 - Linux: run `./build-linux/ROMFS\ Manager`
 - Windows: run `build-win/ROMFS Manager.exe` or the deployed copy after `--target deploy`
+
+## TODO
+
+- macOS app-menu localization for manual `hy`/`fa` selection is still incomplete. Standard system items such as `About`, `Preferences...`, and `Quit` are owned by AppKit once `QAction::AboutRole` / `PreferencesRole` / `QuitRole` are used, so they can stay in English even when the app UI is switched to Armenian or Persian. Revisit this with either localized bundle resources for macOS app-menu strings or a conditional fallback to regular in-app menu actions for unsupported native locales.
