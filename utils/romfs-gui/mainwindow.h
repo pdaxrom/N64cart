@@ -110,6 +110,7 @@ private:
     struct AppSettings {
         bool fixRomEnabled = false;
         bool askFixRom = true;
+        QString uiLanguage = QStringLiteral("system");
         QString lastRemoteAddress = QStringLiteral("127.0.0.1:6464");
     };
 

@@ -167,10 +167,14 @@ if(WIN32)
         list(APPEND _libusb_runtime_release_hints
             "${_cmake_prefix}/bin"
             "${_cmake_prefix}/debug/bin"
+            "${_cmake_prefix}/tools/libusb"
+            "${_cmake_prefix}/tools/libusb/bin"
         )
         list(APPEND _libusb_runtime_debug_hints
             "${_cmake_prefix}/debug/bin"
             "${_cmake_prefix}/bin"
+            "${_cmake_prefix}/tools/libusb"
+            "${_cmake_prefix}/tools/libusb/bin"
         )
     endforeach()
     foreach(_libusb_link_file IN ITEMS
@@ -182,29 +186,53 @@ if(WIN32)
                 "${_libusb_link_dir}"
                 "${_libusb_link_dir}/../bin"
                 "${_libusb_link_dir}/../debug/bin"
+                "${_libusb_link_dir}/../tools/libusb"
             )
             list(APPEND _libusb_runtime_debug_hints
                 "${_libusb_link_dir}/../debug/bin"
                 "${_libusb_link_dir}/../bin"
                 "${_libusb_link_dir}"
+                "${_libusb_link_dir}/../tools/libusb"
             )
         endif()
     endforeach()
+    if(LIBUSB_INCLUDE_DIR)
+        get_filename_component(_libusb_include_prefix "${LIBUSB_INCLUDE_DIR}" DIRECTORY)
+        get_filename_component(_libusb_include_prefix "${_libusb_include_prefix}" DIRECTORY)
+        list(APPEND _libusb_runtime_release_hints
+            "${_libusb_include_prefix}/bin"
+            "${_libusb_include_prefix}/debug/bin"
+            "${_libusb_include_prefix}/tools/libusb"
+        )
+        list(APPEND _libusb_runtime_debug_hints
+            "${_libusb_include_prefix}/debug/bin"
+            "${_libusb_include_prefix}/bin"
+            "${_libusb_include_prefix}/tools/libusb"
+        )
+    endif()
     list(REMOVE_DUPLICATES _libusb_runtime_release_hints)
     list(REMOVE_DUPLICATES _libusb_runtime_debug_hints)
 
-    find_file(LIBUSB_RUNTIME_FILE_RELEASE
-        NAMES libusb-1.0.dll liblibusb-1.0.dll
-        HINTS ${_libusb_runtime_release_hints}
-        PATH_SUFFIXES .
-        NO_DEFAULT_PATH
-    )
-    find_file(LIBUSB_RUNTIME_FILE_DEBUG
-        NAMES libusb-1.0.dll liblibusb-1.0.dll
-        HINTS ${_libusb_runtime_debug_hints}
-        PATH_SUFFIXES .
-        NO_DEFAULT_PATH
-    )
+    foreach(_libusb_runtime_dir IN LISTS _libusb_runtime_release_hints)
+        if(NOT LIBUSB_RUNTIME_FILE_RELEASE)
+            foreach(_libusb_runtime_name IN ITEMS libusb-1.0.dll liblibusb-1.0.dll)
+                if(EXISTS "${_libusb_runtime_dir}/${_libusb_runtime_name}")
+                    set(LIBUSB_RUNTIME_FILE_RELEASE "${_libusb_runtime_dir}/${_libusb_runtime_name}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+    endforeach()
+    foreach(_libusb_runtime_dir IN LISTS _libusb_runtime_debug_hints)
+        if(NOT LIBUSB_RUNTIME_FILE_DEBUG)
+            foreach(_libusb_runtime_name IN ITEMS libusb-1.0.dll liblibusb-1.0.dll)
+                if(EXISTS "${_libusb_runtime_dir}/${_libusb_runtime_name}")
+                    set(LIBUSB_RUNTIME_FILE_DEBUG "${_libusb_runtime_dir}/${_libusb_runtime_name}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+    endforeach()
 
     set(_libusb_runtime_release_selected "${LIBUSB_RUNTIME_FILE_RELEASE}")
     if(NOT _libusb_runtime_release_selected)
@@ -294,6 +322,8 @@ qt_add_executable(romfs-gui
 
 set(TS_FILES
     translations/romfs-gui_en.ts
+    translations/romfs-gui_fa.ts
+    translations/romfs-gui_hy.ts
     translations/romfs-gui_ru.ts
 )
 

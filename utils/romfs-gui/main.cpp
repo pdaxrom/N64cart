@@ -3,6 +3,7 @@
 #include <QFileInfo>
 #include <QLibraryInfo>
 #include <QLocale>
+#include <QSettings>
 #include <QStringList>
 #include <QTranslator>
 
@@ -35,11 +36,22 @@ QStringList translationSearchPaths()
     return paths;
 }
 
-void loadTranslations(QApplication &app)
+QLocale applicationLocale()
+{
+    QSettings settings;
+    const QString languageCode = settings.value(QStringLiteral("uiLanguage"),
+                                                QStringLiteral("system"))
+                                 .toString();
+    if (languageCode.isEmpty() || languageCode == QStringLiteral("system")) {
+        return QLocale::system();
+    }
+    return QLocale(languageCode);
+}
+
+void loadTranslations(QApplication &app, const QLocale &locale)
 {
     static QTranslator appTranslator;
     static QTranslator qtTranslator;
-    const QLocale locale = QLocale::system();
 
     const QString qtTransPath =
         QLibraryInfo::path(QLibraryInfo::TranslationsPath);
@@ -67,14 +79,18 @@ void loadTranslations(QApplication &app)
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    QApplication::setApplicationDisplayName("ROMFS Manager");
     QApplication::setApplicationName("ROMFS Manager");
     QApplication::setOrganizationName("pdaXrom");
+    QApplication::setApplicationDisplayName("ROMFS Manager");
+
+    const QLocale locale = applicationLocale();
+    QLocale::setDefault(locale);
+    app.setLayoutDirection(locale.textDirection());
 #ifndef __APPLE__
     QApplication::setWindowIcon(QIcon(":/icons/icon.svg"));
 #endif
 
-    loadTranslations(app);
+    loadTranslations(app, locale);
 
     MainWindow window;
     window.show();

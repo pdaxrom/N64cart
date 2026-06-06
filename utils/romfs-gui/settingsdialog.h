@@ -18,6 +18,8 @@ public:
 
     void setFixRomEnabled(bool enabled);
     bool fixRomEnabled() const;
+    void setLanguageCode(const QString &languageCode);
+    QString languageCode() const;
     bool resetRequested() const;
 
 private slots:

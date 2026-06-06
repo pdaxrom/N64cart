@@ -405,6 +405,14 @@
     </message>
 </context>
 <context>
+    <name>MainWindow</name>
+    <message>
+        <location filename="../mainwindow.cpp" line="521"/>
+        <source>Language change will be applied after restarting the application.</source>
+        <translation>Изменение языка будет применено после перезапуска приложения.</translation>
+    </message>
+</context>
+<context>
     <name>SettingsDialog</name>
     <message>
         <location filename="../settingsdialog.ui" line="6"/>
@@ -417,7 +425,37 @@
         <translation>Исправить порядок байтов в ПЗУ</translation>
     </message>
     <message>
-        <location filename="../settingsdialog.ui" line="19"/>
+        <location filename="../settingsdialog.ui" line="21"/>
+        <source>Language</source>
+        <translation>Язык</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="20"/>
+        <source>System default</source>
+        <translation>Системный язык</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="21"/>
+        <source>English</source>
+        <translation>Английский</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="22"/>
+        <source>Russian</source>
+        <translation>Русский</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="23"/>
+        <source>Armenian</source>
+        <translation>Армянский</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="24"/>
+        <source>Persian (Farsi)</source>
+        <translation>Персидский (фарси)</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.ui" line="34"/>
         <source>Reset to Defaults</source>
         <translation>Сбросить на исходные</translation>
     </message>

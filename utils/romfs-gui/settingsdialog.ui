@@ -14,6 +14,23 @@
     </widget>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="languageLayout">
+     <item>
+      <widget class="QLabel" name="languageLabel">
+       <property name="text">
+        <string>Language</string>
+       </property>
+       <property name="buddy">
+        <cstring>languageComboBox</cstring>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="languageComboBox"/>
+     </item>
+    </layout>
+   </item>
+   <item>
     <widget class="QPushButton" name="resetButton">
      <property name="text">
       <string>Reset to Defaults</string>

@@ -505,16 +505,23 @@ void MainWindow::openSettingsDialog()
 {
     SettingsDialog dialog(this);
     dialog.setFixRomEnabled(settings_.fixRomEnabled);
+    dialog.setLanguageCode(settings_.uiLanguage);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
 
+    const QString previousLanguage = settings_.uiLanguage;
     if (dialog.resetRequested()) {
         settings_.askFixRom = true;
     }
 
     settings_.fixRomEnabled = dialog.fixRomEnabled();
+    settings_.uiLanguage = dialog.languageCode();
     saveSettings();
+
+    if (settings_.uiLanguage != previousLanguage) {
+        showInfo(tr("Language change will be applied after restarting the application."));
+    }
 }
 
 void MainWindow::openUsage()
@@ -1037,6 +1044,9 @@ void MainWindow::loadSettings()
         .toBool();
     settings_.askFixRom =
         settings.value(QStringLiteral("askFixRom"), settings_.askFixRom).toBool();
+    settings_.uiLanguage = settings
+                           .value(QStringLiteral("uiLanguage"), settings_.uiLanguage)
+                           .toString();
     settings_.lastRemoteAddress = settings
                                   .value(QStringLiteral("lastRemoteAddress"),
                                          settings_.lastRemoteAddress)
@@ -1048,6 +1058,7 @@ void MainWindow::saveSettings() const
     QSettings settings;
     settings.setValue(QStringLiteral("fixRomEnabled"), settings_.fixRomEnabled);
     settings.setValue(QStringLiteral("askFixRom"), settings_.askFixRom);
+    settings.setValue(QStringLiteral("uiLanguage"), settings_.uiLanguage);
     settings.setValue(QStringLiteral("lastRemoteAddress"),
                       settings_.lastRemoteAddress);
 }
