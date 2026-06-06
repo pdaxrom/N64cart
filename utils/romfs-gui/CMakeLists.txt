@@ -1,5 +1,55 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(_romfs_gui_vcpkg_search_roots)
+if(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}")
+    file(TO_CMAKE_PATH "$ENV{VCPKG_ROOT}" _romfs_gui_env_vcpkg_root)
+    list(APPEND _romfs_gui_vcpkg_search_roots "${_romfs_gui_env_vcpkg_root}")
+endif()
+list(APPEND _romfs_gui_vcpkg_search_roots
+    "${CMAKE_CURRENT_LIST_DIR}/../../../vcpkg"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../vcpkg"
+)
+
+set(_romfs_gui_default_vcpkg_root "")
+foreach(_romfs_gui_candidate_root IN LISTS _romfs_gui_vcpkg_search_roots)
+    get_filename_component(_romfs_gui_candidate_root "${_romfs_gui_candidate_root}" ABSOLUTE)
+    if(EXISTS "${_romfs_gui_candidate_root}/scripts/buildsystems/vcpkg.cmake")
+        set(_romfs_gui_default_vcpkg_root "${_romfs_gui_candidate_root}")
+        break()
+    endif()
+endforeach()
+
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE AND _romfs_gui_default_vcpkg_root)
+    set(CMAKE_TOOLCHAIN_FILE
+        "${_romfs_gui_default_vcpkg_root}/scripts/buildsystems/vcpkg.cmake"
+        CACHE FILEPATH "vcpkg toolchain file"
+    )
+    message(STATUS "romfs-gui: auto-detected vcpkg toolchain at ${CMAKE_TOOLCHAIN_FILE}")
+endif()
+
+if(NOT DEFINED VCPKG_MANIFEST_DIR AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/vcpkg.json")
+    set(VCPKG_MANIFEST_DIR
+        "${CMAKE_CURRENT_LIST_DIR}"
+        CACHE PATH "vcpkg manifest directory"
+    )
+endif()
+
+if(NOT DEFINED VCPKG_MANIFEST_INSTALL)
+    set(VCPKG_MANIFEST_INSTALL ON CACHE BOOL "Install vcpkg manifest dependencies automatically")
+    message(STATUS "romfs-gui: enabled automatic vcpkg manifest install")
+endif()
+
+if(WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+    string(TOLOWER "${CMAKE_PREFIX_PATH};${Qt6_DIR}" _romfs_gui_qt_hints_lower)
+    if(_romfs_gui_qt_hints_lower MATCHES "mingw")
+        set(VCPKG_TARGET_TRIPLET "x64-mingw-dynamic" CACHE STRING "vcpkg target triplet")
+        message(STATUS "romfs-gui: defaulting VCPKG_TARGET_TRIPLET to ${VCPKG_TARGET_TRIPLET}")
+    elseif(_romfs_gui_qt_hints_lower MATCHES "msvc")
+        set(VCPKG_TARGET_TRIPLET "x64-windows" CACHE STRING "vcpkg target triplet")
+        message(STATUS "romfs-gui: defaulting VCPKG_TARGET_TRIPLET to ${VCPKG_TARGET_TRIPLET}")
+    endif()
+endif()
+
 project(romfs_gui LANGUAGES C CXX)
 
 set(ROMFS_GUI_APP_NAME "ROMFS Manager")
@@ -24,11 +74,50 @@ set(LIBUSB_RUNTIME_FILE_DEBUG "")
 if(WIN32)
     include(FindPackageHandleStandardArgs)
 
+    set(_romfs_gui_vcpkg_root "")
+    set(_romfs_gui_vcpkg_installed_dir "")
+    set(_romfs_gui_vcpkg_triplet "${VCPKG_TARGET_TRIPLET}")
+    if(NOT _romfs_gui_vcpkg_triplet)
+        set(_romfs_gui_vcpkg_triplet "x64-mingw-dynamic")
+    endif()
+
+    if(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}")
+        file(TO_CMAKE_PATH "$ENV{VCPKG_ROOT}" _romfs_gui_vcpkg_root)
+    endif()
+    if(NOT _romfs_gui_vcpkg_root AND CMAKE_TOOLCHAIN_FILE)
+        get_filename_component(_romfs_gui_toolchain_dir "${CMAKE_TOOLCHAIN_FILE}" DIRECTORY)
+        get_filename_component(_romfs_gui_vcpkg_root "${_romfs_gui_toolchain_dir}/../.." ABSOLUTE)
+        if(NOT EXISTS "${_romfs_gui_vcpkg_root}")
+            set(_romfs_gui_vcpkg_root "")
+        endif()
+    endif()
+    if(NOT _romfs_gui_vcpkg_root)
+        foreach(_romfs_gui_candidate_root IN LISTS _romfs_gui_vcpkg_search_roots)
+            get_filename_component(_romfs_gui_candidate_root "${_romfs_gui_candidate_root}" ABSOLUTE)
+            if(EXISTS "${_romfs_gui_candidate_root}")
+                set(_romfs_gui_vcpkg_root "${_romfs_gui_candidate_root}")
+                break()
+            endif()
+        endforeach()
+        if(NOT _romfs_gui_vcpkg_root)
+            set(_romfs_gui_vcpkg_root "")
+        endif()
+    endif()
+
+    if(VCPKG_INSTALLED_DIR)
+        file(TO_CMAKE_PATH "${VCPKG_INSTALLED_DIR}" _romfs_gui_vcpkg_installed_dir)
+    elseif(_romfs_gui_vcpkg_root)
+        set(_romfs_gui_vcpkg_installed_dir "${_romfs_gui_vcpkg_root}/installed")
+    endif()
+
     set(_libusb_prefix_hints)
-    if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+    if(_romfs_gui_vcpkg_installed_dir AND _romfs_gui_vcpkg_triplet)
         list(APPEND _libusb_prefix_hints
-            "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}"
+            "${_romfs_gui_vcpkg_installed_dir}/${_romfs_gui_vcpkg_triplet}"
         )
+    endif()
+    if(_romfs_gui_vcpkg_root)
+        list(APPEND _libusb_prefix_hints "${_romfs_gui_vcpkg_root}")
     endif()
     foreach(_cmake_prefix IN LISTS CMAKE_PREFIX_PATH)
         list(APPEND _libusb_prefix_hints "${_cmake_prefix}")

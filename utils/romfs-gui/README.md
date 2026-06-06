@@ -13,14 +13,21 @@ This directory contains the Qt-based ROMFS Manager desktop application. It lets 
 `utils/romfs-gui/vcpkg.json` declares:
 - `libusb`
 - host-side `pkgconf` for `pkg-config` based discovery on macOS and Linux
+- the manifest used for automatic dependency installation during configure
 
-If your local vcpkg clone lives at `/Users/sash/Work/vcpkg`, set:
+The project auto-detects `vcpkg` in:
+- `VCPKG_ROOT`
+- `../../../vcpkg` relative to `utils/romfs-gui`
+- `../../../../vcpkg` relative to `utils/romfs-gui`
+
+If your local vcpkg clone lives elsewhere, set:
 
 ```bash
 export VCPKG_ROOT=/Users/sash/Work/vcpkg
 ```
 
 You can still build against a system `libusb` if you skip the vcpkg toolchain and provide `libusb-1.0` through your package manager.
+With the vcpkg toolchain active, manifest mode is enabled automatically, so the first configure downloads and installs declared dependencies.
 
 ## macOS Build
 
@@ -33,6 +40,7 @@ cmake --build build-macos
 
 Notes:
 - The app links `libusb` through `pkg-config`; with the vcpkg toolchain that resolves to the vcpkg package.
+- The first configure installs manifest dependencies automatically unless you pass `-DVCPKG_MANIFEST_INSTALL=OFF`.
 - Run `cmake --build build-macos --target deploy` to execute `macdeployqt`.
 
 ## Linux Build
@@ -83,6 +91,7 @@ cmake --build build-win
 Notes:
 - Windows does not use `pkg-config`; `libusb` is discovered directly from the vcpkg toolchain prefixes.
 - Use `x64-mingw-dynamic` with the `Qt ... mingw_64` kit. `x64-windows` is for MSVC builds.
+- The first configure installs manifest dependencies automatically unless you pass `-DVCPKG_MANIFEST_INSTALL=OFF`.
 Run `cmake --build build-win --target deploy` to execute `windeployqt`/`windeployqt6` and copy `libusb` next to the `.exe`.
 Running `windeployqt6.exe` manually deploys Qt runtime only; `libusb-1.0.dll` is copied by the project build/deploy logic.
 
