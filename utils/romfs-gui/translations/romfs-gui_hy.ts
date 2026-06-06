@@ -361,6 +361,18 @@
         <translation>Պարսկերեն (ֆարսի)</translation>
     </message>
     <message>
+        <source>Portuguese (Brazil)</source>
+        <translation>Պորտուգալերեն (Բրազիլիա)</translation>
+    </message>
+    <message>
+        <source>German</source>
+        <translation>Գերմաներեն</translation>
+    </message>
+    <message>
+        <source>Spanish</source>
+        <translation>Իսպաներեն</translation>
+    </message>
+    <message>
         <source>Reset to Defaults</source>
         <translation>Վերակայել լռելյայնին</translation>
     </message>

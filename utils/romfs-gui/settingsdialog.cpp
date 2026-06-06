@@ -22,6 +22,9 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     ui_->languageComboBox->addItem(tr("Russian"), QStringLiteral("ru"));
     ui_->languageComboBox->addItem(tr("Armenian"), QStringLiteral("hy"));
     ui_->languageComboBox->addItem(tr("Persian (Farsi)"), QStringLiteral("fa"));
+    ui_->languageComboBox->addItem(tr("Portuguese (Brazil)"), QStringLiteral("pt_BR"));
+    ui_->languageComboBox->addItem(tr("German"), QStringLiteral("de"));
+    ui_->languageComboBox->addItem(tr("Spanish"), QStringLiteral("es"));
 
     connect(ui_->buttonBox, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
     connect(ui_->buttonBox, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);

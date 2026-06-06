@@ -321,9 +321,12 @@ qt_add_executable(romfs-gui
 )
 
 set(TS_FILES
+    translations/romfs-gui_de.ts
     translations/romfs-gui_en.ts
+    translations/romfs-gui_es.ts
     translations/romfs-gui_fa.ts
     translations/romfs-gui_hy.ts
+    translations/romfs-gui_pt_BR.ts
     translations/romfs-gui_ru.ts
 )
 

@@ -457,6 +457,21 @@
         <translation>Персидский (фарси)</translation>
     </message>
     <message>
+        <location filename="../settingsdialog.cpp" line="25"/>
+        <source>Portuguese (Brazil)</source>
+        <translation>Португальский (Бразилия)</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="26"/>
+        <source>German</source>
+        <translation>Немецкий</translation>
+    </message>
+    <message>
+        <location filename="../settingsdialog.cpp" line="27"/>
+        <source>Spanish</source>
+        <translation>Испанский</translation>
+    </message>
+    <message>
         <location filename="../settingsdialog.ui" line="34"/>
         <source>Reset to Defaults</source>
         <translation>Сбросить на исходные</translation>

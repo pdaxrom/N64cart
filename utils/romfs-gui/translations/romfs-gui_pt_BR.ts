@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="fa_IR">
+<TS version="2.1" language="pt_BR">
 <context>
     <name>MainWindow</name>
     <message>
@@ -9,7 +9,7 @@
     </message>
     <message>
         <source>Path:</source>
-        <translation>مسیر:</translation>
+        <translation>Caminho:</translation>
     </message>
     <message>
         <source>/</source>
@@ -17,47 +17,47 @@
     </message>
     <message>
         <source>Up</source>
-        <translation>بالا</translation>
+        <translation>Subir</translation>
     </message>
     <message>
         <source>&amp;File</source>
-        <translation>&amp;پرونده</translation>
+        <translation>&amp;Arquivo</translation>
     </message>
     <message>
         <source>&amp;Edit</source>
-        <translation>&amp;ویرایش</translation>
+        <translation>&amp;Editar</translation>
     </message>
     <message>
         <source>&amp;Tools</source>
-        <translation>&amp;ابزار</translation>
+        <translation>&amp;Ferramentas</translation>
     </message>
     <message>
         <source>&amp;View</source>
-        <translation>&amp;نما</translation>
+        <translation>E&amp;xibir</translation>
     </message>
     <message>
         <source>&amp;Help</source>
-        <translation>&amp;راهنما</translation>
+        <translation>A&amp;juda</translation>
     </message>
     <message>
         <source>Main Toolbar</source>
-        <translation>نوار ابزار اصلی</translation>
+        <translation>Barra de ferramentas principal</translation>
     </message>
     <message>
         <source>Connect USB</source>
-        <translation>اتصال USB</translation>
+        <translation>Conectar USB</translation>
     </message>
     <message>
         <source>Connect Remote</source>
-        <translation>اتصال راه‌دور</translation>
+        <translation>Conectar remoto</translation>
     </message>
     <message>
         <source>Disconnect</source>
-        <translation>قطع اتصال</translation>
+        <translation>Desconectar</translation>
     </message>
     <message>
         <source>Refresh</source>
-        <translation>بازخوانی</translation>
+        <translation>Atualizar</translation>
     </message>
     <message>
         <source>F5</source>
@@ -65,15 +65,15 @@
     </message>
     <message>
         <source>Upload</source>
-        <translation>بارگذاری</translation>
+        <translation>Enviar</translation>
     </message>
     <message>
         <source>Download</source>
-        <translation>دانلود</translation>
+        <translation>Baixar</translation>
     </message>
     <message>
         <source>Delete</source>
-        <translation>حذف</translation>
+        <translation>Excluir</translation>
     </message>
     <message>
         <source>Del</source>
@@ -81,51 +81,51 @@
     </message>
     <message>
         <source>New Folder</source>
-        <translation>پوشه جدید</translation>
+        <translation>Nova pasta</translation>
     </message>
     <message>
         <source>Rename</source>
-        <translation>تغییر نام</translation>
+        <translation>Renomear</translation>
     </message>
     <message>
         <source>Format</source>
-        <translation>فرمت</translation>
+        <translation>Formatar</translation>
     </message>
     <message>
         <source>Settings...</source>
-        <translation>تنظیمات...</translation>
+        <translation>Configurações...</translation>
     </message>
     <message>
         <source>How to Use</source>
-        <translation>نحوه استفاده</translation>
+        <translation>Como usar</translation>
     </message>
     <message>
         <source>Reboot</source>
-        <translation>راه‌اندازی مجدد</translation>
+        <translation>Reiniciar</translation>
     </message>
     <message>
         <source>Bootloader</source>
-        <translation>بوت‌لودر</translation>
+        <translation>Bootloader</translation>
     </message>
     <message>
         <source>Icon View</source>
-        <translation>نمای آیکونی</translation>
+        <translation>Exibir ícones</translation>
     </message>
     <message>
         <source>List View</source>
-        <translation>نمای فهرستی</translation>
+        <translation>Exibir lista</translation>
     </message>
     <message>
         <source>About</source>
-        <translation>درباره</translation>
+        <translation>Sobre</translation>
     </message>
     <message>
         <source>About %1</source>
-        <translation>درباره %1</translation>
+        <translation>Sobre %1</translation>
     </message>
     <message>
         <source>Quit</source>
-        <translation>خروج</translation>
+        <translation>Sair</translation>
     </message>
     <message>
         <source>Ctrl+Q</source>
@@ -133,75 +133,75 @@
     </message>
     <message>
         <source>Remote Address</source>
-        <translation>نشانی راه‌دور</translation>
+        <translation>Endereço remoto</translation>
     </message>
     <message>
         <source>Enter host and port (host:port):</source>
-        <translation>میزبان و پورت را وارد کنید (host:port):</translation>
+        <translation>Informe host e porta (host:port):</translation>
     </message>
     <message>
         <source>Address must be in host:port format.</source>
-        <translation>نشانی باید در قالب host:port باشد.</translation>
+        <translation>O endereço deve estar no formato host:port.</translation>
     </message>
     <message>
         <source>Invalid host or port.</source>
-        <translation>میزبان یا پورت نامعتبر است.</translation>
+        <translation>Host ou porta inválidos.</translation>
     </message>
     <message>
         <source>Invalid IP address.</source>
-        <translation>نشانی IP نامعتبر است.</translation>
+        <translation>Endereço IP inválido.</translation>
     </message>
     <message>
         <source>Select files or folders to upload</source>
-        <translation>پرونده‌ها یا پوشه‌های موردنظر برای بارگذاری را انتخاب کنید</translation>
+        <translation>Selecione arquivos ou pastas para enviar</translation>
     </message>
     <message>
         <source>Uploading</source>
-        <translation>در حال بارگذاری</translation>
+        <translation>Enviando</translation>
     </message>
     <message>
         <source>Select at least one file</source>
-        <translation>حداقل یک پرونده را انتخاب کنید</translation>
+        <translation>Selecione pelo menos um arquivo</translation>
     </message>
     <message>
         <source>Select destination</source>
-        <translation>مقصد را انتخاب کنید</translation>
+        <translation>Selecione o destino</translation>
     </message>
     <message>
         <source>Delete %1 selected entries?</source>
-        <translation>%1 مورد انتخاب‌شده حذف شود؟</translation>
+        <translation>Excluir %1 itens selecionados?</translation>
     </message>
     <message>
         <source>Folder name:</source>
-        <translation>نام پوشه:</translation>
+        <translation>Nome da pasta:</translation>
     </message>
     <message>
         <source>Select a single entry to rename</source>
-        <translation>برای تغییر نام، فقط یک مورد را انتخاب کنید</translation>
+        <translation>Selecione um único item para renomear</translation>
     </message>
     <message>
         <source>New name:</source>
-        <translation>نام جدید:</translation>
+        <translation>Novo nome:</translation>
     </message>
     <message>
         <source>This will erase the entire cartridge. Continue?</source>
-        <translation>این کار تمام محتوای کارتریج را پاک می‌کند. ادامه می‌دهید؟</translation>
+        <translation>Isso apagará todo o cartucho. Continuar?</translation>
     </message>
     <message>
         <source>Switch to bootloader mode?</source>
-        <translation>به حالت بوت‌لودر برویم؟</translation>
+        <translation>Alternar para o modo bootloader?</translation>
     </message>
     <message>
         <source>&lt;b&gt;ROMFS Manager&lt;/b&gt; lets you manage the files stored on your N64cart.&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Main features:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Browse the cartridge contents as a list or icon grid&lt;/li&gt;&lt;li&gt;Upload files to the cart and download them back to your computer&lt;/li&gt;&lt;li&gt;Delete, rename, create folders, and format the ROMFS volume&lt;/li&gt;&lt;li&gt;Drag &amp; drop files between the app and your file manager&lt;/li&gt;&lt;/ul&gt;Use the File/Tools menus or the item context menu to perform actions.</source>
-        <translation>&lt;b&gt;ROMFS Manager&lt;/b&gt; به شما امکان می‌دهد پرونده‌های ذخیره‌شده روی N64cart را مدیریت کنید.&lt;br/&gt;&lt;br/&gt;&lt;b&gt;قابلیت‌های اصلی:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;مرور محتوای کارتریج به‌صورت فهرست یا شبکه‌ای از آیکون‌ها&lt;/li&gt;&lt;li&gt;بارگذاری پرونده‌ها روی کارتریج و دانلود دوباره آن‌ها روی رایانه&lt;/li&gt;&lt;li&gt;حذف، تغییر نام، ایجاد پوشه و فرمت‌کردن حجم ROMFS&lt;/li&gt;&lt;li&gt;کشیدن و رها کردن پرونده‌ها بین برنامه و مدیر فایل شما&lt;/li&gt;&lt;/ul&gt;برای انجام عملیات از منوهای پرونده/ابزار یا منوی زمینه استفاده کنید.</translation>
+        <translation>&lt;b&gt;ROMFS Manager&lt;/b&gt; permite gerenciar os arquivos armazenados no seu N64cart.&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Principais recursos:&lt;/b&gt;&lt;ul&gt;&lt;li&gt;Navegue pelo conteúdo do cartucho em lista ou grade de ícones&lt;/li&gt;&lt;li&gt;Envie arquivos para o cartucho e baixe-os de volta para o computador&lt;/li&gt;&lt;li&gt;Exclua, renomeie, crie pastas e formate o volume ROMFS&lt;/li&gt;&lt;li&gt;Arraste e solte arquivos entre o aplicativo e o gerenciador de arquivos&lt;/li&gt;&lt;/ul&gt;Use os menus Arquivo/Ferramentas ou o menu de contexto dos itens para executar ações.</translation>
     </message>
     <message>
         <source>Version %1</source>
-        <translation>نسخه %1</translation>
+        <translation>Versão %1</translation>
     </message>
     <message>
         <source>build %1</source>
-        <translation>بیلد %1</translation>
+        <translation>build %1</translation>
     </message>
     <message>
         <source> | %1/%2</source>
@@ -209,7 +209,7 @@
     </message>
     <message>
         <source> | Total %1</source>
-        <translation> | مجموع %1</translation>
+        <translation> | Total %1</translation>
     </message>
     <message>
         <source>--:--</source>
@@ -217,11 +217,11 @@
     </message>
     <message>
         <source> | ETA %1</source>
-        <translation> | زمان باقیمانده %1</translation>
+        <translation> | ETA %1</translation>
     </message>
     <message>
         <source>Disconnected</source>
-        <translation>متصل نیست</translation>
+        <translation>Desconectado</translation>
     </message>
     <message>
         <source>FW %1.%2</source>
@@ -229,82 +229,82 @@
     </message>
     <message>
         <source>Free %1 bytes</source>
-        <translation>%1 بایت آزاد</translation>
+        <translation>%1 bytes livres</translation>
     </message>
     <message>
         <source>Please connect to a device first.</source>
-        <translation>ابتدا به یک دستگاه متصل شوید.</translation>
+        <translation>Primeiro conecte-se a um dispositivo.</translation>
     </message>
     <message>
         <source>Overwrite File?</source>
-        <translation>بازنویسی پرونده؟</translation>
+        <translation>Substituir arquivo?</translation>
     </message>
     <message>
         <source>File %1 already exists. Overwrite it?</source>
-        <translation>پرونده %1 از قبل وجود دارد. بازنویسی شود؟</translation>
+        <translation>O arquivo %1 já existe. Substituí-lo?</translation>
     </message>
     <message>
         <source>Error</source>
-        <translation>خطا</translation>
+        <translation>Erro</translation>
     </message>
     <message>
         <source>Info</source>
-        <translation>اطلاعات</translation>
+        <translation>Informação</translation>
     </message>
     <message>
         <source>Path does not exist: %1</source>
-        <translation>مسیر وجود ندارد: %1</translation>
+        <translation>O caminho não existe: %1</translation>
     </message>
     <message>
         <source>Upload canceled</source>
-        <translation>بارگذاری لغو شد</translation>
+        <translation>Envio cancelado</translation>
     </message>
     <message>
         <source>Fix ROM byte order?</source>
-        <translation>ترتیب بایت‌های ROM اصلاح شود؟</translation>
+        <translation>Corrigir ordem de bytes da ROM?</translation>
     </message>
     <message>
         <source>File %1 appears to be a ROM. Convert to Z64 before uploading?</source>
-        <translation>به نظر می‌رسد پرونده %1 یک ROM است. پیش از بارگذاری به Z64 تبدیل شود؟</translation>
+        <translation>O arquivo %1 parece ser uma ROM. Converter para Z64 antes do envio?</translation>
     </message>
     <message>
         <source>Fix ROM</source>
-        <translation>اصلاح ROM</translation>
+        <translation>Corrigir ROM</translation>
     </message>
     <message>
         <source>Leave As-Is</source>
-        <translation>بدون تغییر</translation>
+        <translation>Manter como está</translation>
     </message>
     <message>
-        <source>Don&apos;t ask again</source>
-        <translation>دیگر نپرس</translation>
+        <source>Don't ask again</source>
+        <translation>Não perguntar novamente</translation>
     </message>
     <message>
         <source>Cannot create directory %1</source>
-        <translation>نمی‌توان پوشه %1 را ایجاد کرد</translation>
+        <translation>Não foi possível criar o diretório %1</translation>
     </message>
     <message>
         <source>Download canceled</source>
-        <translation>دانلود لغو شد</translation>
+        <translation>Download cancelado</translation>
     </message>
     <message>
         <source>Cannot remove existing file %1</source>
-        <translation>نمی‌توان پرونده موجود %1 را حذف کرد</translation>
+        <translation>Não foi possível remover o arquivo existente %1</translation>
     </message>
     <message>
         <source>Downloading</source>
-        <translation>در حال دانلود</translation>
+        <translation>Baixando</translation>
     </message>
     <message>
         <source>Language change will be applied after restarting the application.</source>
-        <translation>تغییر زبان پس از راه‌اندازی دوباره برنامه اعمال می‌شود.</translation>
+        <translation>A mudança de idioma será aplicada após reiniciar o aplicativo.</translation>
     </message>
 </context>
 <context>
     <name>RomfsDevice</name>
     <message>
         <source>Uploading %1</source>
-        <translation>در حال بارگذاری %1</translation>
+        <translation>Enviando %1</translation>
     </message>
     <message>
         <source> (%1)</source>
@@ -312,69 +312,69 @@
     </message>
     <message>
         <source>Downloading %1</source>
-        <translation>در حال دانلود %1</translation>
+        <translation>Baixando %1</translation>
     </message>
 </context>
 <context>
     <name>RomfsModel</name>
     <message>
         <source>Name</source>
-        <translation>نام</translation>
+        <translation>Nome</translation>
     </message>
     <message>
         <source>Size</source>
-        <translation>اندازه</translation>
+        <translation>Tamanho</translation>
     </message>
 </context>
 <context>
     <name>SettingsDialog</name>
     <message>
         <source>Settings</source>
-        <translation>تنظیمات</translation>
+        <translation>Configurações</translation>
     </message>
     <message>
         <source>Fix ROM byte order on upload</source>
-        <translation>هنگام بارگذاری ترتیب بایت‌های ROM را اصلاح کن</translation>
+        <translation>Corrigir ordem de bytes da ROM ao enviar</translation>
     </message>
     <message>
         <source>Language</source>
-        <translation>زبان</translation>
+        <translation>Idioma</translation>
     </message>
     <message>
         <source>System default</source>
-        <translation>پیش‌فرض سیستم</translation>
+        <translation>Padrão do sistema</translation>
     </message>
     <message>
         <source>English</source>
-        <translation>انگلیسی</translation>
+        <translation>Inglês</translation>
     </message>
     <message>
         <source>Russian</source>
-        <translation>روسی</translation>
+        <translation>Russo</translation>
     </message>
     <message>
         <source>Armenian</source>
-        <translation>ارمنی</translation>
+        <translation>Armênio</translation>
     </message>
     <message>
         <source>Persian (Farsi)</source>
-        <translation>فارسی</translation>
+        <translation>Persa (Farsi)</translation>
     </message>
     <message>
         <source>Portuguese (Brazil)</source>
-        <translation>پرتغالی (برزیل)</translation>
+        <translation>Português (Brasil)</translation>
     </message>
     <message>
         <source>German</source>
-        <translation>آلمانی</translation>
+        <translation>Alemão</translation>
     </message>
     <message>
         <source>Spanish</source>
-        <translation>اسپانیایی</translation>
+        <translation>Espanhol</translation>
     </message>
     <message>
         <source>Reset to Defaults</source>
-        <translation>بازنشانی به پیش‌فرض‌ها</translation>
+        <translation>Restaurar padrões</translation>
     </message>
 </context>
 </TS>
