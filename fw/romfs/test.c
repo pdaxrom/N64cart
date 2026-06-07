@@ -812,6 +812,295 @@ cleanup:
     return success;
 }
 
+static bool test_truncate_api(void)
+{
+    printf(ANSI_COLOR_YELLOW "\n--- Running Truncate API Test ---\n" ANSI_COLOR_RESET);
+
+    if (!romfs_format()) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to format filesystem for truncate test\n" ANSI_COLOR_RESET);
+        return false;
+    }
+
+    const uint32_t initial_len = ROMFS_FLASH_SECTOR * 2 + 123;
+    const uint32_t shrink_len = ROMFS_FLASH_SECTOR + 77;
+    const uint32_t extend_len = ROMFS_FLASH_SECTOR * 3 + 15;
+
+    uint8_t *io_buffer = malloc(ROMFS_FLASH_SECTOR);
+    uint8_t *read_io_buffer = malloc(ROMFS_FLASH_SECTOR);
+    uint8_t *payload = malloc(initial_len);
+    uint8_t *read_buffer = malloc(extend_len);
+    if (!io_buffer || !read_io_buffer || !payload || !read_buffer) {
+        fprintf(stderr, ANSI_COLOR_RED "Allocation failure in truncate test\n" ANSI_COLOR_RESET);
+        free(io_buffer);
+        free(read_io_buffer);
+        free(payload);
+        free(read_buffer);
+        return false;
+    }
+
+    create_test_data(payload, initial_len, 91, 3);
+
+    bool success = true;
+    romfs_file file = {0};
+    romfs_file reader = {0};
+
+    if (romfs_create_file("truncate.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to create truncate.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+    if (romfs_write_file(payload, initial_len, &file) != initial_len ||
+            romfs_close_file(&file) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to populate truncate.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+
+    memset(&file, 0, sizeof(file));
+    if (romfs_open_append("truncate.bin", &file, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open truncate.bin for shrink: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+    if (romfs_truncate_file(&file, shrink_len) != ROMFS_NOERR ||
+            romfs_close_file(&file) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Shrink truncate failed: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+
+    if (romfs_open_file("truncate.bin", &reader, read_io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open truncated file: %s\n" ANSI_COLOR_RESET, romfs_strerror(reader.err));
+        success = false;
+        goto cleanup;
+    }
+    if (reader.entry.size != shrink_len ||
+            romfs_read_file(read_buffer, shrink_len, &reader) != shrink_len ||
+            memcmp(read_buffer, payload, shrink_len) != 0 ||
+            romfs_read_file(read_buffer, 1, &reader) != 0 ||
+            reader.err != ROMFS_ERR_EOF) {
+        fprintf(stderr, ANSI_COLOR_RED "Shrink truncate verification failed\n" ANSI_COLOR_RESET);
+        success = false;
+    }
+    romfs_close_file(&reader);
+    if (!success) {
+        goto cleanup;
+    }
+
+    memset(&file, 0, sizeof(file));
+    if (romfs_open_append("truncate.bin", &file, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open truncate.bin for extend: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+    if (romfs_truncate_file(&file, extend_len) != ROMFS_NOERR ||
+            romfs_close_file(&file) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Extend truncate failed: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+
+    memset(&reader, 0, sizeof(reader));
+    if (romfs_open_file("truncate.bin", &reader, read_io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen extended file: %s\n" ANSI_COLOR_RESET, romfs_strerror(reader.err));
+        success = false;
+        goto cleanup;
+    }
+    if (reader.entry.size != extend_len ||
+            romfs_read_file(read_buffer, extend_len, &reader) != extend_len ||
+            memcmp(read_buffer, payload, shrink_len) != 0) {
+        fprintf(stderr, ANSI_COLOR_RED "Extend truncate prefix verification failed\n" ANSI_COLOR_RESET);
+        success = false;
+    }
+    for (uint32_t i = shrink_len; success && i < extend_len; i++) {
+        if (read_buffer[i] != 0) {
+            fprintf(stderr, ANSI_COLOR_RED "Extend truncate did not zero-fill at byte %u\n" ANSI_COLOR_RESET, i);
+            success = false;
+        }
+    }
+    romfs_close_file(&reader);
+    if (!success) {
+        goto cleanup;
+    }
+
+    memset(&file, 0, sizeof(file));
+    if (romfs_open_append("truncate.bin", &file, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open truncate.bin for zero truncate: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+    if (romfs_truncate_file(&file, 0) != ROMFS_NOERR ||
+            romfs_close_file(&file) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Zero truncate failed: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+
+    memset(&reader, 0, sizeof(reader));
+    if (romfs_open_file("truncate.bin", &reader, read_io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen zero-truncated file: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(reader.err));
+        success = false;
+        goto cleanup;
+    }
+    if (reader.entry.size != 0 || romfs_read_file(read_buffer, 1, &reader) != 0 ||
+            reader.err != ROMFS_ERR_EOF) {
+        fprintf(stderr, ANSI_COLOR_RED "Zero truncate verification failed\n" ANSI_COLOR_RESET);
+        success = false;
+    }
+    romfs_close_file(&reader);
+
+cleanup:
+    romfs_delete("truncate.bin");
+    romfs_format();
+    free(io_buffer);
+    free(read_io_buffer);
+    free(payload);
+    free(read_buffer);
+    return success;
+}
+
+static bool test_random_write_api(void)
+{
+    printf(ANSI_COLOR_YELLOW "\n--- Running Random Write API Test ---\n" ANSI_COLOR_RESET);
+
+    if (!romfs_format()) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to format filesystem for random write test\n" ANSI_COLOR_RESET);
+        return false;
+    }
+
+    const uint32_t initial_len = ROMFS_FLASH_SECTOR * 2 + 123;
+    const uint32_t patch_a_offset = 100;
+    const uint32_t patch_a_len = 300;
+    const uint32_t patch_b_offset = ROMFS_FLASH_SECTOR - 20;
+    const uint32_t patch_b_len = 80;
+    const uint32_t patch_c_offset = initial_len + 97;
+    const uint32_t patch_c_len = 123;
+    const uint32_t final_len = patch_c_offset + patch_c_len;
+
+    uint8_t *io_buffer = malloc(ROMFS_FLASH_SECTOR);
+    uint8_t *read_io_buffer = malloc(ROMFS_FLASH_SECTOR);
+    uint8_t *initial = malloc(initial_len);
+    uint8_t *expected = malloc(final_len);
+    uint8_t *read_buffer = malloc(final_len);
+    uint8_t *patch_a = malloc(patch_a_len);
+    uint8_t *patch_b = malloc(patch_b_len);
+    uint8_t *patch_c = malloc(patch_c_len);
+    if (!io_buffer || !read_io_buffer || !initial || !expected || !read_buffer ||
+            !patch_a || !patch_b || !patch_c) {
+        fprintf(stderr, ANSI_COLOR_RED "Allocation failure in random write test\n" ANSI_COLOR_RESET);
+        free(io_buffer);
+        free(read_io_buffer);
+        free(initial);
+        free(expected);
+        free(read_buffer);
+        free(patch_a);
+        free(patch_b);
+        free(patch_c);
+        return false;
+    }
+
+    create_test_data(initial, initial_len, 41, 1);
+    create_test_data(patch_a, patch_a_len, 42, 2);
+    create_test_data(patch_b, patch_b_len, 43, 3);
+    create_test_data(patch_c, patch_c_len, 44, 4);
+    memset(expected, 0, final_len);
+    memcpy(expected, initial, initial_len);
+    memcpy(&expected[patch_a_offset], patch_a, patch_a_len);
+    memcpy(&expected[patch_b_offset], patch_b, patch_b_len);
+    memcpy(&expected[patch_c_offset], patch_c, patch_c_len);
+
+    bool success = true;
+    romfs_file file = {0};
+    romfs_file reader = {0};
+
+    if (romfs_create_file("random-write.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to create random-write.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+    if (romfs_write_file(initial, initial_len, &file) != initial_len ||
+            romfs_close_file(&file) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to populate random-write.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+
+    memset(&file, 0, sizeof(file));
+    if (romfs_open_append("random-write.bin", &file, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to open random-write.bin for writing: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+
+    if (romfs_seek_file(&file, patch_a_offset, SEEK_SET) != ROMFS_NOERR ||
+            romfs_write_file(patch_a, patch_a_len, &file) != patch_a_len) {
+        fprintf(stderr, ANSI_COLOR_RED "In-sector random write failed: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup_close_file;
+    }
+
+    uint32_t pos = 0;
+    if (romfs_tell_file(&file, &pos) != ROMFS_NOERR || pos != patch_a_offset + patch_a_len) {
+        fprintf(stderr, ANSI_COLOR_RED "tell mismatch after first random write (%u)\n" ANSI_COLOR_RESET, pos);
+        success = false;
+        goto cleanup_close_file;
+    }
+
+    if (romfs_seek_file(&file, patch_b_offset, SEEK_SET) != ROMFS_NOERR ||
+            romfs_write_file(patch_b, patch_b_len, &file) != patch_b_len) {
+        fprintf(stderr, ANSI_COLOR_RED "Cross-sector random write failed: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup_close_file;
+    }
+
+    if (romfs_seek_file(&file, patch_c_offset, SEEK_SET) != ROMFS_NOERR ||
+            romfs_write_file(patch_c, patch_c_len, &file) != patch_c_len) {
+        fprintf(stderr, ANSI_COLOR_RED "Sparse random write failed: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+        goto cleanup_close_file;
+    }
+
+cleanup_close_file:
+    if (romfs_close_file(&file) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to close random-write.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(file.err));
+        success = false;
+    }
+    if (!success) {
+        goto cleanup;
+    }
+
+    if (romfs_open_file("random-write.bin", &reader, read_io_buffer) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to reopen random-write.bin: %s\n" ANSI_COLOR_RESET, romfs_strerror(reader.err));
+        success = false;
+        goto cleanup;
+    }
+    if (reader.entry.size != final_len ||
+            romfs_read_file(read_buffer, final_len, &reader) != final_len ||
+            memcmp(read_buffer, expected, final_len) != 0) {
+        fprintf(stderr, ANSI_COLOR_RED "Random write verification failed\n" ANSI_COLOR_RESET);
+        success = false;
+    }
+    romfs_close_file(&reader);
+
+cleanup:
+    romfs_delete("random-write.bin");
+    romfs_format();
+    free(io_buffer);
+    free(read_io_buffer);
+    free(initial);
+    free(expected);
+    free(read_buffer);
+    free(patch_a);
+    free(patch_b);
+    free(patch_c);
+    return success;
+}
+
 static bool test_rename_api(void)
 {
     printf(ANSI_COLOR_YELLOW "\n--- Running Rename API Test ---\n" ANSI_COLOR_RESET);
@@ -1507,6 +1796,14 @@ static void run_test_suite(uint32_t flash_size_mb)
     }
 
     if (!test_append_mode()) {
+        goto cleanup;
+    }
+
+    if (!test_truncate_api()) {
+        goto cleanup;
+    }
+
+    if (!test_random_write_api()) {
         goto cleanup;
     }
 

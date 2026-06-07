@@ -109,7 +109,9 @@ typedef struct {
     uint8_t parent_dir_id;
     uint8_t dir_id;
     uint32_t buffer_base;
+    uint32_t write_offset;
     bool buffer_from_flash;
+    bool buffer_dirty;
 } romfs_file;
 
 typedef struct {
@@ -129,12 +131,14 @@ uint32_t romfs_list(romfs_file * entry, bool first);
 uint32_t romfs_delete(const char *name);
 uint32_t romfs_create_file(const char *name, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer);
 uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file * file);
+uint32_t romfs_flush_file(romfs_file * file);
 uint32_t romfs_close_file(romfs_file * file);
 uint32_t romfs_open_file(const char *name, romfs_file * file, uint8_t * io_buffer);
 uint32_t romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_tell_file(romfs_file *file, uint32_t *position);
 uint32_t romfs_seek_file(romfs_file *file, int32_t offset, int whence);
+uint32_t romfs_truncate_file(romfs_file *file, uint32_t size);
 uint32_t romfs_open_append(const char *name, romfs_file *file, uint16_t type, uint8_t *io_buffer);
 uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type,
                                   uint8_t *io_buffer);
