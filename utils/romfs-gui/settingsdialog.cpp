@@ -2,14 +2,22 @@
 
 #include "ui_settingsdialog.h"
 
+#include <algorithm>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QPushButton>
+#include <QVector>
 #include <QString>
 
 namespace
 {
 constexpr bool kDefaultFixRomEnabled = false;
+
+struct LanguageOption
+{
+    QString label;
+    QString code;
+};
 }
 
 SettingsDialog::SettingsDialog(QWidget *parent)
@@ -18,13 +26,23 @@ SettingsDialog::SettingsDialog(QWidget *parent)
 {
     ui_->setupUi(this);
     ui_->languageComboBox->addItem(tr("System default"), QStringLiteral("system"));
-    ui_->languageComboBox->addItem(tr("English"), QStringLiteral("en"));
-    ui_->languageComboBox->addItem(tr("Russian"), QStringLiteral("ru"));
-    ui_->languageComboBox->addItem(tr("Armenian"), QStringLiteral("hy"));
-    ui_->languageComboBox->addItem(tr("Persian (Farsi)"), QStringLiteral("fa"));
-    ui_->languageComboBox->addItem(tr("Portuguese (Brazil)"), QStringLiteral("pt_BR"));
-    ui_->languageComboBox->addItem(tr("German"), QStringLiteral("de"));
-    ui_->languageComboBox->addItem(tr("Spanish"), QStringLiteral("es"));
+
+    QVector<LanguageOption> languages = {
+        {tr("English"), QStringLiteral("en")},
+        {tr("Russian"), QStringLiteral("ru")},
+        {tr("Armenian"), QStringLiteral("hy")},
+        {tr("Persian (Farsi)"), QStringLiteral("fa")},
+        {tr("Portuguese (Brazil)"), QStringLiteral("pt_BR")},
+        {tr("German"), QStringLiteral("de")},
+        {tr("Spanish"), QStringLiteral("es")},
+    };
+    std::sort(languages.begin(), languages.end(),
+              [](const LanguageOption &lhs, const LanguageOption &rhs) {
+                  return QString::localeAwareCompare(lhs.label, rhs.label) < 0;
+              });
+    for (const LanguageOption &language : languages) {
+        ui_->languageComboBox->addItem(language.label, language.code);
+    }
 
     connect(ui_->buttonBox, &QDialogButtonBox::accepted, this, &SettingsDialog::accept);
     connect(ui_->buttonBox, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
