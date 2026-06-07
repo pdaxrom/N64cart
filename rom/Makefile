@@ -27,7 +27,7 @@ ifeq (y,$(NO_FILE_DELETION))
 CFLAGS += -DNO_FILE_DELETION
 endif
 
-SRC = src/main.c src/n64cart.c src/syslog.c ../fw/romfs/romfs.c ../fw/romfs/newlib-romfs.c src/ext/cic.c src/ext/crc32.c src/ext/shell_utils.c src/usb/dev_lowlevel.c src/md5.c src/imgviewer.c
+SRC = src/main.c src/n64cart.c src/syslog.c ../fw/romfs/romfs.c ../fw/romfs/newlib-romfs.c src/ext/cic.c src/ext/crc32.c src/ext/shell_utils.c src/usb/dev_lowlevel.c src/md5.c src/imgviewer.c src/settings.c
 
 OBJS = $(SRC:%.c=$(BUILD_DIR)/%.o)
 ASMOBJS = $(ASMSRC:%.S=$(BUILD_DIR)/%.o)

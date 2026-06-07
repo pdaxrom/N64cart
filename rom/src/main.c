@@ -32,6 +32,7 @@
 #include "syslog.h"
 #include "md5.h"
 #include "imgviewer.h"
+#include "settings.h"
 
 #define FILE_NAME_SCROLL_DELAY  (5)
 #define KEYS_DELAY (3)
@@ -42,10 +43,14 @@ static void update_path_text(void);
 enum {
     STEP_LOGO = 0,
     STEP_ROMFS_INIT,
+    STEP_LOAD_SETTINGS,
     STEP_LOAD_BACKGROUND,
     STEP_SAVE_GAMESAVE,
     //STEP_USB_INIT,
-    STEP_FINISH
+    STEP_FINISH,
+
+    // used in auto_boot mode
+    STEP_FAILED_MENU
 };
 
 static const struct flash_chip flash_chip[] = {
@@ -65,6 +70,7 @@ static int scr_height;
 static int scr_scale;
 
 static struct File_Rec {
+    char* friendly_name;
     char *name;       // base entry name (no path)
     char *path;       // full path from root (no trailing slash)
     size_t size;
@@ -88,6 +94,8 @@ static char txt_current_path[ROMFS_PATH_MAX];
 static uint8_t __attribute__((aligned(16))) save_data[131072];
 
 static sprite_t *bg_img = NULL;
+static bool consumer_mode = true;
+static bool auto_boot = false;
 
 static int do_step = STEP_LOGO;
 
@@ -489,6 +497,24 @@ static int file_entry_cmp(const void *lhs, const void *rhs)
     return strcasecmp(a->name, b->name);
 }
 
+static bool has_extension(const char *filename, const char *ext)
+{
+    if (!filename || !ext) return false;
+
+    const char *dot = strrchr(filename, '.');
+    if (!dot) return false;
+
+    return strcmp(dot, ext) == 0;
+}
+
+static void remove_extension(char *filename)
+{
+    if (!filename) return;
+
+    char *dot = strrchr(filename, '.');
+    if (dot && dot != filename) *dot = '\0';
+}
+
 static void refresh_file_list(void)
 {
     clear_file_list();
@@ -515,6 +541,19 @@ static void refresh_file_list(void)
         if (base_name && base_name[0] != '\0' && strcmp(base_name, ".") != 0 && strcmp(base_name, "..") != 0) {
             if (num_files >= (int)(sizeof(files) / sizeof(files[0]))) {
                 break;
+            }
+
+            // detect auto-boot
+            if (!strcmp(base_name, "boot.z64")) auto_boot = true;
+
+            // reduce noise for consume mode
+            if (consumer_mode) {
+                if (has_extension(base_name, ".z64")) {
+                    if (!strcmp(base_name, "n64cart-manager.z64")) goto SKIP;
+                }
+                else {
+                    goto SKIP;
+                }
             }
 
             char path_buf[ROMFS_PATH_MAX];
@@ -556,6 +595,10 @@ static void refresh_file_list(void)
                     break;
                 }
 
+                char *friendly_name = strdup(base_name);
+                remove_extension(friendly_name);
+                files[num_files].friendly_name = friendly_name;
+
                 files[num_files].name = name_dup;
                 files[num_files].path = path_dup;
                 files[num_files].size = file_size;
@@ -568,6 +611,7 @@ static void refresh_file_list(void)
             }
         }
 
+        SKIP:;
         res = dir_findnext(dir_path, &dir_entry);
     }
 
@@ -932,7 +976,7 @@ int main(void)
 
     bool hide_menu = false;
 
-    do_step = STEP_LOGO;
+    do_step = consumer_mode ? STEP_ROMFS_INIT : STEP_LOGO;
 
     int keys_delay_counter = 0;
 
@@ -951,8 +995,8 @@ int main(void)
             graphics_fill_screen(disp, 0);
         }
 
-        graphics_set_color(0xeeeeee00, 0x00000000);
-
+        if (auto_boot) graphics_set_color(0x00000000, 0x00000000);
+        else graphics_set_color(0xeeeeee00, 0x00000000);
 
         if (do_step == STEP_LOGO) {
             static int i = 0;
@@ -974,8 +1018,10 @@ int main(void)
         }
 
         if (do_step == STEP_ROMFS_INIT) {
-            static const char *save_data_txt = "ROM FS starting...";
-            graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            if (!consumer_mode) {
+                static const char *save_data_txt = "ROM FS starting...";
+                graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            }
             display_show(disp);
 
             uint32_t flash_map_size, flash_list_size;
@@ -1014,17 +1060,31 @@ int main(void)
             update_romfs_free_text();
             update_path_text();
 
-            do_step = STEP_LOAD_BACKGROUND;
+            do_step = STEP_LOAD_SETTINGS;
+            continue;
+        }
+
+        if (do_step == STEP_LOAD_SETTINGS) {
+            /*if (!boot_settings_load(&settings)) {
+                syslog(LOG_INFO, "No settings loaded");
+            }*/
+            display_show(disp);
+            do_step = auto_boot ? STEP_SAVE_GAMESAVE : STEP_LOAD_BACKGROUND;
             continue;
         }
 
         if (do_step == STEP_LOAD_BACKGROUND) {
-            static const char *save_data_txt = "Loading background...";
-            graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            if (consumer_mode) {
+                static const char *save_data_txt = "Loading...";
+                graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            }
+            else {
+                static const char *save_data_txt = "Loading background...";
+                graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
+            }
             display_show(disp);
 
             bg_img = image_load("background.jpg", scr_width, scr_height);
-
             do_step = STEP_SAVE_GAMESAVE;
             continue;
         }
@@ -1155,6 +1215,19 @@ int main(void)
             }
         }
 
+        if (auto_boot) {
+            if (do_step == STEP_FINISH) {
+                run_rom(disp, "boot.z64", NULL, 0, 0);
+
+                do_step = STEP_FAILED_MENU;
+                auto_boot = false;
+                graphics_set_color(0xeeeeee00, 0x00000000);
+                static const char *fopen_error_1 = "Can't open ROM file!";
+                graphics_draw_text(disp, valign(fopen_error_1), 120 * scr_scale, fopen_error_1);
+                continue;
+            }
+        }
+
         /* Scan for User input */
         joypad_poll();
         joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
@@ -1172,16 +1245,18 @@ int main(void)
         snprintf(txt_tv_type_msg, sizeof(txt_tv_type_msg), "%s mode, default %s save", tv_type_str[get_tv_type()], force_fram ? "FRAM" : "SRAM");
 
         /* Text */
-        graphics_draw_text(disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
-        graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
+        if (!consumer_mode) {
+            graphics_draw_text(disp, valign(txt_title_1), 10 * scr_scale, txt_title_1);
+            graphics_draw_text(disp, valign(txt_title_2), 20 * scr_scale, txt_title_2);
 
-        graphics_draw_text(disp, valign(txt_tv_type_msg), 30 * scr_scale, txt_tv_type_msg);
-        graphics_draw_text(disp, valign(txt_rom_info), 40 * scr_scale, txt_rom_info);
-        graphics_draw_text(disp, valign(txt_romfs_free), 50 * scr_scale, txt_romfs_free);
-        graphics_draw_text(disp, valign(txt_current_path), 60 * scr_scale, txt_current_path);
+            graphics_draw_text(disp, valign(txt_tv_type_msg), 30 * scr_scale, txt_tv_type_msg);
+            graphics_draw_text(disp, valign(txt_rom_info), 40 * scr_scale, txt_rom_info);
+            graphics_draw_text(disp, valign(txt_romfs_free), 50 * scr_scale, txt_romfs_free);
+            graphics_draw_text(disp, valign(txt_current_path), 60 * scr_scale, txt_current_path);
 
-        graphics_draw_text(disp, valign(txt_menu_info_1), 90 * scr_scale, txt_menu_info_1);
-        graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);
+            graphics_draw_text(disp, valign(txt_menu_info_1), 90 * scr_scale, txt_menu_info_1);
+            graphics_draw_text(disp, valign(txt_menu_info_2), 100 * scr_scale, txt_menu_info_2);
+        }
 
         if (pressed.a) {
             graphics_draw_box(disp, 40 * scr_scale, 110 * scr_scale, (320 - 40 * 2) * scr_scale, 50 * scr_scale, 0x00000080);
@@ -1268,7 +1343,7 @@ int main(void)
             force_fram = !force_fram;
         }
 #ifndef NO_FILE_DELETION
-        else if (pressed.c_left) {
+        else if (pressed.c_left && !consumer_mode) {
             if (files[menu_sel].is_parent && files[menu_sel].is_dir) {
                 display_show(disp);
                 continue;
@@ -1345,12 +1420,13 @@ int main(void)
         total_files_to_show = (total_files_to_show > num_files) ? num_files : total_files_to_show;
 
         for (int i = first_file; i < total_files_to_show; i++) {
-            const char *label = files[i].name ? files[i].name : "";
+            const char* name = consumer_mode ? files[i].friendly_name : files[i].name;
+            const char *label = name ? name : "";
             char display_buf[ROMFS_MAX_NAME_LEN + 4];
             if (files[i].is_parent) {
                 label = "..";
             } else if (files[i].is_dir) {
-                snprintf(display_buf, sizeof(display_buf), "%s/", files[i].name);
+                snprintf(display_buf, sizeof(display_buf), "%s/", name);
                 label = display_buf;
             }
 
@@ -1370,7 +1446,8 @@ int main(void)
                         }
                     }
                 }
-                sprintf(tStr, "%02d:*", i);
+                if (consumer_mode) sprintf(tStr, "   *");
+                else sprintf(tStr, "%02d:*", i);
             } else {
                 if (files[i].scroll_pos != 0) {
                     files[i].scroll_pos += (files[i].scroll_pos > 0) ? -1 : 1;
@@ -1379,7 +1456,8 @@ int main(void)
                     files[i].scroll_dir = 1;
                     files[i].scroll_delay = FILE_NAME_SCROLL_DELAY;
                 }
-                sprintf(tStr, "%02d: ", i);
+                if (consumer_mode) sprintf(tStr, "    ");
+                else sprintf(tStr, "%02d: ", i);
             }
             graphics_draw_text(disp, 40 * scr_scale, (120 + (i - first_file) * 10) * scr_scale, tStr);
             surface_t text_fb = surface_make_sub(disp, (40 + 4 * font_width) * scr_scale, (120 + (i - first_file) * 10) * scr_scale,
