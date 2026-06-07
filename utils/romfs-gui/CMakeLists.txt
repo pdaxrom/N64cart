@@ -1,5 +1,17 @@
 cmake_minimum_required(VERSION 3.16)
 
+if(APPLE)
+    foreach(_romfs_gui_brew_bin IN ITEMS /opt/homebrew/bin /usr/local/bin)
+        if(IS_DIRECTORY "${_romfs_gui_brew_bin}")
+            list(PREPEND CMAKE_PROGRAM_PATH "${_romfs_gui_brew_bin}")
+            string(FIND "$ENV{PATH}" "${_romfs_gui_brew_bin}" _romfs_gui_brew_path_pos)
+            if(_romfs_gui_brew_path_pos EQUAL -1)
+                set(ENV{PATH} "${_romfs_gui_brew_bin}:$ENV{PATH}")
+            endif()
+        endif()
+    endforeach()
+endif()
+
 set(_romfs_gui_vcpkg_search_roots)
 if(DEFINED ENV{VCPKG_ROOT} AND EXISTS "$ENV{VCPKG_ROOT}")
     file(TO_CMAKE_PATH "$ENV{VCPKG_ROOT}" _romfs_gui_env_vcpkg_root)

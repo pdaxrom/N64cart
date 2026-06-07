@@ -40,6 +40,8 @@ cmake --build build-macos
 
 Notes:
 - The app links `libusb` through `pkg-config`; with the vcpkg toolchain that resolves to the vcpkg package.
+- If vcpkg builds `libusb` from source, install the required autotools with `brew install autoconf autoconf-archive automake libtool`.
+- The CMake project prepends `/opt/homebrew/bin` and `/usr/local/bin` on macOS so Qt Creator can find Homebrew tools even when launched outside a shell.
 - The first configure installs manifest dependencies automatically unless you pass `-DVCPKG_MANIFEST_INSTALL=OFF`.
 - Run `cmake --build build-macos --target deploy` to execute `macdeployqt`.
 
