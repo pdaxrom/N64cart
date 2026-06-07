@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022-2024 sashz /pdaXrom.org/
+ * Copyright (c) 2022-2026 sashz /pdaXrom.org/
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -909,7 +909,7 @@ int main(void)
     syslog(LOG_INFO, "N64Cart fw size: %ld", n64cart_fw_size());
 
     static const char *txt_title_1 = "N64CART MANAGER";
-    static const char *txt_title_2 = "(c) sashz /pdaXrom.org/, 2022-2024";
+    static const char *txt_title_2 = "(c) sashz /pdaXrom.org/, 2022-2026";
     static char txt_rom_info[128];
     static const char *txt_menu_info_1 = "[UP]/[DOWN]-Select, [L]/[R]-Page";
 #ifdef NO_FILE_DELETION
