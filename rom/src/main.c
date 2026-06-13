@@ -303,6 +303,15 @@ static void draw_usb_display_splash(display_context_t disp)
 #endif
 }
 
+static void show_usb_display_splash(display_context_t disp)
+{
+    draw_usb_display_splash(disp);
+    stabilize_display_pairs(disp);
+    display_show(disp);
+    usb_display_splash_drawn = true;
+    usbd_complete_pending_spi_mode();
+}
+
 static void apply_usb_display_mode_request(void)
 {
     int request = usb_display_mode_request;
@@ -1309,15 +1318,19 @@ int main(void)
         if (usb_display_mode_active) {
             if (!usb_display_splash_drawn) {
                 disp = display_get();
-                draw_usb_display_splash(disp);
-                stabilize_display_pairs(disp);
-                display_show(disp);
-                usb_display_splash_drawn = true;
+                show_usb_display_splash(disp);
+            } else {
+                usbd_complete_pending_spi_mode();
             }
             continue;
         }
 
         disp = display_get();
+        apply_usb_display_mode_request();
+        if (usb_display_mode_active) {
+            show_usb_display_splash(disp);
+            continue;
+        }
 
         if (handle_usb_romfs_reload(disp)) {
             continue;

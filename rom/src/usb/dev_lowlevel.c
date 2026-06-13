@@ -723,6 +723,21 @@ static struct ack_header ackn;
 
 static int current_req;
 static int flash_stage;
+static volatile bool spi_mode_ack_pending = false;
+
+void usbd_complete_pending_spi_mode(void)
+{
+    if (!spi_mode_ack_pending) {
+        return;
+    }
+
+    spi_mode_ack_pending = false;
+    wait_ms(50);
+    flash_mode(false);
+    ackn.type = reverser16(ACK_NOERROR);
+    usb_start_transfer(usb_get_endpoint_configuration(EP2_IN_ADDR), (uint8_t *) & ackn, sizeof(struct ack_header));
+    syslog(LOG_INFO, "USB display mode: SPI ack after splash");
+}
 
 // Device specific functions
 static void ep1_out_handler(uint8_t *buf, uint16_t len)
@@ -753,8 +768,9 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             return;
         } else if (current_req == FLASH_SPI_MODE || current_req == FLASH_QUAD_MODE || current_req == BOOTLOADER_MODE || current_req == CART_REBOOT) {
             if (current_req == FLASH_SPI_MODE) {
-                flash_mode(false);
                 n64cart_set_usb_display_mode(true);
+                spi_mode_ack_pending = true;
+                return;
             } else if (current_req == FLASH_QUAD_MODE) {
                 flash_mode(true);
                 n64cart_set_usb_display_mode(false);
