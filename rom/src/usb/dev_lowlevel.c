@@ -754,8 +754,10 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
         } else if (current_req == FLASH_SPI_MODE || current_req == FLASH_QUAD_MODE || current_req == BOOTLOADER_MODE || current_req == CART_REBOOT) {
             if (current_req == FLASH_SPI_MODE) {
                 flash_mode(false);
+                n64cart_set_usb_display_mode(true);
             } else if (current_req == FLASH_QUAD_MODE) {
                 flash_mode(true);
+                n64cart_set_usb_display_mode(false);
             }
             ackn.type = reverser16(ACK_NOERROR);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
@@ -782,10 +784,12 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             flash_stage = 1;
             sector_buffer_pos = 0;
             rw_sector_offset = reverser32(req->offset);
+            n64cart_note_usb_romfs_modified();
             ackn.type = reverser16(ACK_NOERROR);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         } else if (current_req == CART_ERASE_SEC) {
+            n64cart_note_usb_romfs_modified();
             romfs_flash_sector_erase(reverser32(req->offset));
             ackn.type = reverser16(ACK_NOERROR);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));

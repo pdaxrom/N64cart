@@ -43,6 +43,9 @@ else()
     set(GSED sed)
 endif()
 
+find_program(RSVG_CONVERT_TOOL rsvg-convert REQUIRED)
+find_program(MAGICK_TOOL magick REQUIRED)
+
 # the following prevents launching a build in the source tree
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
@@ -90,6 +93,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=unused-but-set-variable -Wno-erro
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_CXX_FLAGS_RELEASE} -DN64")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffast-math -ftrapping-math -fno-associative-math")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${BOARD_CFLAGS} -DWITH_FONT_FILE=\\\"${CMAKE_CURRENT_BINARY_DIR}/wy700font-regular.h\\\"")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DWITH_USB_ICON_FILE=\\\"${CMAKE_CURRENT_BINARY_DIR}/n64cart-icon.h\\\" -DUSB_ICON_WIDTH=96 -DUSB_ICON_HEIGHT=96")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp")
 
 file(GLOB_RECURSE CSOURCES "src/*.c" "${CMAKE_CURRENT_LIST_DIR}/../fw/romfs/romfs.c" "${CMAKE_CURRENT_LIST_DIR}/../fw/romfs/newlib-romfs.c")
@@ -102,6 +106,7 @@ target_sources(${ELF_NAME}
     PUBLIC
     ${SOURCES}
     ${CMAKE_CURRENT_BINARY_DIR}/wy700font-regular.h
+    ${CMAKE_CURRENT_BINARY_DIR}/n64cart-icon.h
 )
 
 add_custom_command(OUTPUT wy700font-regular.sprite
@@ -115,6 +120,26 @@ add_custom_command(OUTPUT wy700font-regular.h
     COMMAND ${GSED} ARGS -i 's/unsigned char /static const unsigned char /g' wy700font-regular.h
     COMMAND ${GSED} ARGS -i 's/unsigned int /\\/\\/ static const unsigned int /g' wy700font-regular.h
     DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/wy700font-regular.sprite
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+add_custom_command(OUTPUT n64cart-icon.png
+    COMMAND ${RSVG_CONVERT_TOOL} ARGS -w 96 -h 96 -o n64cart-icon.png ${CMAKE_CURRENT_LIST_DIR}/../utils/romfs-gui/icons/icon.svg
+    DEPENDS ${CMAKE_CURRENT_LIST_DIR}/../utils/romfs-gui/icons/icon.svg
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+add_custom_command(OUTPUT n64cart-icon.rgba
+    COMMAND ${MAGICK_TOOL} ARGS n64cart-icon.png -depth 8 rgba:n64cart-icon.rgba
+    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/n64cart-icon.png
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+add_custom_command(OUTPUT n64cart-icon.h
+    COMMAND xxd ARGS -i n64cart-icon.rgba n64cart-icon.h
+    COMMAND ${GSED} ARGS -i 's/unsigned char /static const unsigned char /g' n64cart-icon.h
+    COMMAND ${GSED} ARGS -i 's/unsigned int /\\/\\/ static const unsigned int /g' n64cart-icon.h
+    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/n64cart-icon.rgba
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 

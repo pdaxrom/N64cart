@@ -26,6 +26,9 @@
 #else
 #include "../build/wy700font-regular.h"
 #endif
+#ifdef WITH_USB_ICON_FILE
+#include WITH_USB_ICON_FILE
+#endif
 #include "main.h"
 #include "usb/usbd.h"
 
@@ -38,6 +41,13 @@
 
 static void update_romfs_free_text(void);
 static void update_path_text(void);
+static bool reload_romfs_view(void);
+static bool usb_romfs_reload_pending(void);
+static bool handle_usb_romfs_reload(display_context_t disp);
+static bool allocate_manager_buffers(bool is_hires);
+static void load_background_image(void);
+static bool ensure_image_decode_arena(void);
+static bool allocate_image_decode_arena(bool is_hires);
 
 enum {
     STEP_LOGO = 0,
@@ -64,9 +74,26 @@ static int scr_width;
 static int scr_height;
 static int scr_scale;
 
+static volatile int usb_display_mode_request = -1;
+static volatile bool usb_display_mode_session = false;
+static volatile bool usb_romfs_modified = false;
+static volatile bool usb_romfs_reload_request = false;
+static volatile int usb_romfs_reload_delay = 0;
+static bool usb_display_mode_active = false;
+static bool usb_display_splash_drawn = false;
+#ifdef WITH_USB_ICON_FILE
+static struct {
+    sprite_t sprite;
+    uint32_t data[USB_ICON_WIDTH * USB_ICON_HEIGHT];
+} usb_icon_sprite_storage;
+static bool usb_icon_sprite_ready = false;
+#endif
+
+#define ROMFS_PATH_MAX 256
+
 static struct File_Rec {
-    char *name;       // base entry name (no path)
-    char *path;       // full path from root (no trailing slash)
+    char name[ROMFS_MAX_NAME_LEN]; // base entry name (no path)
+    char path[ROMFS_PATH_MAX];     // full path from root (no trailing slash)
     size_t size;
     int scroll_pos;
     int scroll_dir;
@@ -78,8 +105,6 @@ static struct File_Rec {
 static int num_files = 0;
 static int menu_sel = 0;
 
-#define ROMFS_PATH_MAX 256
-
 static int dir_depth = 0; // 0 == root
 static char current_path[ROMFS_PATH_MAX];
 static char txt_romfs_free[64];
@@ -88,21 +113,53 @@ static char txt_current_path[ROMFS_PATH_MAX];
 static uint8_t __attribute__((aligned(16))) save_data[131072];
 
 static sprite_t *bg_img = NULL;
+static sprite_t *bg_img_buffer = NULL;
+static size_t bg_img_buffer_size = 0;
+static uint8_t *image_decode_arena = NULL;
+static size_t image_decode_arena_size = 0;
+static uint16_t *romfs_flash_map = NULL;
+static uint8_t *romfs_flash_list = NULL;
+static uint32_t romfs_flash_map_size = 0;
+static uint32_t romfs_flash_list_size = 0;
+static bool romfs_ready = false;
 
 static int do_step = STEP_LOGO;
 
 static bool force_fram = false;
+
+static int flash_access_lock_depth;
+static bool flash_access_restore_cart;
+
+static void flash_access_lock(void)
+{
+    if (flash_access_lock_depth++ == 0) {
+        flash_access_restore_cart = (C0_STATUS() & C0_INTERRUPT_CART) != 0;
+        set_CART_interrupt(0);
+    }
+}
+
+static void flash_access_unlock(void)
+{
+    if (flash_access_lock_depth <= 0) {
+        flash_access_lock_depth = 0;
+        return;
+    }
+
+    if (--flash_access_lock_depth == 0) {
+        set_CART_interrupt(flash_access_restore_cart);
+    }
+}
 
 bool romfs_flash_sector_erase(uint32_t offset)
 {
 #ifdef DEBUG_FS
     syslog(LOG_DEBUG, "%s: offset %08X", __func__, offset);
 #endif
-    disable_interrupts();
+    flash_access_lock();
     flash_mode(0);
     flash_erase_sector(offset);
     flash_mode(1);
-    enable_interrupts();
+    flash_access_unlock();
 
     return true;
 }
@@ -112,11 +169,11 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
 #ifdef DEBUG_FS
     syslog(LOG_DEBUG, "%s: offset %08X", __func__, offset);
 #endif
-    disable_interrupts();
+    flash_access_lock();
     flash_mode(0);
     flash_write_sector(offset, buffer);
     flash_mode(1);
-    enable_interrupts();
+    flash_access_unlock();
 
     return true;
 }
@@ -126,11 +183,11 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
 #ifdef DEBUG_FS
     syslog(LOG_DEBUG, "%s: offset %08lX, need %ld", __func__, offset, need);
 #endif
-    disable_interrupts();
+    flash_access_lock();
     flash_mode(0);
     flash_read(offset, buffer, need);
     flash_mode(1);
-    enable_interrupts();
+    flash_access_unlock();
 
     return true;
 }
@@ -144,11 +201,11 @@ static void detect_flash_chip()
 {
     uint8_t rxbuf[4];
 
-    disable_interrupts();
+    flash_access_lock();
     flash_mode(0);
     flash_do_cmd(0x9f, NULL, rxbuf, 4);
     flash_mode(1);
-    enable_interrupts();
+    flash_access_unlock();
 
     syslog(LOG_INFO, "Flash jedec id %02X %02X %02X", rxbuf[0], rxbuf[1], rxbuf[2]);
 
@@ -169,14 +226,228 @@ const struct flash_chip *get_flash_info()
     return used_flash_chip;
 }
 
+void n64cart_set_usb_display_mode(bool active)
+{
+    if (active) {
+        syslog(LOG_INFO, "USB display mode: SPI session begin");
+        usb_display_mode_session = true;
+    } else if (usb_display_mode_session) {
+        usb_display_mode_session = false;
+        if (usb_romfs_modified) {
+            syslog(LOG_INFO, "USB display mode: SPI session end, schedule ROMFS reload");
+            usb_romfs_modified = false;
+            usb_romfs_reload_request = true;
+            usb_romfs_reload_delay = 30;
+        } else {
+            syslog(LOG_INFO, "USB display mode: SPI session end, no ROMFS changes");
+        }
+    }
+    usb_display_mode_request = active ? 1 : 0;
+}
+
+void n64cart_note_usb_romfs_modified(void)
+{
+    if (!usb_romfs_modified) {
+        syslog(LOG_INFO, "USB ROMFS modified");
+    }
+    usb_romfs_modified = true;
+}
+
+static void init_manager_display(bool is_hires)
+{
+    display_init(is_hires ? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+
+    if (is_hires) {
+        graphics_set_font_sprite((sprite_t *) wy700font_regular_sprite);
+        scr_scale = 2;
+    } else {
+        scr_scale = 1;
+    }
+
+    scr_width = display_get_width();
+    scr_height = display_get_height();
+}
+
+static void stabilize_display_pairs(display_context_t disp)
+{
+    if (!disp || disp->height <= 240 || surface_get_format(disp) != FMT_RGBA32) {
+        return;
+    }
+
+    uint8_t *buffer = disp->buffer;
+    for (int y = 0; y + 1 < disp->height; y += 2) {
+        memmove(buffer + (size_t)(y + 1) * disp->stride, buffer + (size_t)y * disp->stride, disp->stride);
+    }
+}
+
+static void draw_usb_display_splash(display_context_t disp)
+{
+    graphics_fill_screen(disp, 0);
+
+#ifdef WITH_USB_ICON_FILE
+    if (!usb_icon_sprite_ready) {
+        usb_icon_sprite_storage.sprite.width = USB_ICON_WIDTH;
+        usb_icon_sprite_storage.sprite.height = USB_ICON_HEIGHT;
+        usb_icon_sprite_storage.sprite.flags = FMT_RGBA32;
+        usb_icon_sprite_storage.sprite.hslices = 1;
+        usb_icon_sprite_storage.sprite.vslices = 1;
+        memmove(usb_icon_sprite_storage.data, n64cart_icon_rgba, sizeof(usb_icon_sprite_storage.data));
+        usb_icon_sprite_ready = true;
+    }
+
+    sprite_t *icon = &usb_icon_sprite_storage.sprite;
+    int x = (scr_width - icon->width) / 2;
+    int y = (scr_height - icon->height) / 2;
+    y &= ~1;
+    graphics_draw_sprite(disp, x < 0 ? 0 : x, y < 0 ? 0 : y, icon);
+#endif
+}
+
+static void apply_usb_display_mode_request(void)
+{
+    int request = usb_display_mode_request;
+    if (request < 0) {
+        return;
+    }
+
+    bool active = request != 0;
+    usb_display_mode_request = -1;
+    if (usb_display_mode_active == active) {
+        return;
+    }
+
+    syslog(LOG_INFO, "USB display mode: active=%d, keep display %dx%d", active, scr_width, scr_height);
+
+    usb_display_mode_active = active;
+    usb_display_splash_drawn = false;
+}
+
+static bool ensure_image_decode_arena(void)
+{
+    if (image_decode_arena) {
+        image_set_decode_arena(image_decode_arena, image_decode_arena_size);
+        return true;
+    }
+
+    const size_t hires_sizes[] = {
+        2 * 1024 * 1024,
+        1792 * 1024,
+        1536 * 1024,
+    };
+    const size_t lores_sizes[] = {
+        768 * 1024,
+        512 * 1024,
+    };
+
+    const size_t *sizes = scr_width > 320 ? hires_sizes : lores_sizes;
+    int num_sizes = scr_width > 320 ? (int)(sizeof(hires_sizes) / sizeof(hires_sizes[0])) :
+                    (int)(sizeof(lores_sizes) / sizeof(lores_sizes[0]));
+
+    for (int i = 0; i < num_sizes; i++) {
+        image_decode_arena_size = sizes[i];
+        image_decode_arena = malloc(image_decode_arena_size);
+        if (image_decode_arena) {
+            image_set_decode_arena(image_decode_arena, image_decode_arena_size);
+            return true;
+        }
+        syslog(LOG_INFO, "image decode arena size unavailable: %lu", (unsigned long)image_decode_arena_size);
+    }
+
+    syslog(LOG_ERR, "Cannot allocate image decode arena");
+    image_decode_arena_size = 0;
+    image_set_decode_arena(NULL, 0);
+    return false;
+}
+
+static bool allocate_image_decode_arena(bool is_hires)
+{
+    if (image_decode_arena) {
+        return true;
+    }
+
+    const size_t hires_sizes[] = {
+        2 * 1024 * 1024,
+        1920 * 1024,
+        1792 * 1024,
+        1536 * 1024,
+    };
+    const size_t lores_sizes[] = {
+        512 * 1024,
+    };
+
+    const size_t *sizes = is_hires ? hires_sizes : lores_sizes;
+    int num_sizes = is_hires ? (int)(sizeof(hires_sizes) / sizeof(hires_sizes[0])) :
+                    (int)(sizeof(lores_sizes) / sizeof(lores_sizes[0]));
+
+    for (int i = 0; i < num_sizes; i++) {
+        image_decode_arena_size = sizes[i];
+        image_decode_arena = malloc(image_decode_arena_size);
+        if (image_decode_arena) {
+            image_set_decode_arena(image_decode_arena, image_decode_arena_size);
+            syslog(LOG_INFO, "image decode arena allocated");
+            return true;
+        }
+
+        syslog(LOG_INFO, "image decode arena size unavailable: %lu", (unsigned long)sizes[i]);
+    }
+
+    image_decode_arena_size = 0;
+    image_set_decode_arena(NULL, 0);
+    return false;
+}
+
+static bool allocate_manager_buffers(bool is_hires)
+{
+    int max_width = is_hires ? 640 : 320;
+    int max_height = is_hires ? 480 : 240;
+
+    allocate_image_decode_arena(is_hires);
+
+    bg_img_buffer_size = sizeof(sprite_t) + (size_t)max_width * max_height * 4;
+    bg_img_buffer = malloc(bg_img_buffer_size);
+    if (!bg_img_buffer) {
+        syslog(LOG_ERR, "Cannot allocate background buffer");
+        return false;
+    }
+
+    if (used_flash_chip) {
+        romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &romfs_flash_map_size, &romfs_flash_list_size);
+
+        romfs_flash_map = malloc(romfs_flash_map_size);
+        romfs_flash_list = malloc(romfs_flash_list_size);
+
+        if (!romfs_flash_map || !romfs_flash_list) {
+            syslog(LOG_ERR, "Cannot allocate ROMFS buffers");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void load_background_image(void)
+{
+    if (bg_img || !bg_img_buffer) {
+        return;
+    }
+
+    if (!ensure_image_decode_arena()) {
+        return;
+    }
+
+    if (image_load_into("background.jpg", scr_width, scr_height, bg_img_buffer, bg_img_buffer_size)) {
+        bg_img = bg_img_buffer;
+    }
+}
+
 static bool get_rom_name(char *name, int size, bool *adv, uint8_t *opts)
 {
     n64cart_sram_unlock();
-    disable_interrupts();
+    flash_access_lock();
     flash_mode(0);
     flash_read(((pi_io_read(N64CART_ROM_LOOKUP) >> 16) << 12) + 0x3b, (void *)name, 5);
     flash_mode(1);
-    enable_interrupts();
+    flash_access_unlock();
     n64cart_sram_lock();
 
     for (int i = 0; i < 4; i++) {
@@ -453,10 +724,8 @@ static int ensure_parent_directory(const char *path)
 static void clear_file_list(void)
 {
     for (int i = 0; i < num_files; i++) {
-        free(files[i].name);
-        free(files[i].path);
-        files[i].name = NULL;
-        files[i].path = NULL;
+        files[i].name[0] = '\0';
+        files[i].path[0] = '\0';
     }
     num_files = 0;
 }
@@ -466,8 +735,8 @@ static void add_parent_entry(void)
     if (num_files >= (int)(sizeof(files) / sizeof(files[0]))) {
         return;
     }
-    files[num_files].name = strdup("..");
-    files[num_files].path = NULL;
+    safe_copy(files[num_files].name, sizeof(files[num_files].name), "..");
+    files[num_files].path[0] = '\0';
     files[num_files].size = 0;
     files[num_files].scroll_pos = 0;
     files[num_files].scroll_dir = 1;
@@ -510,10 +779,12 @@ static void refresh_file_list(void)
         return;
     }
 
+    bool stopped_early = false;
     while (res == 0) {
         const char *base_name = dir_entry.d_name;
         if (base_name && base_name[0] != '\0' && strcmp(base_name, ".") != 0 && strcmp(base_name, "..") != 0) {
             if (num_files >= (int)(sizeof(files) / sizeof(files[0]))) {
+                stopped_early = true;
                 break;
             }
 
@@ -548,16 +819,8 @@ static void refresh_file_list(void)
             }
 
             if (!is_system) {
-                char *name_dup = strdup(base_name);
-                char *path_dup = strdup(path_buf);
-                if (!name_dup || !path_dup) {
-                    free(name_dup);
-                    free(path_dup);
-                    break;
-                }
-
-                files[num_files].name = name_dup;
-                files[num_files].path = path_dup;
+                safe_copy(files[num_files].name, sizeof(files[num_files].name), base_name);
+                safe_copy(files[num_files].path, sizeof(files[num_files].path), path_buf);
                 files[num_files].size = file_size;
                 files[num_files].scroll_pos = 0;
                 files[num_files].scroll_dir = 1;
@@ -569,6 +832,12 @@ static void refresh_file_list(void)
         }
 
         res = dir_findnext(dir_path, &dir_entry);
+    }
+
+    if (res == 0 && stopped_early) {
+        do {
+            res = dir_findnext(dir_path, &dir_entry);
+        } while (res == 0);
     }
 
     if (res < 0 && errno && errno != ENOENT) {
@@ -614,6 +883,105 @@ static void update_path_text(void)
         safe_append(txt_current_path, sizeof(txt_current_path), display);
     }
 }
+
+static bool current_directory_exists(void)
+{
+    if (current_path[0] == '\0') {
+        return true;
+    }
+
+    char api_path[ROMFS_PATH_MAX];
+    build_romfs_api_path(current_path, api_path, sizeof(api_path));
+
+    romfs_entry entry;
+    if (romfs_get_entry_path(api_path, &entry) != ROMFS_NOERR) {
+        return false;
+    }
+
+    return entry.attr.names.type == ROMFS_TYPE_DIR;
+}
+
+static bool reload_romfs_view(void)
+{
+    if (!used_flash_chip || !romfs_flash_map || !romfs_flash_list) {
+        syslog(LOG_ERR, "Cannot reload romfs: buffers are not ready");
+        return false;
+    }
+
+    uint32_t flash_map_size;
+    uint32_t flash_list_size;
+    romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
+
+    if (flash_map_size != romfs_flash_map_size || flash_list_size != romfs_flash_list_size) {
+        syslog(LOG_ERR, "Cannot reload romfs: buffer size changed");
+        return false;
+    }
+
+    uint32_t fw_size = n64cart_fw_size();
+    if (!romfs_start(fw_size, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
+        syslog(LOG_ERR, "Cannot reload romfs!");
+        romfs_ready = false;
+        return false;
+    }
+
+    syslog(LOG_INFO, "ROMFS reload: romfs_start ok fw_size=%lu flash_size=%lu", (unsigned long)fw_size,
+           (unsigned long)used_flash_chip->rom_size * 1024 * 1024);
+
+    romfs_ready = true;
+    if (!current_directory_exists()) {
+        syslog(LOG_INFO, "ROMFS reload: current path '%s' disappeared, reset to root", current_path);
+        reset_directory_stack();
+    } else {
+        update_path_text();
+    }
+    refresh_file_list();
+    update_romfs_free_text();
+    if (menu_sel >= num_files) {
+        menu_sel = num_files > 0 ? num_files - 1 : 0;
+    }
+
+    show_md5((uint8_t *)romfs_flash_map, romfs_flash_map_size);
+    syslog(LOG_INFO, "ROMFS reload: path='%s' files=%d menu=%d free=%lu", current_path, num_files, menu_sel,
+           (unsigned long)romfs_free());
+    for (int i = 0; i < num_files && i < 16; i++) {
+        syslog(LOG_INFO, "ROMFS reload entry[%d]: name='%s' path='%s' size=%lu dir=%d parent=%d", i,
+               files[i].name, files[i].path, (unsigned long)files[i].size, files[i].is_dir,
+               files[i].is_parent);
+    }
+    return true;
+}
+
+static bool usb_romfs_reload_pending(void)
+{
+    return usb_romfs_reload_request && romfs_ready && do_step == STEP_FINISH;
+}
+
+static bool handle_usb_romfs_reload(display_context_t disp)
+{
+    if (!usb_romfs_reload_pending()) {
+        return false;
+    }
+
+    const char *refresh_text = usb_romfs_reload_delay > 0 ? "Finishing USB..." : "Refreshing ROMFS...";
+    if (bg_img) {
+        graphics_draw_sprite(disp, 0, 0, bg_img);
+    } else {
+        graphics_fill_screen(disp, 0);
+    }
+    graphics_set_color(0xeeeeee00, 0x00000000);
+    graphics_draw_text(disp, valign(refresh_text), 120 * scr_scale, refresh_text);
+    display_show(disp);
+
+    if (usb_romfs_reload_delay > 0) {
+        usb_romfs_reload_delay--;
+        return true;
+    }
+
+    usb_romfs_reload_request = false;
+    reload_romfs_view();
+    return true;
+}
+
 static void run_rom(display_context_t disp, const char *path, const char *addon_path, const int addon_offset,
                     int addon_save_type)
 {
@@ -880,19 +1248,7 @@ int main(void)
 
     bool is_hires = is_memory_expanded();
 
-    display_init(is_hires ? RESOLUTION_640x480 : RESOLUTION_320x240, DEPTH_32_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
-
     int font_width = 8;
-
-    if (is_hires) {
-        graphics_set_font_sprite((sprite_t *) wy700font_regular_sprite);
-        scr_scale = 2;
-    } else {
-        scr_scale = 1;
-    }
-
-    scr_width = display_get_width();
-    scr_height = display_get_height();
 
     joypad_init();
 
@@ -901,6 +1257,9 @@ int main(void)
     io_write(N64CART_LED_CTRL, 0);
 
     detect_flash_chip();
+
+    allocate_manager_buffers(is_hires);
+    init_manager_display(is_hires);
 
     if (used_flash_chip) {
         syslog(LOG_INFO, "Flash chip: %s (%d MB)", used_flash_chip->name, used_flash_chip->rom_size);
@@ -938,7 +1297,31 @@ int main(void)
 
     /* Main loop test */
     while (1) {
+        if (usb_display_mode_active && usb_romfs_reload_pending()) {
+            disp = display_get();
+            if (handle_usb_romfs_reload(disp)) {
+                continue;
+            }
+        }
+
+        apply_usb_display_mode_request();
+
+        if (usb_display_mode_active) {
+            if (!usb_display_splash_drawn) {
+                disp = display_get();
+                draw_usb_display_splash(disp);
+                stabilize_display_pairs(disp);
+                display_show(disp);
+                usb_display_splash_drawn = true;
+            }
+            continue;
+        }
+
         disp = display_get();
+
+        if (handle_usb_romfs_reload(disp)) {
+            continue;
+        }
 
         /* Create Place for Text */
         char tStr[256];
@@ -978,38 +1361,28 @@ int main(void)
             graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
             display_show(disp);
 
-            uint32_t flash_map_size, flash_list_size;
-            romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
-
-            static uint16_t *romfs_flash_map = NULL;
-            static uint8_t *romfs_flash_list = NULL;
-
-            if (!romfs_flash_map) {
-                romfs_flash_map = malloc(flash_map_size);
-            }
-
-            if (!romfs_flash_list) {
-                romfs_flash_list = malloc(flash_list_size);
-            }
-
             uint32_t fw_size = n64cart_fw_size();
-            syslog(LOG_INFO, "flash_map: %d, flash_list: %d, fw_size: %d", flash_map_size, flash_list_size, fw_size);
+            syslog(LOG_INFO, "flash_map: %d, flash_list: %d, fw_size: %d", romfs_flash_map_size, romfs_flash_list_size, fw_size);
             syslog(LOG_INFO, "flash_map  ptr %p", romfs_flash_map);
             syslog(LOG_INFO, "flash_list ptr %p", romfs_flash_list);
 
-            if (!romfs_start(fw_size, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
+            if (!used_flash_chip || !romfs_flash_map || !romfs_flash_list ||
+                    !romfs_start(fw_size, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map, romfs_flash_list)) {
                 syslog(LOG_ERR, "Cannot start romfs!");
+                romfs_ready = false;
             } else {
                 if (newlib_romfs_init()) {
+                    romfs_ready = true;
                     reset_directory_stack();
                     refresh_file_list();
                 } else {
                     syslog(LOG_ERR, "Can't init newlib filesystem support!");
+                    romfs_ready = false;
                 }
                 menu_sel = 0;
             }
 
-            show_md5((uint8_t *)romfs_flash_map, flash_map_size);
+            show_md5((uint8_t *)romfs_flash_map, romfs_flash_map_size);
 
             update_romfs_free_text();
             update_path_text();
@@ -1023,7 +1396,7 @@ int main(void)
             graphics_draw_text(disp, valign(save_data_txt), 120 * scr_scale, save_data_txt);
             display_show(disp);
 
-            bg_img = image_load("background.jpg", scr_width, scr_height);
+            load_background_image();
 
             do_step = STEP_SAVE_GAMESAVE;
             continue;
@@ -1211,12 +1584,17 @@ int main(void)
                        !check_file_extension(files[menu_sel].name, "PIC") || !check_file_extension(files[menu_sel].name, "PNM") ||
                        !check_file_extension(files[menu_sel].name, "PPM") || !check_file_extension(files[menu_sel].name, "PGM")) {
 
+                syslog(LOG_INFO, "Menu image open: sel=%d/%d name='%s' path='%s' size=%lu", menu_sel, num_files,
+                       files[menu_sel].name, files[menu_sel].path, (unsigned long)files[menu_sel].size);
+
                 static const char *text = "Loading image...";
                 graphics_draw_text(disp, valign(text), 120 * scr_scale, text);
 
                 display_show(disp);
 
-                image_view(files[menu_sel].path, scr_width, scr_height, scr_scale);
+                if (ensure_image_decode_arena()) {
+                    image_view(files[menu_sel].path, scr_width, scr_height, scr_scale);
+                }
 
                 continue;
             } else if (!check_file_extension(files[menu_sel].name, "Z64") || !check_file_extension(files[menu_sel].name, "V64") ||
@@ -1345,7 +1723,7 @@ int main(void)
         total_files_to_show = (total_files_to_show > num_files) ? num_files : total_files_to_show;
 
         for (int i = first_file; i < total_files_to_show; i++) {
-            const char *label = files[i].name ? files[i].name : "";
+            const char *label = files[i].name[0] ? files[i].name : "";
             char display_buf[ROMFS_MAX_NAME_LEN + 4];
             if (files[i].is_parent) {
                 label = "..";
