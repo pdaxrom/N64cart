@@ -760,6 +760,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
         current_req = reverser16(req->type);
         if (current_req == CART_INFO) {
             const struct flash_chip *flash_chip = get_flash_info();
+            n64cart_note_usb_activity();
             ackn.type = reverser16(ACK_NOERROR);
             ackn.info.start = reverser32(pi_io_read(N64CART_FW_SIZE));
             ackn.info.size = reverser32(flash_chip->rom_size * 1024 * 1024);
@@ -767,6 +768,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         } else if (current_req == FLASH_SPI_MODE || current_req == FLASH_QUAD_MODE || current_req == BOOTLOADER_MODE || current_req == CART_REBOOT) {
+            n64cart_note_usb_activity();
             if (current_req == FLASH_SPI_MODE) {
                 n64cart_set_usb_display_mode(true);
                 spi_mode_ack_pending = true;
@@ -786,6 +788,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             return;
         } else if (current_req == CART_READ_SEC || current_req == CART_READ_SEC_CONT) {
             uint8_t tmp[64];
+            n64cart_note_usb_activity();
             if (current_req == CART_READ_SEC) {
                 rw_sector_offset = reverser32(req->offset);
                 flash_read(rw_sector_offset, sector_buffer, ROMFS_FLASH_SECTOR);
@@ -797,6 +800,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             usb_start_transfer(ep_out, tmp, sizeof(tmp));
             return;
         } else if (current_req == CART_WRITE_SEC) {
+            n64cart_note_usb_activity();
             flash_stage = 1;
             sector_buffer_pos = 0;
             rw_sector_offset = reverser32(req->offset);
@@ -805,6 +809,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         } else if (current_req == CART_ERASE_SEC) {
+            n64cart_note_usb_activity();
             n64cart_note_usb_romfs_modified();
             romfs_flash_sector_erase(reverser32(req->offset));
             ackn.type = reverser16(ACK_NOERROR);
@@ -817,6 +822,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             if (len != 64) {
                 syslog(LOG_ERR, "write transfer checksum error");
             } else {
+                n64cart_note_usb_activity();
                 memmove(&sector_buffer[sector_buffer_pos], buf, 64);
                 sector_buffer_pos += 64;
                 if (sector_buffer_pos == ROMFS_FLASH_SECTOR) {

@@ -38,6 +38,8 @@
 
 #define FILE_NAME_SCROLL_DELAY  (5)
 #define KEYS_DELAY (3)
+#define USB_ROMFS_RELOAD_DELAY_FRAMES 30
+#define USB_DISPLAY_ACTIVITY_HOLD_MS 1000
 
 static void update_romfs_free_text(void);
 static void update_path_text(void);
@@ -76,6 +78,8 @@ static int scr_scale;
 
 static volatile int usb_display_mode_request = -1;
 static volatile bool usb_display_mode_session = false;
+static volatile bool usb_display_activity_active = false;
+static volatile uint32_t usb_display_activity_deadline = 0;
 static volatile bool usb_romfs_modified = false;
 static volatile bool usb_romfs_reload_request = false;
 static volatile int usb_romfs_reload_delay = 0;
@@ -237,12 +241,19 @@ void n64cart_set_usb_display_mode(bool active)
             syslog(LOG_INFO, "USB display mode: SPI session end, schedule ROMFS reload");
             usb_romfs_modified = false;
             usb_romfs_reload_request = true;
-            usb_romfs_reload_delay = 30;
+            usb_romfs_reload_delay = USB_ROMFS_RELOAD_DELAY_FRAMES;
         } else {
             syslog(LOG_INFO, "USB display mode: SPI session end, no ROMFS changes");
         }
     }
-    usb_display_mode_request = active ? 1 : 0;
+    usb_display_mode_request = (active || usb_display_activity_active) ? 1 : 0;
+}
+
+void n64cart_note_usb_activity(void)
+{
+    usb_display_activity_active = true;
+    usb_display_activity_deadline = TICKS_READ() + TICKS_FROM_MS(USB_DISPLAY_ACTIVITY_HOLD_MS);
+    usb_display_mode_request = 1;
 }
 
 void n64cart_note_usb_romfs_modified(void)
@@ -329,6 +340,20 @@ static void apply_usb_display_mode_request(void)
 
     usb_display_mode_active = active;
     usb_display_splash_drawn = false;
+}
+
+static void update_usb_display_activity(void)
+{
+    if (!usb_display_activity_active || usb_display_mode_session) {
+        return;
+    }
+
+    if (TICKS_BEFORE(TICKS_READ(), usb_display_activity_deadline)) {
+        return;
+    }
+
+    usb_display_activity_active = false;
+    usb_display_mode_request = 0;
 }
 
 static bool ensure_image_decode_arena(void)
@@ -1306,13 +1331,7 @@ int main(void)
 
     /* Main loop test */
     while (1) {
-        if (usb_display_mode_active && usb_romfs_reload_pending()) {
-            disp = display_get();
-            if (handle_usb_romfs_reload(disp)) {
-                continue;
-            }
-        }
-
+        update_usb_display_activity();
         apply_usb_display_mode_request();
 
         if (usb_display_mode_active) {
