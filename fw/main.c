@@ -41,14 +41,33 @@ static const struct flash_chip *used_flash_chip;
 
 // #define DEBUG_FS 1
 
+uint32_t get_romfs_start_offset(void)
+{
+    uint32_t fw_binary_size = (uintptr_t) &__flash_binary_end - XIP_BASE;
+
+    return (fw_binary_size + ROMFS_FLASH_START_ALIGNMENT - 1) & ~(ROMFS_FLASH_START_ALIGNMENT - 1);
+}
+
+bool romfs_flash_sector_writable(uint32_t offset)
+{
+    if (!used_flash_chip || (offset & (ROMFS_FLASH_SECTOR - 1)) != 0) {
+        return false;
+    }
+
+    uint32_t flash_size = used_flash_chip->rom_size * ROMFS_MB;
+    if (flash_size < ROMFS_FLASH_SECTOR) {
+        return false;
+    }
+
+    return offset >= get_romfs_start_offset() && offset <= flash_size - ROMFS_FLASH_SECTOR;
+}
+
 bool romfs_flash_sector_erase(uint32_t offset)
 {
 #ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
 #endif
-    flash_erase_sector(offset);
-
-    return true;
+    return romfs_flash_sector_writable(offset) && flash_erase_sector(offset);
 }
 
 bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
@@ -56,9 +75,7 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
 #ifdef DEBUG_FS
     printf("%s: offset %08X\n", __func__, offset);
 #endif
-    flash_write_sector(offset, buffer);
-
-    return true;
+    return buffer && romfs_flash_sector_writable(offset) && flash_write_sector(offset, buffer);
 }
 
 bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
@@ -195,8 +212,6 @@ int main(void)
     flash_spi_mode();
     flash_config();
 
-    uintptr_t fw_binary_end = (uintptr_t) & __flash_binary_end;
-
     uint32_t flash_map_size, flash_list_size;
 
     romfs_get_buffers_sizes(used_flash_chip->rom_size * 1024 * 1024, &flash_map_size, &flash_list_size);
@@ -205,7 +220,7 @@ int main(void)
     uint8_t *romfs_flash_list = &pi_sram[flash_map_size];
     uint8_t *romfs_flash_buffer = &pi_sram[flash_map_size + flash_list_size];
 
-    if (!romfs_start(fw_binary_end - XIP_BASE, used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map,
+    if (!romfs_start(get_romfs_start_offset(), used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map,
                      romfs_flash_list)) {
         printf("Cannot start romfs!\n");
         while (true) {

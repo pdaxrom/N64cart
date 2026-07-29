@@ -67,6 +67,97 @@ static void create_test_data(uint8_t *buffer, size_t size, int file_idx, int chu
     }
 }
 
+static bool test_service_sector_protection(uint16_t *flash_map, uint32_t map_size)
+{
+    printf(ANSI_COLOR_YELLOW "\n--- Running Service Sector Protection Test ---\n" ANSI_COLOR_RESET);
+
+    if (!romfs_format()) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to format filesystem for service sector test\n" ANSI_COLOR_RESET);
+        return false;
+    }
+
+    romfs_entry firmware = {0};
+    romfs_entry flashmap = {0};
+    if (romfs_get_entry("firmware", &firmware) != ROMFS_NOERR ||
+            romfs_get_entry("flashmap", &flashmap) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Cannot read service entries\n" ANSI_COLOR_RESET);
+        return false;
+    }
+
+    uint32_t first_data_sector = flashmap.start +
+                                 (flashmap.size + ROMFS_FLASH_SECTOR - 1) / ROMFS_FLASH_SECTOR;
+    uint32_t total_sectors = map_size / sizeof(uint16_t);
+    if (first_data_sector >= total_sectors || firmware.size > first_data_sector * ROMFS_FLASH_SECTOR) {
+        fprintf(stderr, ANSI_COLOR_RED "Invalid service sector layout\n" ANSI_COLOR_RESET);
+        return false;
+    }
+
+    for (uint32_t i = 0; i < firmware.size; i++) {
+        flash_base[i] = (uint8_t) ((i * 31u + 0x5au) & 0xffu);
+    }
+
+    // Simulate an old or damaged flash map that marks firmware and metadata
+    // sectors as free. A user file must never be allocated in this range.
+    for (uint32_t i = 0; i < first_data_sector; i++) {
+        flash_map[i] = 0xffff;
+    }
+
+    uint8_t *io_buffer = malloc(ROMFS_FLASH_SECTOR);
+    uint8_t *payload = malloc(ROMFS_FLASH_SECTOR);
+    if (!io_buffer || !payload) {
+        fprintf(stderr, ANSI_COLOR_RED "Allocation failure in service sector test\n" ANSI_COLOR_RESET);
+        free(io_buffer);
+        free(payload);
+        return false;
+    }
+    memset(payload, 0xa5, ROMFS_FLASH_SECTOR);
+
+    bool success = true;
+    romfs_file file = {0};
+    if (romfs_create_file("service-guard.bin", &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
+                          io_buffer) != ROMFS_NOERR ||
+            romfs_write_file(payload, ROMFS_FLASH_SECTOR, &file) != ROMFS_FLASH_SECTOR ||
+            romfs_close_file(&file) != ROMFS_NOERR) {
+        fprintf(stderr, ANSI_COLOR_RED "Failed to write service sector test file: %s\n" ANSI_COLOR_RESET,
+                romfs_strerror(file.err));
+        success = false;
+        goto cleanup;
+    }
+
+    if (file.entry.start < first_data_sector) {
+        fprintf(stderr, ANSI_COLOR_RED "User file allocated protected sector %u (< %u)\n" ANSI_COLOR_RESET,
+                file.entry.start, first_data_sector);
+        success = false;
+        goto cleanup;
+    }
+
+    for (uint32_t i = 0; i < firmware.size; i++) {
+        uint8_t expected = (uint8_t) ((i * 31u + 0x5au) & 0xffu);
+        if (flash_base[i] != expected) {
+            fprintf(stderr, ANSI_COLOR_RED "Firmware changed at offset 0x%08x\n" ANSI_COLOR_RESET, i);
+            success = false;
+            goto cleanup;
+        }
+    }
+
+    romfs_file protected_file = {0};
+    if (romfs_open_append("firmware", &protected_file, ROMFS_TYPE_MISC, io_buffer) != ROMFS_ERR_OPERATION ||
+            romfs_delete("firmware") != ROMFS_ERR_OPERATION ||
+            romfs_rename("firmware", "firmware.old") != ROMFS_ERR_OPERATION ||
+            romfs_create_file("fake-service", &protected_file, ROMFS_MODE_READWRITE, ROMFS_TYPE_FIRMWARE,
+                              io_buffer) != ROMFS_ERR_OPERATION) {
+        fprintf(stderr, ANSI_COLOR_RED "Service entry mutation was not rejected\n" ANSI_COLOR_RESET);
+        success = false;
+    }
+
+cleanup:
+    romfs_delete("service-guard.bin");
+    free(io_buffer);
+    free(payload);
+    romfs_format();
+    return success;
+}
+
 // Shuffles an array of strings
 static void shuffle_filenames(char **array, size_t n)
 {
@@ -1784,6 +1875,10 @@ static void run_test_suite(uint32_t flash_size_mb)
 
     if (!romfs_start(0x10000, mem_size_bytes, flash_map, flash_list)) {
         printf(ANSI_COLOR_RED "Cannot start romfs!\n" ANSI_COLOR_RESET);
+        goto cleanup;
+    }
+
+    if (!test_service_sector_protection(flash_map, map_size)) {
         goto cleanup;
     }
 

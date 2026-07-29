@@ -693,10 +693,9 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
     if (flash_stage == 0) {
         current_req = req->type;
         if (req->type == CART_INFO) {
-            uintptr_t fw_binary_end = (uintptr_t) & __flash_binary_end;
             const struct flash_chip *flash_chip = get_flash_info();
             ackn.type = ACK_NOERROR;
-            ackn.info.start = fw_binary_end - XIP_BASE;
+            ackn.info.start = get_romfs_start_offset();
             ackn.info.size = flash_chip->rom_size * 1024 * 1024;
             ackn.info.vers = FIRMWARE_VERSION;
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
@@ -734,6 +733,11 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
             usb_start_transfer(ep_out, tmp, sizeof(tmp));
             return;
         } else if (req->type == CART_WRITE_SEC) {
+            if (!romfs_flash_sector_writable(req->offset)) {
+                current_req = 0;
+                usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
+                return;
+            }
             flash_stage = 1;
             sector_buffer_pos = 0;
             rw_sector_offset = req->offset;
@@ -741,8 +745,9 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         } else if (req->type == CART_ERASE_SEC) {
-            romfs_flash_sector_erase(req->offset);
-            ackn.type = ACK_NOERROR;
+            if (romfs_flash_sector_erase(req->offset)) {
+                ackn.type = ACK_NOERROR;
+            }
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         }
@@ -755,11 +760,14 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
                 memmove(&sector_buffer[sector_buffer_pos], buf, 64);
                 sector_buffer_pos += 64;
                 if (sector_buffer_pos == ROMFS_FLASH_SECTOR) {
-                    romfs_flash_sector_write(rw_sector_offset, sector_buffer);
+                    if (romfs_flash_sector_write(rw_sector_offset, sector_buffer)) {
+                        ackn.type = ACK_NOERROR;
+                    }
                     flash_stage = 0;
                     current_req = 0;
+                } else {
+                    ackn.type = ACK_NOERROR;
                 }
-                ackn.type = ACK_NOERROR;
                 usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
                 return;
             }

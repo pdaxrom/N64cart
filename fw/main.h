@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define PI_SRAM 1
@@ -36,5 +37,9 @@ extern uint8_t *si_eeprom;
 extern char __flash_binary_end;
 
 const struct flash_chip *get_flash_info(void);
+
+uint32_t get_romfs_start_offset(void);
+
+bool romfs_flash_sector_writable(uint32_t offset);
 
 void n64_pi_restart(void);

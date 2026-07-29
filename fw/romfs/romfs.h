@@ -19,6 +19,7 @@ extern "C" {
 #endif
 
 #define ROMFS_FLASH_SECTOR (4096) /* Flash sector size in bytes */
+#define ROMFS_FLASH_START_ALIGNMENT (32768) /* ROMFS start alignment in bytes */
 
 #define ROMFS_MAX_NAME_LEN (54) /* Maximum length of file name */
 
