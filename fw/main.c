@@ -20,6 +20,7 @@
 #include "pico/stdio.h"
 #include "pico/stdlib.h"
 #include "romfs/romfs.h"
+#include "romfs/romfs_flash.h"
 #include "usb/usbd.h"
 #include "n64_cic.h"
 #include "n64_si.h"
@@ -45,21 +46,13 @@ uint32_t get_romfs_start_offset(void)
 {
     uint32_t fw_binary_size = (uintptr_t) &__flash_binary_end - XIP_BASE;
 
-    return (fw_binary_size + ROMFS_FLASH_START_ALIGNMENT - 1) & ~(ROMFS_FLASH_START_ALIGNMENT - 1);
+    return romfs_align_flash_start(fw_binary_size);
 }
 
 bool romfs_flash_sector_writable(uint32_t offset)
 {
-    if (!used_flash_chip || (offset & (ROMFS_FLASH_SECTOR - 1)) != 0) {
-        return false;
-    }
-
-    uint32_t flash_size = used_flash_chip->rom_size * ROMFS_MB;
-    if (flash_size < ROMFS_FLASH_SECTOR) {
-        return false;
-    }
-
-    return offset >= get_romfs_start_offset() && offset <= flash_size - ROMFS_FLASH_SECTOR;
+    return used_flash_chip && romfs_flash_sector_in_range(offset, get_romfs_start_offset(),
+                                                         used_flash_chip->rom_size * ROMFS_MB);
 }
 
 bool romfs_flash_sector_erase(uint32_t offset)

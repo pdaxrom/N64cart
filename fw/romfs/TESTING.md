@@ -9,8 +9,8 @@ make -C fw/romfs check
 
 The default build uses AddressSanitizer and UndefinedBehaviorSanitizer, with
 sanitizer recovery disabled. Executables, objects and logs go to the ignored
-`build-romfs-tests/` directory. `make check` runs the flash emulator checks and
-the process-level runner checks, including the full ROMFS suite. It requires
+`build-romfs-tests/` directory. `make check` runs the flash emulator, geometry,
+platform callback/USB, and process-level runner checks, including the full ROMFS suite. It requires
 Python 3 and Bash in addition to the C compiler.
 
 `BUILD_DIR` overrides the output directory; choose a top-level `build-*`
@@ -41,13 +41,49 @@ Exit codes for the C runner:
 | 1 | At least one suite failed |
 | 2 | Invalid arguments |
 
-The size selector accepts integers from 2 through 256 MiB. It does not imply
-that all geometries work in the current ROMFS implementation. The known small
-flash geometry defects and the 256 MiB sentinel/GC defect need separate core
-fixes and regression cases. Existing capacity tests accept documented
+The size selector accepts integers from 2 through 256 MiB. The process runner
+also runs standalone suites for 2/4/8 MiB. The geometry regression executable
+covers 2/4/8/16/32/64/128/256 MiB. Existing randomized capacity tests accept documented
 `NO_SPACE` / `NO_FREE_ENTRIES` outcomes; they do not yet require preservation of
 a partial file after ENOSPC. Passing this suite is not proof that the defects
 identified in the ROMFS review have been fixed.
+
+## Geometry and platform guards
+
+```sh
+build-romfs-tests/test_geometry
+python3 fw/romfs/test_platform.py --build-dir build-romfs-tests
+```
+
+The size query does not change the active mount. Flash sizes must be nonzero,
+sector-aligned and at most 256 MiB. Mounting additionally requires non-null
+buffers (with the map aligned for `uint16_t`), space for metadata after the
+32 KiB aligned firmware boundary, and at least one usable data sector.
+Callers remain responsible for providing buffers of the queried sizes.
+Rejected geometry must cause no I/O and preserve the previous mount and buffers.
+
+Geometry tests check the existing metadata layout, exact free space, allocation
+of the last usable sector, ENOSPC, GC reuse and remount/readback. A valid large
+file chain is constructed directly and persisted to reach capacity quickly;
+this is not a full-device payload write test. Map padding is excluded from
+allocation. At 256 MiB, index `65535` stays reserved because `0xffff` remains
+the free/invalid sentinel. The last physical sector is untouched by ROMFS file
+allocation. The disk format and metadata sizes are unchanged.
+
+`test_platform.py` extracts the current ARM/N64 erase/write callbacks, boundary
+functions and USB command handler verbatim into generated includes under the
+build directory, then compiles them with `test_platform.c` hardware substitutes.
+Extraction fails if a definition cannot be identified uniquely. Tests check
+that invalid offsets never reach erase/program or mode/interrupt changes;
+metadata and the last physical sector remain accessible through valid raw
+commands. They also check low-level failure returns, restoration of N64 mode
+and interrupts, early USB rejection, the second check at write completion,
+error ACK conversion, and recovery with a following valid command.
+
+The N64 host harness models big-endian field values with explicit byte swaps;
+it does not emulate MIPS execution or a USB controller. Full ARM/MIPS builds
+and physical USB/PI smoke tests are separate. General core I/O error propagation,
+malformed-chain handling and partial-file preservation remain separate fixes.
 
 ## Flash emulator and fault injection
 

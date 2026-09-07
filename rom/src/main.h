@@ -10,7 +10,9 @@ struct flash_chip {
     const char *name;
 };
 
-const struct flash_chip *get_flash_info();
+const struct flash_chip *get_flash_info(void);
+uint32_t get_romfs_start_offset(void);
+bool romfs_flash_sector_writable(uint32_t offset);
 void n64cart_set_usb_display_mode(bool active);
 void n64cart_note_usb_activity(void);
 void n64cart_note_usb_romfs_modified(void);

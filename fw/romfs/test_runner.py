@@ -48,6 +48,9 @@ def main():
     require(re.findall(r"\[PASS\] (\d+)MB seed=1", full) == ["16", "32", "64", "128", "256"],
             "suite: not every size completed")
     require("Suites: 5 passed, 0 failed." in full and SUCCESS in full, "suite: wrong summary")
+    for size in (2, 4, 8):
+        output = run(f"suite-{size}", [runner, "--flash-mb", size])
+        require(f"[PASS] {size}MB seed=1" in output and SUCCESS in output, "small flash suite failed")
 
     single = run("seed-1-16", [runner, "--flash-mb", "16", "--seed", "1"])
     repeated = run("seed-1-16-repeat", [runner, "--flash-mb", "16", "--seed", "1"])

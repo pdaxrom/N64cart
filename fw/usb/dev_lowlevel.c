@@ -735,6 +735,8 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
         } else if (req->type == CART_WRITE_SEC) {
             if (!romfs_flash_sector_writable(req->offset)) {
                 current_req = 0;
+                flash_stage = 0;
+                sector_buffer_pos = 0;
                 usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
                 return;
             }
@@ -748,6 +750,8 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
             if (romfs_flash_sector_erase(req->offset)) {
                 ackn.type = ACK_NOERROR;
             }
+            current_req = 0;
+            sector_buffer_pos = 0;
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         }
@@ -765,6 +769,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
                     }
                     flash_stage = 0;
                     current_req = 0;
+                    sector_buffer_pos = 0;
                 } else {
                     ackn.type = ACK_NOERROR;
                 }
@@ -774,6 +779,7 @@ void ep1_out_handler(uint8_t *buf, uint16_t len)
         }
         flash_stage = 0;
         current_req = 0;
+        sector_buffer_pos = 0;
     }
 
     usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));

@@ -744,7 +744,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
 {
     struct usb_endpoint_configuration *ep_out = usb_get_endpoint_configuration(EP2_IN_ADDR);
     // syslog(LOG_DEBUG, "RX %d bytes from host", len);
-    ackn.type = ACK_ERROR;
+    ackn.type = reverser16(ACK_ERROR);
 
     struct req_header *req = (struct req_header *)buf;
     if (current_req != CART_WRITE_SEC) {
@@ -762,7 +762,7 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             const struct flash_chip *flash_chip = get_flash_info();
             n64cart_note_usb_activity();
             ackn.type = reverser16(ACK_NOERROR);
-            ackn.info.start = reverser32(pi_io_read(N64CART_FW_SIZE));
+            ackn.info.start = reverser32(get_romfs_start_offset());
             ackn.info.size = reverser32(flash_chip->rom_size * 1024 * 1024);
             ackn.info.vers = reverser32(FIRMWARE_VERSION);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
@@ -801,18 +801,27 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
             return;
         } else if (current_req == CART_WRITE_SEC) {
             n64cart_note_usb_activity();
+            rw_sector_offset = reverser32(req->offset);
+            if (!romfs_flash_sector_writable(rw_sector_offset)) {
+                current_req = 0;
+                flash_stage = 0;
+                sector_buffer_pos = 0;
+                usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
+                return;
+            }
             flash_stage = 1;
             sector_buffer_pos = 0;
-            rw_sector_offset = reverser32(req->offset);
-            n64cart_note_usb_romfs_modified();
             ackn.type = reverser16(ACK_NOERROR);
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         } else if (current_req == CART_ERASE_SEC) {
             n64cart_note_usb_activity();
-            n64cart_note_usb_romfs_modified();
-            romfs_flash_sector_erase(reverser32(req->offset));
-            ackn.type = reverser16(ACK_NOERROR);
+            if (romfs_flash_sector_erase(reverser32(req->offset))) {
+                n64cart_note_usb_romfs_modified();
+                ackn.type = reverser16(ACK_NOERROR);
+            }
+            current_req = 0;
+            sector_buffer_pos = 0;
             usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
             return;
         }
@@ -826,17 +835,23 @@ static void ep1_out_handler(uint8_t *buf, uint16_t len)
                 memmove(&sector_buffer[sector_buffer_pos], buf, 64);
                 sector_buffer_pos += 64;
                 if (sector_buffer_pos == ROMFS_FLASH_SECTOR) {
-                    romfs_flash_sector_write(rw_sector_offset, sector_buffer);
+                    if (romfs_flash_sector_write(rw_sector_offset, sector_buffer)) {
+                        n64cart_note_usb_romfs_modified();
+                        ackn.type = reverser16(ACK_NOERROR);
+                    }
                     flash_stage = 0;
                     current_req = 0;
+                    sector_buffer_pos = 0;
+                } else {
+                    ackn.type = reverser16(ACK_NOERROR);
                 }
-                ackn.type = reverser16(ACK_NOERROR);
                 usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));
                 return;
             }
         }
         flash_stage = 0;
         current_req = 0;
+        sector_buffer_pos = 0;
     }
 
     usb_start_transfer(ep_out, (uint8_t *) & ackn, sizeof(struct ack_header));

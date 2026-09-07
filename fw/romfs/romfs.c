@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include "romfs.h"
+#include "romfs_flash.h"
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define to_lsb16(a) (a)
@@ -39,9 +40,11 @@ static const char *romfs_errlist[] = {
 };
 
 static uint32_t flash_start = 0;
-static uint32_t mem_size = 0;
 static uint32_t flash_map_size = 0;
 static uint32_t flash_list_size = 0;
+/* Exclusive upper bound: map padding and the 0xffff sentinel are not data. */
+static uint32_t flash_sector_limit = 0;
+static uint32_t flash_data_start = 0;
 
 static uint16_t *flash_map_int;
 static uint8_t *flash_list_int;
@@ -165,12 +168,12 @@ static bool romfs_entry_is_protected(const romfs_entry *entry)
 
 static uint32_t romfs_first_data_sector(void)
 {
-    return (flash_start + flash_list_size + flash_map_size + ROMFS_FLASH_SECTOR - 1) / ROMFS_FLASH_SECTOR;
+    return flash_data_start;
 }
 
 static void romfs_link_sector_range(uint32_t start, uint32_t count)
 {
-    uint32_t total_sectors = flash_map_size / sizeof(uint16_t);
+    uint32_t total_sectors = flash_sector_limit;
 
     for (uint32_t i = 0; i < count; i++) {
         uint32_t sector = start + i;
@@ -260,53 +263,68 @@ static bool romfs_dir_is_empty_internal(uint8_t dir_id)
 
 void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t *map_size, uint32_t *list_size)
 {
-    flash_map_size = ((rom_size / ROMFS_FLASH_SECTOR) * sizeof(uint16_t) + (ROMFS_FLASH_SECTOR - 1)) & ~
-                     (ROMFS_FLASH_SECTOR - 1);
-    if (flash_map_size <  ROMFS_FLASH_SECTOR) {
-        flash_map_size = ROMFS_FLASH_SECTOR;
-    }
-
-    flash_list_size = ((rom_size / ROMFS_MB) * sizeof(romfs_entry) + (ROMFS_FLASH_SECTOR - 1)) & ~(ROMFS_FLASH_SECTOR - 1);
-    if (flash_list_size < ROMFS_FLASH_SECTOR) {
-        flash_list_size = ROMFS_FLASH_SECTOR;
+    uint32_t map_bytes = 0;
+    uint32_t list_bytes = 0;
+    if (rom_size != 0 && rom_size <= 256u * ROMFS_MB &&
+            (rom_size & (ROMFS_FLASH_SECTOR - 1)) == 0) {
+        map_bytes = ((rom_size / ROMFS_FLASH_SECTOR) * sizeof(uint16_t) + ROMFS_FLASH_SECTOR - 1) &
+                    ~(ROMFS_FLASH_SECTOR - 1);
+        list_bytes = ((rom_size / ROMFS_MB) * sizeof(romfs_entry) + ROMFS_FLASH_SECTOR - 1) &
+                     ~(ROMFS_FLASH_SECTOR - 1);
+        if (list_bytes < ROMFS_FLASH_SECTOR) {
+            list_bytes = ROMFS_FLASH_SECTOR;
+        }
     }
 
     if (map_size) {
-        *map_size = flash_map_size;
+        *map_size = map_bytes;
     }
 
     if (list_size) {
-        *list_size = flash_list_size;
+        *list_size = list_bytes;
     }
 }
 
 bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t *flash_list)
 {
-    flash_start = (start + ROMFS_FLASH_START_ALIGNMENT - 1) & ~(ROMFS_FLASH_START_ALIGNMENT - 1);
-    mem_size = rom_size;
+    uint32_t map_bytes, list_bytes;
+    romfs_get_buffers_sizes(rom_size, &map_bytes, &list_bytes);
+    uint32_t aligned_start = romfs_align_flash_start(start);
+    uint32_t sector_limit = rom_size / ROMFS_FLASH_SECTOR;
+    if (sector_limit > UINT16_MAX) {
+        sector_limit = UINT16_MAX;
+    }
+    if (!flash_map || !flash_list || (uintptr_t) flash_map % sizeof(uint16_t) != 0 ||
+            map_bytes == 0 || list_bytes == 0 || aligned_start > rom_size ||
+            list_bytes > rom_size - aligned_start ||
+            map_bytes > rom_size - aligned_start - list_bytes) {
+        return false;
+    }
+    uint32_t first_data = (aligned_start + list_bytes + map_bytes) / ROMFS_FLASH_SECTOR;
+    if (first_data >= sector_limit) {
+        return false;
+    }
 
+    /* Publish only after validation, so rejected geometry leaves the mount intact. */
+    flash_start = aligned_start;
+    flash_map_size = map_bytes;
+    flash_list_size = list_bytes;
+    flash_sector_limit = sector_limit;
+    flash_data_start = first_data;
     flash_map_int = flash_map;
     flash_list_int = flash_list;
 
-    //    printf("romfs memory size %d\n", mem_size);
-    //    printf("romfs map size %d\n", flash_map_size);
-    //    printf("romfs list size %d\n", flash_list_size);
-
     romfs_dir_index_reset();
 
-    if (flash_map_size && flash_list_size) {
-        for (uint32_t i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
-            romfs_flash_sector_read(flash_start + i, &flash_list_int[i], ROMFS_FLASH_SECTOR);
-        }
-        for (uint32_t i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
-            romfs_flash_sector_read(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i], ROMFS_FLASH_SECTOR);
-        }
-        romfs_dir_index_rebuild();
-        romfs_reserve_service_sectors();
-        return true;
+    for (uint32_t i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
+        romfs_flash_sector_read(flash_start + i, &flash_list_int[i], ROMFS_FLASH_SECTOR);
     }
-
-    return false;
+    for (uint32_t i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
+        romfs_flash_sector_read(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i], ROMFS_FLASH_SECTOR);
+    }
+    romfs_dir_index_rebuild();
+    romfs_reserve_service_sectors();
+    return true;
 }
 
 static void romfs_flush(void)
@@ -376,7 +394,7 @@ uint32_t romfs_free(void)
 {
     uint32_t free_sectors = 0;
     uint32_t first_data_sector = romfs_first_data_sector();
-    uint32_t total_sectors = flash_map_size / sizeof(uint16_t);
+    uint32_t total_sectors = flash_sector_limit;
 
     for (uint32_t i = first_data_sector; i < total_sectors; i++) {
         if (flash_map_int[i] == 0xffff) {
@@ -604,13 +622,13 @@ static bool romfs_garbage_collect(void)
 static uint32_t romfs_find_free_sector(uint32_t start, bool reclaim)
 {
     uint32_t first_data_sector = romfs_first_data_sector();
-    uint32_t total_sectors = flash_map_size / sizeof(uint16_t);
+    uint32_t total_sectors = flash_sector_limit;
 
     if (first_data_sector >= total_sectors) {
         return 0xffff;
     }
 
-    if (start < first_data_sector) {
+    if (start < first_data_sector || start >= total_sectors) {
         start = first_data_sector;
     }
 
@@ -636,7 +654,8 @@ static uint32_t romfs_find_free_sector(uint32_t start, bool reclaim)
 static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sector, const uint8_t *buffer,
                                             uint32_t *sector_out)
 {
-    if (prev_sector != 0xffff && prev_sector < romfs_first_data_sector()) {
+    if (prev_sector != 0xffff &&
+            (prev_sector < romfs_first_data_sector() || prev_sector >= flash_sector_limit)) {
         return (file->err = ROMFS_ERR_OPERATION);
     }
 
@@ -681,13 +700,13 @@ static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, b
         }
     }
 
-    if (allocate && sector < first_data_sector) {
+    if (sector >= flash_sector_limit || (allocate && sector < first_data_sector)) {
         return (file->err = ROMFS_ERR_OPERATION);
     }
 
     for (uint32_t i = 0; i < sector_index; i++) {
         uint32_t next = from_lsb16(flash_map_int[sector]);
-        if (allocate && next < first_data_sector) {
+        if (next >= flash_sector_limit || (allocate && next < first_data_sector)) {
             return (file->err = ROMFS_ERR_OPERATION);
         }
         if (next == sector) {

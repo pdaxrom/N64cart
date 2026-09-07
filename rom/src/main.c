@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "../../fw/romfs/romfs.h"
+#include "../../fw/romfs/romfs_flash.h"
 #include "../../fw/romfs/newlib-romfs.h"
 #include "ext/shell_utils.h"
 #include "n64cart.h"
@@ -154,18 +155,32 @@ static void flash_access_unlock(void)
     }
 }
 
+uint32_t get_romfs_start_offset(void)
+{
+    return romfs_align_flash_start(n64cart_fw_size());
+}
+
+bool romfs_flash_sector_writable(uint32_t offset)
+{
+    return used_flash_chip && romfs_flash_sector_in_range(offset, get_romfs_start_offset(),
+                                                         used_flash_chip->rom_size * ROMFS_MB);
+}
+
 bool romfs_flash_sector_erase(uint32_t offset)
 {
 #ifdef DEBUG_FS
     syslog(LOG_DEBUG, "%s: offset %08X", __func__, offset);
 #endif
+    if (!romfs_flash_sector_writable(offset)) {
+        return false;
+    }
     flash_access_lock();
     flash_mode(0);
-    flash_erase_sector(offset);
+    bool result = flash_erase_sector(offset);
     flash_mode(1);
     flash_access_unlock();
 
-    return true;
+    return result;
 }
 
 bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
@@ -173,13 +188,16 @@ bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
 #ifdef DEBUG_FS
     syslog(LOG_DEBUG, "%s: offset %08X", __func__, offset);
 #endif
+    if (!buffer || !romfs_flash_sector_writable(offset)) {
+        return false;
+    }
     flash_access_lock();
     flash_mode(0);
-    flash_write_sector(offset, buffer);
+    bool result = flash_write_sector(offset, buffer);
     flash_mode(1);
     flash_access_unlock();
 
-    return true;
+    return result;
 }
 
 bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)

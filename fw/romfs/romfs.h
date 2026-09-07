@@ -124,7 +124,9 @@ bool romfs_flash_sector_erase(uint32_t offset);
 bool romfs_flash_sector_write(uint32_t offset, uint8_t * buffer);
 bool romfs_flash_sector_read(uint32_t offset, uint8_t * buffer, uint32_t need);
 
+/* Pure size query. Invalid flash sizes return zero; buffers must have these sizes. */
 void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t * map_size, uint32_t * list_size);
+/* Rejects invalid geometry before I/O or changes to the active mount. */
 bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t * flash_map, uint8_t * flash_list);
 bool romfs_format(void);
 uint32_t romfs_free(void);
