@@ -8,9 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <time.h>
+#include <errno.h>
 #include <inttypes.h>
 #include "romfs.h"
+#include "test_flash.h"
 
 #if defined(__linux__) || defined(__APPLE__)
 #define ANSI_COLOR_RED     "\x1b[31m"
@@ -28,7 +29,6 @@
 #define ANSI_COLOR_RESET   ""
 #endif
 
-static uint8_t *memory = NULL;
 static uint8_t *flash_base = NULL;
 
 const int NORMAL_CHUNK_SIZE = 256;
@@ -41,21 +41,38 @@ typedef struct {
     int file_index;
 } random_fill_entry;
 
-bool romfs_flash_sector_erase(uint32_t offset)
+static uint32_t rng_state;
+static uint64_t rng_calls;
+
+/* Explicit 32-bit arithmetic gives the same sequence on every host libc. */
+static uint32_t test_random(void)
 {
-    memset(&flash_base[offset], 0xff, ROMFS_FLASH_SECTOR);
-    return true;
+    rng_state = rng_state * 1664525u + 1013904223u;
+    rng_calls++;
+    return rng_state;
 }
 
-bool romfs_flash_sector_write(uint32_t offset, uint8_t *buffer)
+static void free_file_list(char **files, int count)
 {
-    memmove(&flash_base[offset], buffer, ROMFS_FLASH_SECTOR);
-    return true;
+    for (int i = 0; i < count; i++) {
+        free(files[i]);
+    }
+    free(files);
 }
 
-bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
+static bool flash_ok(void)
 {
-    memmove(buffer, &flash_base[offset], need);
+    const test_flash_stats *stats = test_flash_get_stats();
+    return stats->rejected == 0 && stats->injected == 0;
+}
+
+static bool close_test_file(romfs_file *file)
+{
+    uint32_t err = romfs_close_file(file);
+    if (err != ROMFS_NOERR) {
+        fprintf(stderr, "Failed to close %s: %s\n", file->entry.name, romfs_strerror(err));
+        return false;
+    }
     return true;
 }
 
@@ -154,7 +171,7 @@ cleanup:
     romfs_delete("service-guard.bin");
     free(io_buffer);
     free(payload);
-    romfs_format();
+    success = romfs_format() && success;
     return success;
 }
 
@@ -163,7 +180,7 @@ static void shuffle_filenames(char **array, size_t n)
 {
     if (n > 1) {
         for (size_t i = 0; i < n - 1; i++) {
-            size_t j = i + rand() / (RAND_MAX / (n - i) + 1);
+            size_t j = i + test_random() % (n - i);
             char *t = array[j];
             array[j] = array[i];
             array[i] = t;
@@ -172,109 +189,124 @@ static void shuffle_filenames(char **array, size_t n)
 }
 
 // Gets a list of all user-created files
-static int get_file_list(char*** file_list_out)
+static int get_file_list(char ***file_list_out)
 {
+    *file_list_out = NULL;
     int count = 0;
     int capacity = 128;
-    char** file_list = malloc(capacity * sizeof(char*));
-    if (!file_list) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to allocate memory for file list\n" ANSI_COLOR_RESET);
+    char **files = malloc(capacity * sizeof(*files));
+    if (!files) {
+        fprintf(stderr, "Failed to allocate file list\n");
         return -1;
     }
 
-    romfs_file file;
-    if (romfs_list(&file, true) == ROMFS_NOERR) {
-        do {
-            if (file.entry.attr.names.type == ROMFS_TYPE_MISC) {
-                if (count >= capacity) {
-                    capacity *= 2;
-                    char** new_list = realloc(file_list, capacity * sizeof(char*));
-                    if (!new_list) {
-                        fprintf(stderr, ANSI_COLOR_RED "Failed to reallocate memory for file list\n" ANSI_COLOR_RESET);
-                        for(int i=0; i<count; i++) {
-                            free(file_list[i]);
-                        }
-                        free(file_list);
-                        return -1;
-                    }
-                    file_list = new_list;
+    romfs_file file = {0};
+    uint32_t err = romfs_list(&file, true);
+    while (err == ROMFS_NOERR) {
+        if (file.entry.attr.names.type == ROMFS_TYPE_MISC) {
+            if (count == capacity) {
+                int new_capacity = capacity * 2;
+                char **new_files = realloc(files, new_capacity * sizeof(*files));
+                if (!new_files) {
+                    fprintf(stderr, "Failed to expand file list\n");
+                    free_file_list(files, count);
+                    return -1;
                 }
-                file_list[count] = strdup(file.entry.name);
-                count++;
+                files = new_files;
+                capacity = new_capacity;
             }
-        } while (romfs_list(&file, false) == ROMFS_NOERR);
+            files[count] = strdup(file.entry.name);
+            if (!files[count]) {
+                fprintf(stderr, "Failed to copy filename\n");
+                free_file_list(files, count);
+                return -1;
+            }
+            count++;
+        }
+        err = romfs_list(&file, false);
     }
-    *file_list_out = file_list;
+    if (err != ROMFS_ERR_NO_FREE_ENTRIES) {
+        fprintf(stderr, "Failed to list files: %s\n", romfs_strerror(err));
+        free_file_list(files, count);
+        return -1;
+    }
+    *file_list_out = files;
     return count;
 }
 
-// Fills the filesystem with files of a given size until no space is left.
-static int fill_drive(const char* prefix, int max_chunks_per_file, int chunk_size, bool random_size)
+// Returns the number of complete files, or -1 on an unexpected failure.
+// NO_SPACE / NO_FREE_ENTRIES are expected only in these capacity scenarios.
+static int fill_drive(const char *prefix, int max_chunks_per_file, int chunk_size, bool random_size)
 {
     int file_idx = 0;
-    uint8_t* test_data = malloc(chunk_size);
+    int result = -1;
+    uint8_t *test_data = malloc(chunk_size);
+    uint8_t *io_buffer = malloc(ROMFS_FLASH_SECTOR);
+    if (!test_data || !io_buffer) {
+        fprintf(stderr, "Failed to allocate fill buffers\n");
+        goto cleanup;
+    }
 
     while (true) {
         char filename[ROMFS_MAX_NAME_LEN];
         snprintf(filename, sizeof(filename), "%s%04d.dat", prefix, file_idx);
-
-        romfs_file file;
-        uint8_t *romfs_io_buffer = malloc(ROMFS_FLASH_SECTOR);
-        if (!romfs_io_buffer) {
-            fprintf(stderr, ANSI_COLOR_RED "Failed to allocate IO buffer\n" ANSI_COLOR_RESET);
-            free(test_data);
-            return -1;
-        }
-
-        if (romfs_create_file(filename, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_io_buffer) != ROMFS_NOERR) {
-            if (file.err == ROMFS_ERR_NO_FREE_ENTRIES) {
-                printf(ANSI_COLOR_YELLOW "\nCould not create new file: file list is full. Created %d files.\n" ANSI_COLOR_RESET,
-                       file_idx);
+        romfs_file file = {0};
+        uint32_t err = romfs_create_file(filename, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer);
+        if (err != ROMFS_NOERR) {
+            if (err == ROMFS_ERR_NO_FREE_ENTRIES || err == ROMFS_ERR_NO_SPACE) {
+                printf("\nCapacity reached after %d files: %s\n", file_idx, romfs_strerror(err));
+                result = file_idx;
             } else {
-                printf(ANSI_COLOR_YELLOW "\nCould not create new file entry. Filesystem full. Created %d files.\n" ANSI_COLOR_RESET,
-                       file_idx);
+                fprintf(stderr, "Failed to create %s: %s\n", filename, romfs_strerror(err));
             }
-            free(romfs_io_buffer);
             break;
         }
 
         printf(ANSI_COLOR_MAGENTA "Creating %s... \r" ANSI_COLOR_RESET, filename);
         fflush(stdout);
-
-        int chunks_this_file = random_size ? (1 + (rand() % max_chunks_per_file)) : max_chunks_per_file;
-        if (chunks_this_file == 0) {
-            chunks_this_file = 1;
-        }
-
-        bool write_error = false;
-        for (int j = 0; j < chunks_this_file; j++) {
+        int chunks = random_size ? 1 + test_random() % max_chunks_per_file : max_chunks_per_file;
+        bool no_space = false;
+        bool write_ok = true;
+        for (int j = 0; j < chunks; j++) {
             create_test_data(test_data, chunk_size, file_idx, j);
-            if (romfs_write_file(test_data, chunk_size, &file) == 0) {
-                if(file.err != ROMFS_ERR_NO_SPACE) {
-                    fprintf(stderr, ANSI_COLOR_RED "\nromfs write error on %s: %s\n" ANSI_COLOR_RESET, filename, romfs_strerror(file.err));
+            uint32_t written = romfs_write_file(test_data, chunk_size, &file);
+            if (written != (uint32_t)chunk_size || file.err != ROMFS_NOERR) {
+                no_space = file.err == ROMFS_ERR_NO_SPACE && written < (uint32_t)chunk_size;
+                write_ok = false;
+                if (!no_space) {
+                    fprintf(stderr, "Write failed for %s: %u/%d bytes, %s\n",
+                            filename, written, chunk_size, romfs_strerror(file.err));
                 }
-                write_error = true;
                 break;
             }
         }
-
-        if (romfs_close_file(&file) != ROMFS_NOERR) {
-            fprintf(stderr, ANSI_COLOR_RED "\nromfs close error on %s: %s\n" ANSI_COLOR_RESET, filename, romfs_strerror(file.err));
-            write_error = true;
-        }
-
-        free(romfs_io_buffer);
-
-        if (write_error) {
-            romfs_delete(filename);
-            printf(ANSI_COLOR_YELLOW "\nFilesystem is full. Created %d files.\n" ANSI_COLOR_RESET, file_idx);
+        uint32_t close_err = romfs_close_file(&file);
+        if (close_err != ROMFS_NOERR && !(no_space && close_err == ROMFS_ERR_NO_SPACE)) {
+            fprintf(stderr, "Close failed for %s: %s\n", filename, romfs_strerror(close_err));
             break;
         }
-
+        if (!write_ok) {
+            if (!no_space) {
+                break;
+            }
+            /* A partial file is outside this complete-file verification set.
+             * Current ROMFS may not publish it at all after ENOSPC. */
+            err = romfs_delete(filename);
+            if (err != ROMFS_NOERR && err != ROMFS_ERR_NO_ENTRY) {
+                fprintf(stderr, "Failed to discard %s: %s\n", filename, romfs_strerror(err));
+                break;
+            }
+            printf("\nData space exhausted after %d complete files.\n", file_idx);
+            result = file_idx;
+            break;
+        }
         file_idx++;
     }
+
+cleanup:
+    free(io_buffer);
     free(test_data);
-    return file_idx;
+    return result;
 }
 
 // Verifies the contents of all user files on the drive, works with random sizes.
@@ -297,6 +329,13 @@ static bool verify_drive(uint32_t chunk_size)
 
     uint8_t* read_buffer = malloc(chunk_size);
     uint8_t* expected_data = malloc(chunk_size);
+    if (!read_buffer || !expected_data) {
+        free(read_buffer);
+        free(expected_data);
+        free_file_list(file_list, file_count);
+        fprintf(stderr, "Failed to allocate verification buffers\n");
+        return false;
+    }
 
     for (int i = 0; i < file_count; i++) {
         printf(ANSI_COLOR_MAGENTA "Verifying %s... \r" ANSI_COLOR_RESET, file_list[i]);
@@ -313,8 +352,18 @@ static bool verify_drive(uint32_t chunk_size)
             }
         }
 
-        romfs_file file;
+        if (file_idx < 0) {
+            fprintf(stderr, "Unexpected verification filename: %s\n", file_list[i]);
+            success = false;
+            continue;
+        }
+        romfs_file file = {0};
         uint8_t *romfs_io_buffer = malloc(ROMFS_FLASH_SECTOR);
+        if (!romfs_io_buffer) {
+            fprintf(stderr, "Failed to allocate verification IO buffer\n");
+            success = false;
+            break;
+        }
         if (romfs_open_file(file_list[i], &file, romfs_io_buffer) != ROMFS_NOERR) {
             fprintf(stderr, ANSI_COLOR_RED "\nFailed to open file for verification: %s\n" ANSI_COLOR_RESET, file_list[i]);
             success = false;
@@ -330,7 +379,8 @@ static bool verify_drive(uint32_t chunk_size)
             uint32_t bytes_to_read = remaining_bytes > chunk_size ? chunk_size : remaining_bytes;
 
             uint32_t bytes_read = romfs_read_file(read_buffer, bytes_to_read, &file);
-            if (bytes_read != bytes_to_read) {
+            if (bytes_read != bytes_to_read ||
+                    (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF)) {
                 fprintf(stderr, ANSI_COLOR_RED "\nRead error on %s, chunk %d. Expected %d, got %d\n" ANSI_COLOR_RESET, file_list[i],
                         chunk_idx, bytes_to_read, bytes_read);
                 file_ok = false;
@@ -347,6 +397,10 @@ static bool verify_drive(uint32_t chunk_size)
             chunk_idx++;
         }
 
+        if (romfs_close_file(&file) != ROMFS_NOERR) {
+            fprintf(stderr, "Close failed for %s\n", file_list[i]);
+            file_ok = false;
+        }
         free(romfs_io_buffer);
         if (!file_ok) {
             success = false;
@@ -422,19 +476,19 @@ static bool test_large_io_transfer(void)
     if (read_total != large_len) {
         fprintf(stderr, ANSI_COLOR_RED "Read failed for large_test.bin (read %u/%u): %s\n" ANSI_COLOR_RESET,
                 read_total, large_len, romfs_strerror(reader.err));
-        romfs_close_file(&reader);
+        success = close_test_file(&reader) && success;
         goto cleanup_close_write;
     }
 
     if (reader.err != ROMFS_ERR_EOF) {
         fprintf(stderr, ANSI_COLOR_RED "Unexpected reader.err (%u) after large read\n" ANSI_COLOR_RESET, reader.err);
-        romfs_close_file(&reader);
+        success = close_test_file(&reader) && success;
         goto cleanup_close_write;
     }
 
     if (memcmp(write_data, read_data, large_len) != 0) {
         fprintf(stderr, ANSI_COLOR_RED "Data mismatch after large I/O transfer\n" ANSI_COLOR_RESET);
-        romfs_close_file(&reader);
+        success = close_test_file(&reader) && success;
         goto cleanup_close_write;
     }
 
@@ -452,7 +506,7 @@ cleanup:
     free(write_data);
     free(read_data);
     free(io_buffer);
-    romfs_format();
+    success = romfs_format() && success;
     return success;
 }
 
@@ -593,7 +647,7 @@ static bool test_seek_tell(void)
     }
 
 cleanup_reader:
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
 
     if (success) {
         romfs_file empty_file;
@@ -628,12 +682,12 @@ cleanup_reader:
                 fprintf(stderr, ANSI_COLOR_RED "Empty file SEEK_CUR negative unexpectedly succeeded\n" ANSI_COLOR_RESET);
                 success = false;
             }
-            romfs_close_file(&empty_file);
+            success = close_test_file(&empty_file) && success;
         }
     }
 
 cleanup:
-    romfs_format();
+    success = romfs_format() && success;
     free(pattern);
     free(write_io);
     free(read_io);
@@ -723,7 +777,7 @@ cleanup_close_file:
         fprintf(stderr, ANSI_COLOR_RED "Initial append verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     if (!success) {
         goto cleanup;
     }
@@ -782,7 +836,7 @@ cleanup_second_close:
         fprintf(stderr, ANSI_COLOR_RED "Second append verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     if (!success) {
         goto cleanup;
     }
@@ -840,7 +894,7 @@ cleanup_large_close:
         fprintf(stderr, ANSI_COLOR_RED "Final append verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     if (!success) {
         goto cleanup;
     }
@@ -868,7 +922,7 @@ cleanup_large_close:
         fprintf(stderr, ANSI_COLOR_RED "Verification of flat.bin append failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     if (!success) {
         goto cleanup;
     }
@@ -894,7 +948,7 @@ cleanup_large_close:
 cleanup:
     romfs_delete_path("append.bin");
     romfs_delete("flat.bin");
-    romfs_format();
+    success = romfs_format() && success;
     free(io_buffer);
     free(read_io_buffer);
     free(big_data);
@@ -974,7 +1028,7 @@ static bool test_truncate_api(void)
         fprintf(stderr, ANSI_COLOR_RED "Shrink truncate verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     if (!success) {
         goto cleanup;
     }
@@ -1011,7 +1065,7 @@ static bool test_truncate_api(void)
             success = false;
         }
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     if (!success) {
         goto cleanup;
     }
@@ -1042,11 +1096,11 @@ static bool test_truncate_api(void)
         fprintf(stderr, ANSI_COLOR_RED "Zero truncate verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
 
 cleanup:
     romfs_delete("truncate.bin");
-    romfs_format();
+    success = romfs_format() && success;
     free(io_buffer);
     free(read_io_buffer);
     free(payload);
@@ -1176,11 +1230,11 @@ cleanup_close_file:
         fprintf(stderr, ANSI_COLOR_RED "Random write verification failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
 
 cleanup:
     romfs_delete("random-write.bin");
-    romfs_format();
+    success = romfs_format() && success;
     free(io_buffer);
     free(read_io_buffer);
     free(initial);
@@ -1255,7 +1309,7 @@ static bool test_rename_api(void)
         goto cleanup_reader;
     }
 
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     reader_open = false;
 
     if (romfs_open_file_in_dir(&alpha, "note.bin", &reader, io_buffer) != ROMFS_ERR_NO_ENTRY) {
@@ -1277,7 +1331,7 @@ static bool test_rename_api(void)
         success = false;
         goto cleanup_reader;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     reader_open = false;
 
     // Conflict detection
@@ -1310,7 +1364,7 @@ static bool test_rename_api(void)
         success = false;
         goto cleanup_reader;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     reader_open = false;
 
     // Flat namespace rename helper
@@ -1343,7 +1397,7 @@ static bool test_rename_api(void)
         fprintf(stderr, ANSI_COLOR_RED "Verification of romfs_rename target failed\n" ANSI_COLOR_RESET);
         success = false;
     }
-    romfs_close_file(&reader);
+    success = close_test_file(&reader) && success;
     if (!success) {
         goto cleanup;
     }
@@ -1397,7 +1451,7 @@ static bool test_rename_api(void)
 
 cleanup_reader:
     if (reader_open) {
-        romfs_close_file(&reader);
+        success = close_test_file(&reader) && success;
         reader_open = false;
     }
 
@@ -1409,7 +1463,7 @@ cleanup:
     romfs_delete("flat_renamed.bin");
     free(io_buffer);
     free(read_buffer);
-    romfs_format();
+    success = romfs_format() && success;
     return success;
 }
 
@@ -1451,7 +1505,7 @@ static bool test_random_fill_to_capacity(void)
         char filename[ROMFS_MAX_NAME_LEN];
         snprintf(filename, sizeof(filename), "randfill%05d.bin", file_idx);
 
-        uint32_t file_size = (uint32_t)(rand() % (max_file_size + 1));
+        uint32_t file_size = (uint32_t)(test_random() % (max_file_size + 1));
 
         romfs_file file;
         uint8_t *io_buffer = malloc(ROMFS_FLASH_SECTOR);
@@ -1473,15 +1527,18 @@ static bool test_random_fill_to_capacity(void)
         }
 
         bool write_ok = true;
+        bool no_space = false;
         uint32_t remaining = file_size;
         uint32_t chunk_idx = 0;
         while (remaining > 0) {
             uint32_t chunk = remaining > chunk_cap ? chunk_cap : remaining;
             create_test_data(chunk_buffer, chunk, file_idx, chunk_idx);
             uint32_t written = romfs_write_file(chunk_buffer, chunk, &file);
-            if (written != chunk) {
-                if (file.err != ROMFS_ERR_NO_SPACE) {
+            if (written != chunk || file.err != ROMFS_NOERR) {
+                no_space = file.err == ROMFS_ERR_NO_SPACE && written < chunk;
+                if (!no_space) {
                     fprintf(stderr, ANSI_COLOR_RED "Write error on %s: %s\n" ANSI_COLOR_RESET, filename, romfs_strerror(file.err));
+                    success = false;
                 }
                 write_ok = false;
                 break;
@@ -1490,16 +1547,23 @@ static bool test_random_fill_to_capacity(void)
             chunk_idx++;
         }
 
-        if (write_ok && romfs_close_file(&file) != ROMFS_NOERR) {
-            fprintf(stderr, ANSI_COLOR_RED "Close error on %s: %s\n" ANSI_COLOR_RESET, filename, romfs_strerror(file.err));
+        uint32_t close_err = romfs_close_file(&file);
+        if (close_err != ROMFS_NOERR && !(no_space && close_err == ROMFS_ERR_NO_SPACE)) {
+            fprintf(stderr, ANSI_COLOR_RED "Close error on %s: %s\n" ANSI_COLOR_RESET, filename, romfs_strerror(close_err));
             write_ok = false;
+            success = false;
         }
 
         if (!write_ok) {
-            romfs_delete(filename);
+            uint32_t delete_err = romfs_delete(filename);
+            if (delete_err != ROMFS_NOERR && delete_err != ROMFS_ERR_NO_ENTRY) {
+                fprintf(stderr, "Failed to discard %s: %s\n", filename, romfs_strerror(delete_err));
+                success = false;
+            }
             free(io_buffer);
-            printf(ANSI_COLOR_YELLOW "Stopping creation due to write failure (likely full) at file %d\n" ANSI_COLOR_RESET,
-                   file_idx);
+            if (success) {
+                printf("Data space exhausted at file %d.\n", file_idx);
+            }
             break;
         }
 
@@ -1557,7 +1621,8 @@ static bool test_random_fill_to_capacity(void)
                 while (success && remaining > 0) {
                     uint32_t chunk = remaining > chunk_cap ? chunk_cap : remaining;
                     uint32_t read_bytes = romfs_read_file(read_buffer, chunk, &file);
-                    if (read_bytes != chunk) {
+                    if (read_bytes != chunk ||
+                            (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF)) {
                         fprintf(stderr, ANSI_COLOR_RED "Read error on %s: expected %u, got %u (%s)\n" ANSI_COLOR_RESET,
                                 entries[i].name, chunk, read_bytes, romfs_strerror(file.err));
                         success = false;
@@ -1585,7 +1650,7 @@ static bool test_random_fill_to_capacity(void)
                     success = false;
                 }
 
-                romfs_close_file(&file);
+                success = close_test_file(&file) && success;
             }
 
             if (success) {
@@ -1600,7 +1665,7 @@ static bool test_random_fill_to_capacity(void)
 
     free(chunk_buffer);
     free(entries);
-    romfs_format();
+    success = romfs_format() && success;
     return success;
 }
 
@@ -1663,7 +1728,7 @@ static bool test_directory_api(void)
         success = false;
         goto cleanup;
     }
-    romfs_close_file(&read_file);
+    success = close_test_file(&read_file) && success;
 
     if (romfs_dir_remove(&nintendo_dir) != ROMFS_ERR_DIR_NOT_EMPTY) {
         fprintf(stderr, ANSI_COLOR_RED "Directory removal should fail while contents exist\n" ANSI_COLOR_RESET);
@@ -1763,7 +1828,7 @@ static bool test_directory_api(void)
 
 cleanup:
     free(io_buffer);
-    romfs_format();
+    success = romfs_format() && success;
     return success;
 }
 
@@ -1771,270 +1836,296 @@ cleanup:
 static bool test_interleaved_delete_write(void)
 {
     printf(ANSI_COLOR_YELLOW "\n--- Running Interleaved Delete/Write Test (Random Sizes) ---\n" ANSI_COLOR_RESET);
-
-    // 1. Fill the drive about halfway to have something to work with.
-    printf("Pre-filling drive to 50%% capacity...\n");
+    printf("Pre-filling drive...\n");
     int initial_files = fill_drive("file", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, true);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
+    if (initial_files <= 0 || !verify_drive(NORMAL_CHUNK_SIZE)) {
         return false;
     }
 
-    char** file_list = NULL;
+    char **file_list = NULL;
     int file_count = get_file_list(&file_list);
-    if (file_count == 0) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to create initial files for interleaved test.\n" ANSI_COLOR_RESET);
-        return false;
+    uint8_t *io_buffer = malloc(ROMFS_FLASH_SECTOR);
+    uint8_t *test_data = malloc(NORMAL_CHUNK_SIZE);
+    bool success = false;
+    if (file_count <= 0 || !io_buffer || !test_data) {
+        fprintf(stderr, "Cannot prepare interleaved test\n");
+        goto cleanup;
     }
 
-    // 2. Interleave operations
-    int files_to_create = initial_files;
-    int new_file_idx = 0;
-    const int delete_batch_size = 5;
-
-    for (int i = 0; i < files_to_create; i++) {
-        // Delete one or more random files
-        if (file_count > 0) {
-            for(int d=0; d<delete_batch_size && file_count > 0; d++) {
-                int file_to_delete_idx = rand() % file_count;
-                char* file_to_delete = file_list[file_to_delete_idx];
-                printf(ANSI_COLOR_MAGENTA "Deleting %s (%d remaining)... \r" ANSI_COLOR_RESET, file_to_delete, file_count - 1);
-                fflush(stdout);
-                if (romfs_delete(file_to_delete) != ROMFS_NOERR) {
-                    fprintf(stderr, ANSI_COLOR_RED "\nFailed to delete %s in interleaved test.\n" ANSI_COLOR_RESET, file_to_delete);
-                    return false;
-                }
-                free(file_to_delete);
-                // Replace the deleted entry with the last entry
-                file_list[file_to_delete_idx] = file_list[file_count - 1];
-                file_count--;
+    for (int i = 0; i < initial_files; i++) {
+        for (int d = 0; d < 5 && file_count > 0; d++) {
+            int idx = test_random() % file_count;
+            char *name = file_list[idx];
+            printf(ANSI_COLOR_MAGENTA "Deleting %s (%d remaining)... \r" ANSI_COLOR_RESET, name, file_count - 1);
+            fflush(stdout);
+            if (romfs_delete(name) != ROMFS_NOERR) {
+                fprintf(stderr, "Failed to delete %s in interleaved test\n", name);
+                goto cleanup;
             }
-
-            // Verify the state of the filesystem after deletions
-            if (!verify_drive(NORMAL_CHUNK_SIZE)) {
-                fprintf(stderr, ANSI_COLOR_RED "Verification failed during interleaved test after deletion phase.\n" ANSI_COLOR_RESET);
-                return false;
-            }
+            free(name);
+            file_list[idx] = file_list[--file_count];
+        }
+        if (!verify_drive(NORMAL_CHUNK_SIZE)) {
+            goto cleanup;
         }
 
-        // Create one new file with random size
         char filename[ROMFS_MAX_NAME_LEN];
-        snprintf(filename, sizeof(filename), "ifile%04d.dat", new_file_idx);
-
-        romfs_file file;
-        uint8_t *romfs_io_buffer = malloc(ROMFS_FLASH_SECTOR);
-        uint8_t* test_data = malloc(NORMAL_CHUNK_SIZE);
-
-        romfs_create_file(filename, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_io_buffer);
-
-        int chunks_this_file = 1 + (rand() % NORMAL_CHUNKS_PER_FILE);
-        for (int j = 0; j < chunks_this_file; j++) {
-            create_test_data(test_data, NORMAL_CHUNK_SIZE, new_file_idx, j);
-            if(romfs_write_file(test_data, NORMAL_CHUNK_SIZE, &file) == 0) {
-                // Stop if we run out of space
-                break;
+        snprintf(filename, sizeof(filename), "ifile%04d.dat", i);
+        romfs_file file = {0};
+        if (romfs_create_file(filename, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer) != ROMFS_NOERR) {
+            fprintf(stderr, "Failed to create %s: %s\n", filename, romfs_strerror(file.err));
+            goto cleanup;
+        }
+        int chunks = 1 + test_random() % NORMAL_CHUNKS_PER_FILE;
+        for (int j = 0; j < chunks; j++) {
+            create_test_data(test_data, NORMAL_CHUNK_SIZE, i, j);
+            if (romfs_write_file(test_data, NORMAL_CHUNK_SIZE, &file) != (uint32_t)NORMAL_CHUNK_SIZE ||
+                    file.err != ROMFS_NOERR) {
+                fprintf(stderr, "Failed to write %s: %s\n", filename, romfs_strerror(file.err));
+                goto cleanup;
             }
         }
-        romfs_close_file(&file);
-        free(romfs_io_buffer);
-        free(test_data);
-        new_file_idx++;
+        if (romfs_close_file(&file) != ROMFS_NOERR) {
+            fprintf(stderr, "Failed to close %s: %s\n", filename, romfs_strerror(file.err));
+            goto cleanup;
+        }
     }
-    free(file_list);
-
     printf("\nInterleaved operations complete. Verifying final state...\n");
-    return verify_drive(NORMAL_CHUNK_SIZE);
+    success = verify_drive(NORMAL_CHUNK_SIZE);
+
+cleanup:
+    free_file_list(file_list, file_count);
+    free(io_buffer);
+    free(test_data);
+    return success;
 }
 
+static bool delete_files(bool random_order, bool verify_between)
+{
+    char **files = NULL;
+    int count = get_file_list(&files);
+    if (count < 0) {
+        return false;
+    }
+    if (random_order) {
+        shuffle_filenames(files, count);
+    }
+    bool success = true;
+    for (int i = 0; i < count; i++) {
+        printf(ANSI_COLOR_MAGENTA "Deleting %s (%d/%d)... \r" ANSI_COLOR_RESET, files[i], i + 1, count);
+        fflush(stdout);
+        uint32_t err = romfs_delete(files[i]);
+        if (err != ROMFS_NOERR) {
+            fprintf(stderr, "Failed to delete %s: %s\n", files[i], romfs_strerror(err));
+            success = false;
+            break;
+        }
+        if (verify_between && ((i + 1) % 10 == 0 || i + 1 == count) &&
+                !verify_drive(NORMAL_CHUNK_SIZE)) {
+            /* Keep the name alive until diagnostics and verification finish. */
+            fprintf(stderr, "Verification failed after deleting %s\n", files[i]);
+            success = false;
+            break;
+        }
+    }
+    free_file_list(files, count);
+    if (success) {
+        printf("\nDeleted %d files. Free space: %u bytes\n", count, romfs_free());
+    }
+    return success;
+}
 
-// Runs the entire test suite for a given flash size.
-static void run_test_suite(uint32_t flash_size_mb)
+static bool run_test_suite(uint32_t flash_size_mb, uint32_t seed,
+                            test_flash_operation fail_op, uint64_t fail_nth)
 {
     printf(ANSI_COLOR_YELLOW "=================================================\n" ANSI_COLOR_RESET);
     printf(ANSI_COLOR_CYAN "      Testing with %uMB Flash Image\n" ANSI_COLOR_RESET, flash_size_mb);
-    printf(ANSI_COLOR_YELLOW "=================================================\n" ANSI_COLOR_RESET);
+    printf("Seed: %" PRIu32 "\n", seed);
+    rng_state = seed ^ (flash_size_mb * 0x9e3779b9u);
+    rng_calls = 0;
+    bool success = false;
+    uint16_t *flash_map = NULL;
+    uint8_t *flash_list = NULL;
+    const char *stage = "flash initialization";
 
-    size_t mem_size_bytes = flash_size_mb * ROMFS_MB;
-    memory = malloc(mem_size_bytes);
-    if (!memory) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to allocate memory for %uMB flash image\n" ANSI_COLOR_RESET, flash_size_mb);
-        return;
+    if (!test_flash_init(flash_size_mb * ROMFS_MB)) {
+        fprintf(stderr, "Cannot allocate %uMB flash image\n", flash_size_mb);
+        goto cleanup;
     }
-    memset(memory, 0xff, mem_size_bytes);
-    flash_base = memory;
+    flash_base = test_flash_data();
+    if (fail_nth && !test_flash_fail_on(fail_op, fail_nth)) {
+        fprintf(stderr, "Cannot configure flash failure\n");
+        goto cleanup;
+    }
 
-    uint32_t map_size = 0;
-    uint32_t list_size = 0;
-    romfs_get_buffers_sizes(mem_size_bytes, &map_size, &list_size);
-
-    uint16_t *flash_map = malloc(map_size);
-    uint8_t *flash_list = malloc(list_size);
+    uint32_t map_size, list_size;
+    romfs_get_buffers_sizes(flash_size_mb * ROMFS_MB, &map_size, &list_size);
+    /* Defined contents make a failed mount read safe to diagnose even while
+     * current ROMFS ignores callback errors. Stop before using that mount. */
+    flash_map = calloc(1, map_size);
+    flash_list = calloc(1, list_size);
     if (!flash_map || !flash_list) {
-        fprintf(stderr, ANSI_COLOR_RED "Failed to allocate memory for map/list\n" ANSI_COLOR_RESET);
+        fprintf(stderr, "Cannot allocate map/list buffers\n");
         goto cleanup;
     }
 
-    if (!romfs_start(0x10000, mem_size_bytes, flash_map, flash_list)) {
-        printf(ANSI_COLOR_RED "Cannot start romfs!\n" ANSI_COLOR_RESET);
-        goto cleanup;
-    }
+#define RUN_CHECK(expression) do { \
+    stage = #expression; \
+    if (!(expression) || !flash_ok()) { \
+        goto cleanup; \
+    } \
+} while (0)
 
-    if (!test_service_sector_protection(flash_map, map_size)) {
-        goto cleanup;
-    }
+    RUN_CHECK(romfs_start(0x10000, flash_size_mb * ROMFS_MB, flash_map, flash_list));
+    RUN_CHECK(test_service_sector_protection(flash_map, map_size));
+    RUN_CHECK(test_large_io_transfer());
+    RUN_CHECK(test_seek_tell());
+    RUN_CHECK(test_append_mode());
+    RUN_CHECK(test_truncate_api());
+    RUN_CHECK(test_random_write_api());
+    RUN_CHECK(test_rename_api());
+    RUN_CHECK(test_directory_api());
 
-    if (!test_large_io_transfer()) {
-        goto cleanup;
-    }
-
-    if (!test_seek_tell()) {
-        goto cleanup;
-    }
-
-    if (!test_append_mode()) {
-        goto cleanup;
-    }
-
-    if (!test_truncate_api()) {
-        goto cleanup;
-    }
-
-    if (!test_random_write_api()) {
-        goto cleanup;
-    }
-
-    if (!test_rename_api()) {
-        goto cleanup;
-    }
-
-    if (!test_directory_api()) {
-        goto cleanup;
-    }
-
-    // --- Test 1: Fixed Size Fill, Verify, Sequential Delete ---
     printf(ANSI_COLOR_YELLOW "\n--- Running Fill (Fixed Size) / Sequential Delete Test ---\n" ANSI_COLOR_RESET);
-    romfs_format();
-    printf("Initial free space: %u bytes\n", romfs_free());
-    fill_drive("file", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, false);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
-        goto cleanup;
-    }
+    RUN_CHECK(romfs_format());
+    RUN_CHECK(fill_drive("file", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, false) > 0);
+    RUN_CHECK(verify_drive(NORMAL_CHUNK_SIZE));
+    RUN_CHECK(delete_files(false, false));
 
-    printf("\nSequentially deleting files...\n");
-    char** file_list = NULL;
-    int file_count = get_file_list(&file_list);
-    if (file_count > 0) {
-        for (int i = 0; i < file_count; i++) {
-            printf(ANSI_COLOR_MAGENTA "Deleting %s... \r" ANSI_COLOR_RESET, file_list[i]);
-            fflush(stdout);
-            romfs_delete(file_list[i]);
-            free(file_list[i]);
-        }
-        free(file_list);
-        printf("\nSequential deletion complete. %d files deleted.\n", file_count);
-    }
-    printf("Free space after sequential delete: %u bytes\n", romfs_free());
-
-    // --- Test 2: Fixed Size Refill, Verify, Random Delete with Verification ---
     printf(ANSI_COLOR_YELLOW "\n--- Running Refill (Fixed Size) / Random Delete Test ---\n" ANSI_COLOR_RESET);
-    fill_drive("rfile", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, false);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
-        goto cleanup;
-    }
+    RUN_CHECK(fill_drive("rfile", NORMAL_CHUNKS_PER_FILE, NORMAL_CHUNK_SIZE, false) > 0);
+    RUN_CHECK(verify_drive(NORMAL_CHUNK_SIZE));
+    RUN_CHECK(delete_files(true, true));
 
-    printf("\nRandomly deleting files with verification...\n");
-    file_list = NULL;
-    file_count = get_file_list(&file_list);
-    if (file_count > 0) {
-        shuffle_filenames(file_list, file_count);
-        int total_files = file_count;
-        for (int i = 0; i < total_files; i++) {
-            printf(ANSI_COLOR_MAGENTA "Deleting %s (%d/%d)... \r" ANSI_COLOR_RESET, file_list[i], i + 1, total_files);
-            fflush(stdout);
-            romfs_delete(file_list[i]);
-            free(file_list[i]);
-
-            // After every 10 deletions (and for the very last one), verify remaining files
-            if ((i + 1) % 10 == 0 || (i + 1) == total_files) {
-                if (!verify_drive(NORMAL_CHUNK_SIZE)) {
-                    fprintf(stderr, ANSI_COLOR_RED "Verification failed after deleting %s!\n" ANSI_COLOR_RESET, file_list[i]);
-                    // To avoid memory leaks on early exit
-                    for (int j = i + 1; j < total_files; j++) {
-                        free(file_list[j]);
-                    }
-                    free(file_list);
-                    goto cleanup;
-                }
-            }
-        }
-        free(file_list);
-        printf("\nRandom deletion with verification complete. %d files deleted.\n", total_files);
-    }
-    printf("Free space after random delete: %u bytes\n", romfs_free());
-
-    // --- Test 3: Random Size Fill, Verify, Random Delete ---
     printf(ANSI_COLOR_YELLOW "\n--- Running Fill (Random Size) / Verify / Delete Test ---\n" ANSI_COLOR_RESET);
-    romfs_format();
-    fill_drive("rndfile", NORMAL_CHUNKS_PER_FILE * 2, NORMAL_CHUNK_SIZE, true);
-    if (!verify_drive(NORMAL_CHUNK_SIZE)) {
-        goto cleanup;
-    }
+    RUN_CHECK(romfs_format());
+    RUN_CHECK(fill_drive("rndfile", NORMAL_CHUNKS_PER_FILE * 2, NORMAL_CHUNK_SIZE, true) > 0);
+    RUN_CHECK(verify_drive(NORMAL_CHUNK_SIZE));
+    RUN_CHECK(delete_files(true, false));
 
-    printf("\nRandomly deleting all random-sized files...\n");
-    file_list = NULL;
-    file_count = get_file_list(&file_list);
-    if (file_count > 0) {
-        shuffle_filenames(file_list, file_count);
-        for (int i = 0; i < file_count; i++) {
-            printf(ANSI_COLOR_MAGENTA "Deleting %s... \r" ANSI_COLOR_RESET, file_list[i]);
-            fflush(stdout);
-            romfs_delete(file_list[i]);
-            free(file_list[i]);
-        }
-        free(file_list);
-        printf("\nRandom deletion complete. %d files deleted.\n", file_count);
-    }
-    printf("Free space after random delete: %u bytes\n", romfs_free());
+    RUN_CHECK(test_random_fill_to_capacity());
+    RUN_CHECK(romfs_format());
+    RUN_CHECK(test_interleaved_delete_write());
 
-    if (!test_random_fill_to_capacity()) {
-        goto cleanup;
-    }
-
-
-    // --- Test 4: Interleaved Delete and Write ---
-    romfs_format();
-    if (!test_interleaved_delete_write()) {
-        goto cleanup;
-    }
-
-    // --- Test 5: File List Limit ---
     printf(ANSI_COLOR_YELLOW "\n--- Running File List Limit Test ---\n" ANSI_COLOR_RESET);
-    romfs_format();
-    fill_drive("sfile", 1, SMALL_FILE_SIZE, false);
-    printf("File list limit test complete.\n");
+    RUN_CHECK(romfs_format());
+    RUN_CHECK(fill_drive("sfile", 1, SMALL_FILE_SIZE, false) == (int)(list_size / sizeof(romfs_entry)) - 3);
+    RUN_CHECK(verify_drive(SMALL_FILE_SIZE));
+#undef RUN_CHECK
 
-    printf(ANSI_COLOR_GREEN "\nTest for %uMB complete.\n\n" ANSI_COLOR_RESET, flash_size_mb);
+    if (fail_nth) {
+        stage = "requested I/O failure was not reached";
+        goto cleanup;
+    }
+    success = true;
 
 cleanup:
-    free(memory);
+    if (!success) {
+        fprintf(stderr, "Test for %uMB FAILED at %s\n", flash_size_mb, stage);
+    }
+    const test_flash_stats *stats = test_flash_get_stats();
+    if (stats->first_failure_reason) {
+        fprintf(stderr, "Flash %s at 0x%08" PRIx32 ": %s\n",
+                test_flash_operation_name(stats->first_failure_op), stats->first_failure_offset,
+                stats->first_failure_reason);
+    }
+    printf("Flash calls: read=%" PRIu64 " erase=%" PRIu64 " write=%" PRIu64
+           " rejected=%" PRIu64 " injected=%" PRIu64 "\n",
+           stats->calls[TEST_FLASH_READ], stats->calls[TEST_FLASH_ERASE],
+           stats->calls[TEST_FLASH_WRITE], stats->rejected, stats->injected);
+    printf("Random calls: %" PRIu64 "; state=%" PRIu32 "\n", rng_calls, rng_state);
+    printf("[%s] %uMB seed=%" PRIu32 "\n", success ? "PASS" : "FAIL", flash_size_mb, seed);
     free(flash_map);
     free(flash_list);
-    memory = NULL;
+    test_flash_destroy();
     flash_base = NULL;
+    return success;
+}
+
+static bool parse_number(const char *text, uint64_t maximum, uint64_t *value)
+{
+    if (!text || text[0] < '0' || text[0] > '9') {
+        return false;
+    }
+    errno = 0;
+    char *end;
+    unsigned long long parsed = strtoull(text, &end, 10);
+    if (errno == ERANGE || *end || parsed > maximum) {
+        return false;
+    }
+    *value = parsed;
+    return true;
+}
+
+static void usage(const char *program)
+{
+    fprintf(stderr, "Usage: %s [--seed N] [--flash-mb N] [--fail-io read:N|erase:N|write:N]\n"
+            "Default: seed 1, flash sizes 16/32/64/128/256 MiB.\n"
+            "--flash-mb accepts 2..256 MiB; smaller geometries currently expose ROMFS defects.\n"
+            "--fail-io fails the Nth callback of that kind per image and makes the run fail.\n",
+            program);
 }
 
 int main(int argc, char *argv[])
 {
-    srand(time(NULL));
+    /* Keep merged stdout/stderr diagnostics in execution order. */
+    setvbuf(stdout, NULL, _IONBF, 0);
+    uint32_t seed = 1;
+    uint32_t selected_size = 0;
+    uint64_t fail_nth = 0;
+    test_flash_operation fail_op = TEST_FLASH_OPERATION_COUNT;
+    for (int i = 1; i < argc; i++) {
+        uint64_t value;
+        if (!strcmp(argv[i], "--help")) {
+            usage(argv[0]);
+            return 0;
+        }
+        if (i + 1 >= argc) {
+            usage(argv[0]);
+            return 2;
+        }
+        const char *option = argv[i++];
+        if (!strcmp(option, "--seed") && parse_number(argv[i], UINT32_MAX, &value)) {
+            seed = (uint32_t)value;
+        } else if (!strcmp(option, "--flash-mb") && parse_number(argv[i], 256, &value) && value >= 2) {
+            selected_size = (uint32_t)value;
+        } else if (!strcmp(option, "--fail-io")) {
+            const char *colon = strchr(argv[i], ':');
+            fail_op = TEST_FLASH_OPERATION_COUNT;
+            if (colon && parse_number(colon + 1, UINT64_MAX, &value) && value != 0) {
+                for (test_flash_operation op = TEST_FLASH_READ; op < TEST_FLASH_OPERATION_COUNT; op++) {
+                    const char *name = test_flash_operation_name(op);
+                    if ((size_t)(colon - argv[i]) == strlen(name) && !strncmp(argv[i], name, strlen(name))) {
+                        fail_op = op;
+                    }
+                }
+            }
+            if (fail_op == TEST_FLASH_OPERATION_COUNT) {
+                usage(argv[0]);
+                return 2;
+            }
+            fail_nth = value;
+        } else {
+            usage(argv[0]);
+            return 2;
+        }
+    }
 
-    run_test_suite(16);
-    run_test_suite(32);
-    run_test_suite(64);
-    run_test_suite(128);
-    run_test_suite(256);
-
-    printf(ANSI_COLOR_GREEN "=================================================\n" ANSI_COLOR_RESET);
-    printf(ANSI_COLOR_GREEN " All tests completed successfully!\n" ANSI_COLOR_RESET);
-    printf(ANSI_COLOR_GREEN "=================================================\n" ANSI_COLOR_RESET);
-
+    const uint32_t sizes[] = {16, 32, 64, 128, 256};
+    unsigned passed = 0, failed = 0;
+    unsigned count = selected_size ? 1 : sizeof(sizes) / sizeof(sizes[0]);
+    for (unsigned i = 0; i < count; i++) {
+        if (run_test_suite(selected_size ? selected_size : sizes[i], seed, fail_op, fail_nth)) {
+            passed++;
+        } else {
+            failed++;
+        }
+    }
+    printf("Suites: %u passed, %u failed.\n", passed, failed);
+    if (failed) {
+        fprintf(stderr, "ROMFS tests FAILED.\n");
+        return 1;
+    }
+    printf(ANSI_COLOR_GREEN "All tests completed successfully!\n" ANSI_COLOR_RESET);
     return 0;
 }
