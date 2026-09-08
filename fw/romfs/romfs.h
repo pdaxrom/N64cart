@@ -68,6 +68,7 @@ enum {
     ROMFS_ERR_DIR_LIMIT,
     ROMFS_ERR_DIR_INVALID,
     ROMFS_ERR_DIR_NOT_EMPTY,
+    ROMFS_ERR_BUSY,
 };
 
 typedef struct __attribute__((packed))
@@ -98,7 +99,11 @@ typedef struct __attribute__((packed))
 }
 romfs_entry;
 
-typedef struct {
+/* Keep each successfully opened/created descriptor alive at the same address
+ * until close, including on error paths. Do not copy it for file operations.
+ * Multiple readers may coexist; a writer owns its catalog slot exclusively.
+ * Successful start and format invalidate all descriptors from the old mount. */
+typedef struct romfs_file {
     uint32_t op;
     romfs_entry entry;
     uint32_t nentry;
@@ -113,11 +118,16 @@ typedef struct {
     uint32_t write_offset;
     bool buffer_from_flash;
     bool buffer_dirty;
+    /* Private runtime ownership. An open descriptor must stay at its address. */
+    bool entry_pending;
+    struct romfs_file *next_open;
 } romfs_file;
 
 typedef struct {
     uint8_t id;
     uint32_t entry_index;
+    /* Runtime identity, assigned by dir_root/open/create; not stored on flash. */
+    uint32_t generation;
 } romfs_dir;
 
 bool romfs_flash_sector_erase(uint32_t offset);
@@ -137,8 +147,14 @@ uint32_t romfs_create_file(const char *name, romfs_file * file, uint16_t mode, u
  * are rejected with ROMFS_ERR_OPERATION before data I/O or chain mutation. */
 uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_flush_file(romfs_file * file);
+/* Close releases ownership even when flushing fails. Retry flush before close
+ * if needed; after close the descriptor must be opened again. Closing an
+ * already closed/unregistered descriptor is a no-op returning ROMFS_NOERR. */
 uint32_t romfs_close_file(romfs_file * file);
 uint32_t romfs_open_file(const char *name, romfs_file * file, uint8_t * io_buffer);
+/* Flush the owning writer and open a temporary read view. Close the view
+ * before writing/flushing the owner again. Used by the O_RDWR bridge. */
+uint32_t romfs_open_read_view(romfs_file *writer, romfs_file *reader, uint8_t *io_buffer);
 /* map_size is the capacity in uint16_t entries. Errors leave the buffer intact. */
 uint32_t romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file * file);

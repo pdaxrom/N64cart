@@ -179,6 +179,7 @@ int main(int argc, char *argv[])
                         }
                     } else {
                         fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
+                        romfs_close_file(&file);
                     }
                 }
                 fclose(inf);

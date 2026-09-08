@@ -18,6 +18,8 @@ static uint16_t map[ROMFS_FLASH_SECTOR / sizeof(uint16_t)];
 static uint8_t list[ROMFS_FLASH_SECTOR];
 static uint16_t saved_map[ROMFS_FLASH_SECTOR / sizeof(uint16_t)];
 static uint8_t saved_list[ROMFS_FLASH_SECTOR];
+static uint16_t healthy_map[ROMFS_FLASH_SECTOR / sizeof(uint16_t)];
+static uint8_t healthy_list[ROMFS_FLASH_SECTOR];
 static uint8_t *saved_flash;
 static uint8_t io[ROMFS_FLASH_SECTOR], read_io[ROMFS_FLASH_SECTOR];
 static uint8_t payload[3 * ROMFS_FLASH_SECTOR], actual[sizeof(payload)];
@@ -92,22 +94,42 @@ static void setup(void)
     create_file("victim", &victim, sizeof(payload));
     create_file("neighbor", &neighbor, ROMFS_FLASH_SECTOR);
     CHECK(victim.entry.start == FIRST + 1 && neighbor.entry.start == FIRST + 4);
-    CHECK(romfs_open_file("victim", &reader, read_io) == ROMFS_NOERR);
-    CHECK(romfs_open_append("victim", &writer, ROMFS_TYPE_MISC, io) == ROMFS_NOERR);
-    CHECK(romfs_seek_file(&writer, 0, SEEK_SET) == ROMFS_NOERR);
-    uint8_t patch = 0xee;
-    CHECK(romfs_write_file(&patch, 1, &writer) == 1);
-    CHECK(writer.buffer_dirty);
+    memcpy(healthy_map, map, sizeof(map));
+    memcpy(healthy_list, list, sizeof(list));
+}
+
+static void open_before_live_corruption(bool writable)
+{
+    uint16_t corrupt_map[ROMFS_FLASH_SECTOR / sizeof(uint16_t)];
+    uint8_t corrupt_list[ROMFS_FLASH_SECTOR];
+    memcpy(corrupt_map, map, sizeof(map));
+    memcpy(corrupt_list, list, sizeof(list));
+    memcpy(map, healthy_map, sizeof(map));
+    memcpy(list, healthy_list, sizeof(list));
+    if (writable) {
+        CHECK(romfs_open_append("victim", &writer, ROMFS_TYPE_MISC, io) == ROMFS_NOERR);
+        CHECK(romfs_seek_file(&writer, 0, SEEK_SET) == ROMFS_NOERR);
+        uint8_t patch = 0xee;
+        CHECK(romfs_write_file(&patch, 1, &writer) == 1);
+        CHECK(writer.buffer_dirty);
+    } else {
+        CHECK(romfs_open_file("victim", &reader, read_io) == ROMFS_NOERR);
+    }
+    memcpy(map, corrupt_map, sizeof(map));
+    memcpy(list, corrupt_list, sizeof(list));
+    (writable ? &writer : &reader)->entry = native_entry(victim.nentry);
+    test_flash_reset_counters();
 }
 
 static void reject_file_operations(void)
 {
-    /* Preserve open handles to check corruption detected after open too. */
-    reader.entry = native_entry(victim.nentry);
-    writer.entry = reader.entry;
+    /* First reject the persisted image, then corrupt each real open handle's
+     * chain in RAM. Copies of handles are intentionally no longer usable. */
     romfs_file fresh = {0};
     CHECK(romfs_open_file("victim", &fresh, read_io) == ROMFS_ERR_OPERATION);
     CHECK(romfs_open_append("victim", &fresh, ROMFS_TYPE_MISC, io) == ROMFS_ERR_OPERATION);
+    unchanged();
+    open_before_live_corruption(false);
     memset(actual, 0xa7, sizeof(actual));
     CHECK(romfs_read_file(actual, UINT32_MAX, &reader) == 0 && reader.err == ROMFS_ERR_OPERATION);
     CHECK(reader.read_offset == 0);
@@ -122,22 +144,25 @@ static void reject_file_operations(void)
     for (unsigned i = 0; i < 8; i++) {
         CHECK(lookup[i] == 0xa7a7);
     }
-    romfs_file attempt = writer;
-    CHECK(romfs_write_file(payload, 1, &attempt) == 0 && attempt.err == ROMFS_ERR_OPERATION);
-    CHECK(attempt.buffer_dirty && attempt.write_offset == writer.write_offset);
-    attempt = writer;
-    CHECK(romfs_seek_file(&attempt, 0, SEEK_SET) == ROMFS_ERR_OPERATION);
+    CHECK(romfs_close_file(&reader) == ROMFS_NOERR);
+    unchanged();
+    open_before_live_corruption(true);
+    romfs_file saved_writer = writer;
+    CHECK(romfs_write_file(payload, 1, &writer) == 0 && writer.err == ROMFS_ERR_OPERATION);
+    CHECK(writer.buffer_dirty && writer.write_offset == saved_writer.write_offset);
+    writer = saved_writer;
+    CHECK(romfs_seek_file(&writer, 0, SEEK_SET) == ROMFS_ERR_OPERATION);
     const uint32_t lengths[] = {0, 1, ROMFS_FLASH_SECTOR, ROMFS_FLASH_SECTOR + 7,
                                 sizeof(payload), sizeof(payload) + 1};
     for (unsigned i = 0; i < sizeof(lengths) / sizeof(lengths[0]); i++) {
-        attempt = writer;
-        CHECK(romfs_truncate_file(&attempt, lengths[i]) == ROMFS_ERR_OPERATION);
-        CHECK(attempt.buffer_dirty && attempt.entry.size == writer.entry.size);
+        writer = saved_writer;
+        CHECK(romfs_truncate_file(&writer, lengths[i]) == ROMFS_ERR_OPERATION);
+        CHECK(writer.buffer_dirty && writer.entry.size == saved_writer.entry.size);
     }
-    attempt = writer;
-    CHECK(romfs_flush_file(&attempt) == ROMFS_ERR_OPERATION && attempt.buffer_dirty);
-    attempt = writer;
-    CHECK(romfs_close_file(&attempt) == ROMFS_ERR_OPERATION && attempt.buffer_dirty);
+    writer = saved_writer;
+    CHECK(romfs_flush_file(&writer) == ROMFS_ERR_OPERATION && writer.buffer_dirty);
+    writer = saved_writer;
+    CHECK(romfs_close_file(&writer) == ROMFS_ERR_OPERATION && writer.buffer_dirty);
     CHECK(romfs_delete("victim") == ROMFS_ERR_OPERATION);
     unchanged();
 }
@@ -232,6 +257,7 @@ static void sector_gc(void)
     /* Repair only the fixture's bad link: the same allocation can now proceed. */
     map[victim.entry.start + 2] = le16((uint16_t) (victim.entry.start + 2));
     CHECK(romfs_free() == 4 * ROMFS_FLASH_SECTOR);
+    CHECK(romfs_create_file("new", &attempt, 0, ROMFS_TYPE_MISC, io) == ROMFS_NOERR);
     CHECK(romfs_write_file(payload, ROMFS_FLASH_SECTOR, &attempt) == ROMFS_FLASH_SECTOR);
     CHECK(attempt.entry.start == reclaim.entry.start);
     CHECK(romfs_close_file(&attempt) == ROMFS_NOERR);
@@ -239,6 +265,7 @@ static void sector_gc(void)
     CHECK(romfs_open_file("neighbor", &reader, read_io) == ROMFS_NOERR);
     CHECK(romfs_read_file(actual, ROMFS_FLASH_SECTOR, &reader) == ROMFS_FLASH_SECTOR);
     CHECK(memcmp(actual, payload, ROMFS_FLASH_SECTOR) == 0);
+    CHECK(romfs_close_file(&reader) == ROMFS_NOERR);
     CHECK(test_flash_get_stats()->rejected == 0);
     puts("PASS: sector-capacity GC refusal and recovery after fixture repair");
 }
@@ -247,6 +274,7 @@ static void valid_reads(void)
 {
     case_name = "valid-reads-and-overflow";
     setup();
+    CHECK(romfs_open_file("victim", &reader, read_io) == ROMFS_NOERR);
     CHECK(romfs_seek_file(&reader, 1, SEEK_SET) == ROMFS_NOERR);
     CHECK(romfs_read_file(actual, UINT32_MAX, &reader) == sizeof(payload) - 1);
     CHECK(reader.err == ROMFS_ERR_EOF);
@@ -262,11 +290,14 @@ static void valid_reads(void)
     for (unsigned i = 0; i < 8; i++) {
         CHECK(lookup[i] == 0xa7a7);
     }
+    CHECK(romfs_close_file(&reader) == ROMFS_NOERR);
+    CHECK(romfs_open_append("victim", &writer, ROMFS_TYPE_MISC, io) == ROMFS_NOERR);
     CHECK(romfs_seek_file(&writer, INT32_MAX, SEEK_SET) == ROMFS_NOERR);
     CHECK(romfs_seek_file(&writer, INT32_MAX, SEEK_CUR) == ROMFS_NOERR);
     snapshot();
     CHECK(romfs_write_file(payload, 2, &writer) == 0 && writer.err == ROMFS_ERR_FILE_DATA_TOO_BIG);
     unchanged();
+    CHECK(romfs_close_file(&writer) == ROMFS_ERR_FILE_DATA_TOO_BIG);
 
     const char *names[] = {"firmware", "flashlist", "flashmap"};
     for (unsigned n = 0; n < 3; n++) {
@@ -281,6 +312,7 @@ static void valid_reads(void)
         CHECK(romfs_read_file(actual, 1, &reader) == 1);
         CHECK(actual[0] == test_flash_data()[reader.entry.start * ROMFS_FLASH_SECTOR + reader.entry.size - 1]);
         CHECK(romfs_open_append(names[n], &writer, ROMFS_TYPE_MISC, io) == ROMFS_ERR_OPERATION);
+        CHECK(romfs_close_file(&reader) == ROMFS_NOERR);
     }
     CHECK(test_flash_get_stats()->rejected == 0);
     puts("PASS: bounded reads, arithmetic overflow and read-only service chains");
@@ -290,12 +322,14 @@ static void service_and_buffer_corruption(void)
 {
     case_name = "service-and-buffer-corruption";
     setup();
-    romfs_file attempt = writer;
-    attempt.pos = neighbor.entry.start;
+    open_before_live_corruption(true);
+    writer.pos = neighbor.entry.start;
     snapshot();
-    CHECK(romfs_flush_file(&attempt) == ROMFS_ERR_OPERATION && attempt.buffer_dirty);
-    CHECK(romfs_truncate_file(&attempt, 1) == ROMFS_ERR_OPERATION);
+    CHECK(romfs_flush_file(&writer) == ROMFS_ERR_OPERATION && writer.buffer_dirty);
+    CHECK(romfs_truncate_file(&writer, 1) == ROMFS_ERR_OPERATION);
     unchanged();
+    CHECK(romfs_close_file(&writer) == ROMFS_ERR_OPERATION);
+    romfs_file attempt = {0};
 
     const char *names[] = {"firmware", "flashlist", "flashmap"};
     for (unsigned n = 0; n < 3; n++) {
@@ -320,6 +354,7 @@ static void service_and_buffer_corruption(void)
         CHECK(romfs_read_file(actual, 1, &reader) == 0 && reader.err == ROMFS_ERR_OPERATION);
         unchanged();
         map[reader.entry.start] = original_link;
+        CHECK(romfs_close_file(&reader) == ROMFS_NOERR);
     }
     puts("PASS: service metadata/ranges and dirty buffer sector consistency");
 
@@ -330,11 +365,13 @@ static void service_and_buffer_corruption(void)
     CHECK(reader.entry.size == 0);
     CHECK(romfs_read_file(actual, 1, &reader) == 0 && reader.err == ROMFS_ERR_EOF);
     CHECK(romfs_read_map_table(NULL, 0, &reader) == 0 && reader.err == ROMFS_NOERR);
+    CHECK(romfs_close_file(&reader) == ROMFS_NOERR);
     create_file("empty", &attempt, 0);
     CHECK(romfs_open_file("empty", &reader, read_io) == ROMFS_NOERR);
     CHECK(romfs_read_file(actual, 1, &reader) == 0 && reader.err == ROMFS_ERR_EOF);
     CHECK(romfs_read_map_table(NULL, 0, &reader) == 0 && reader.err == ROMFS_NOERR);
     CHECK(romfs_seek_file(&reader, 0, SEEK_END) == ROMFS_NOERR);
+    CHECK(romfs_close_file(&reader) == ROMFS_NOERR);
     CHECK(test_flash_get_stats()->rejected == 0);
     puts("PASS: empty user file and zero-length firmware service entry");
 }

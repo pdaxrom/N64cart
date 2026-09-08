@@ -1048,6 +1048,7 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
 
         memset(rom_lookup, 0, sizeof(rom_lookup));
         uint32_t map_size = romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
+        romfs_close_file(&file);
 
         //syslog(LOG_INFO, "map size: %d (%08X)\n", map_size, map_size);
 
@@ -1072,6 +1073,7 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
             if (romfs_open_path(addon_path, &file, romfs_flash_buffer) == ROMFS_NOERR) {
                 memset(rom_lookup, 0, sizeof(rom_lookup));
                 uint32_t map_size = romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
+                romfs_close_file(&file);
 
                 uint32_t offset = addon_offset >> 12;
 

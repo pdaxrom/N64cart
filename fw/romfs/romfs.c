@@ -37,6 +37,7 @@ static const char *romfs_errlist[] = {
     "Directory limit reached",
     "Invalid directory",
     "Directory not empty",
+    "File busy",
 };
 
 static uint32_t flash_start = 0;
@@ -57,6 +58,8 @@ static uint32_t romfs_garbage_collect(bool *freed);
 
 static uint16_t romfs_dir_entry_index[ROMFS_MAX_DIRS];
 static uint16_t romfs_dir_used_mask = (1u << ROMFS_ROOT_DIR_ID);
+static uint32_t romfs_dir_generation[ROMFS_MAX_DIRS];
+static romfs_file *romfs_open_files;
 
 static void romfs_dir_index_reset(void);
 static void romfs_dir_index_rebuild(void);
@@ -81,10 +84,60 @@ static void romfs_request_flush(void);
 static uint32_t romfs_flush_depth;
 static bool romfs_flush_pending;
 
+static bool romfs_file_is_open(const romfs_file *file)
+{
+    for (romfs_file *opened = romfs_open_files; opened; opened = opened->next_open) {
+        if (opened == file) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void romfs_register_file(romfs_file *file)
+{
+    file->next_open = romfs_open_files;
+    romfs_open_files = file;
+}
+
+static void romfs_unregister_file(romfs_file *file)
+{
+    for (romfs_file **link = &romfs_open_files; *link; link = &(*link)->next_open) {
+        if (*link == file) {
+            *link = file->next_open;
+            file->next_open = NULL;
+            return;
+        }
+    }
+}
+
+static bool romfs_slot_busy(uint32_t entry_index, const romfs_file *except, bool writers_only)
+{
+    for (romfs_file *file = romfs_open_files; file; file = file->next_open) {
+        if (file != except && file->nentry == entry_index &&
+                (!writers_only || file->op == ROMFS_OP_WRITE)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool romfs_name_pending(uint8_t parent, const char *name)
+{
+    for (romfs_file *file = romfs_open_files; file; file = file->next_open) {
+        if (file->entry_pending && file->entry.attr.names.parent == parent &&
+                strncmp(file->entry.name, name, ROMFS_MAX_NAME_LEN) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void romfs_dir_index_reset(void)
 {
     for (uint32_t i = 0; i < ROMFS_MAX_DIRS; i++) {
         romfs_dir_entry_index[i] = ROMFS_INVALID_ENTRY_ID;
+        romfs_dir_generation[i]++;
     }
     romfs_dir_used_mask = (1u << ROMFS_ROOT_DIR_ID);
 }
@@ -120,6 +173,7 @@ static int romfs_dir_alloc_id(void)
     for (int i = 1; i < ROMFS_MAX_DIRS; i++) {
         if ((romfs_dir_used_mask & (1u << i)) == 0) {
             romfs_dir_used_mask |= (1u << i);
+            romfs_dir_generation[i]++;
             return i;
         }
     }
@@ -140,6 +194,16 @@ static bool romfs_dir_id_valid(uint8_t id)
     return id < ROMFS_MAX_DIRS && (romfs_dir_used_mask & (1u << id));
 }
 
+static bool romfs_dir_valid(const romfs_dir *dir)
+{
+    if (!dir || !romfs_dir_id_valid(dir->id)) {
+        return false;
+    }
+    return dir->id == ROMFS_ROOT_DIR_ID ||
+           (dir->generation == romfs_dir_generation[dir->id] &&
+            dir->entry_index == romfs_dir_entry_index[dir->id]);
+}
+
 static bool romfs_valid_entry_name(const char *name, size_t len)
 {
     if (!name || len == 0 || len >= ROMFS_MAX_NAME_LEN) {
@@ -147,6 +211,9 @@ static bool romfs_valid_entry_name(const char *name, size_t len)
     }
     if ((len == 1 && name[0] == '.') ||
             (len == 2 && name[0] == '.' && name[1] == '.')) {
+        return false;
+    }
+    if (name[0] == ROMFS_EMPTY_ENTRY || name[0] == ROMFS_DELETED_ENTRY || memchr(name, '/', len)) {
         return false;
     }
     return true;
@@ -329,6 +396,11 @@ static void romfs_request_flush(void)
 
 static bool romfs_dir_is_empty_internal(uint8_t dir_id)
 {
+    for (romfs_file *file = romfs_open_files; file; file = file->next_open) {
+        if (file->entry_pending && file->entry.attr.names.parent == dir_id) {
+            return false;
+        }
+    }
     romfs_entry *entries = (romfs_entry *) flash_list_int;
     uint32_t total = flash_list_size / sizeof(romfs_entry);
     for (uint32_t i = 0; i < total; i++) {
@@ -390,6 +462,7 @@ bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t
     }
 
     /* Publish only after validation, so rejected geometry leaves the mount intact. */
+    romfs_open_files = NULL;
     flash_start = aligned_start;
     flash_map_size = map_bytes;
     flash_list_size = list_bytes;
@@ -428,6 +501,7 @@ static void romfs_flush(void)
 
 bool romfs_format(void)
 {
+    romfs_open_files = NULL;
     romfs_operation_enter();
     memset(flash_list_int, 0xff, flash_list_size);
     romfs_dir_index_reset();
@@ -513,6 +587,12 @@ uint32_t romfs_free(void)
 static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_deleted, uint8_t parent_filter,
                                     uint8_t include_mask)
 {
+    if (!file) {
+        return ROMFS_ERR_OPERATION;
+    }
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
     if (first) {
         file->nentry = 0;
     }
@@ -572,6 +652,9 @@ static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_dele
 
 static uint32_t romfs_find_file_internal(romfs_file *file, const char *name, uint8_t parent_dir_id, bool include_dirs)
 {
+    if (!romfs_valid_entry_name(name, name ? strlen(name) : 0)) {
+        return (file->err = ROMFS_ERR_FILE_DATA_TOO_BIG);
+    }
     uint8_t mask = ROMFS_LIST_INCLUDE_FILES;
     if (include_dirs) {
         mask |= ROMFS_LIST_INCLUDE_DIRS;
@@ -595,7 +678,7 @@ static uint32_t romfs_find_entry_internal(uint32_t *entry_index, bool reclaim)
     romfs_entry *entries = (romfs_entry *) flash_list_int;
 
     for (uint32_t i = 0; i < flash_list_size / sizeof(romfs_entry); i++) {
-        if (entries[i].name[0] == ROMFS_EMPTY_ENTRY) {
+        if (entries[i].name[0] == ROMFS_EMPTY_ENTRY && !romfs_slot_busy(i, NULL, false)) {
             if (entry_index) {
                 *entry_index = i;
             }
@@ -624,6 +707,7 @@ static void romfs_store_file_entry(romfs_file *file)
     _entry->attr.raw = to_lsb16(file->entry.attr.raw);
     _entry->start = to_lsb32(file->entry.start);
     _entry->size = to_lsb32(file->entry.size);
+    file->entry_pending = false;
 }
 
 static uint32_t romfs_prepare_write_state(romfs_file *file, uint32_t offset)
@@ -683,6 +767,9 @@ static uint32_t romfs_garbage_collect(bool *freed)
         entry.attr.raw = from_lsb16(entry.attr.raw);
         entry.start = from_lsb32(entry.start);
         entry.size = from_lsb32(entry.size);
+        if (romfs_slot_busy(i, NULL, false)) {
+            return ROMFS_ERR_BUSY;
+        }
         if (!romfs_entry_is_protected(&entry) && entry.attr.names.type != ROMFS_TYPE_DIR &&
                 !romfs_validate_chain(&entry, 0, NULL)) {
             return ROMFS_ERR_OPERATION;
@@ -697,9 +784,8 @@ static uint32_t romfs_garbage_collect(bool *freed)
                 continue;
             }
 
-            if (entry_copy.attr.names.type == ROMFS_TYPE_DIR) {
-                romfs_dir_release_id(entry_copy.attr.names.current);
-            } else {
+            /* Directory IDs were released at deletion, not at GC. */
+            if (entry_copy.attr.names.type != ROMFS_TYPE_DIR) {
                 romfs_unallocate_sectors_from(from_lsb32(entries[i].start),
                                                romfs_sector_count(from_lsb32(entries[i].size)));
             }
@@ -949,9 +1035,13 @@ uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file *file)
     if (!file) {
         return 0;
     }
-    if (file->op != ROMFS_OP_WRITE || !file->io_buffer || (size && !buffer) ||
+    if (!romfs_file_is_open(file) || file->op != ROMFS_OP_WRITE || !file->io_buffer || (size && !buffer) ||
             !romfs_validate_write_file(file)) {
         file->err = ROMFS_ERR_OPERATION;
+        return 0;
+    }
+    if (romfs_slot_busy(file->nentry, file, false)) {
+        file->err = ROMFS_ERR_BUSY;
         return 0;
     }
     if (size > UINT32_MAX - file->write_offset) {
@@ -984,6 +1074,15 @@ uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file *file)
 
 static uint32_t romfs_sync_write_file(romfs_file *file)
 {
+    if (!romfs_file_is_open(file)) {
+        return (file->err = ROMFS_ERR_OPERATION);
+    }
+    if (romfs_slot_busy(file->nentry, file, false)) {
+        return (file->err = ROMFS_ERR_BUSY);
+    }
+    if (file->err == ROMFS_ERR_BUSY) {
+        file->err = ROMFS_NOERR;
+    }
     if (file->err != ROMFS_NOERR) {
         return file->err;
     }
@@ -1002,7 +1101,7 @@ static uint32_t romfs_sync_write_file(romfs_file *file)
 
 uint32_t romfs_flush_file(romfs_file *file)
 {
-    if (!file) {
+    if (!file || !romfs_file_is_open(file)) {
         return ROMFS_ERR_OPERATION;
     }
 
@@ -1024,12 +1123,20 @@ uint32_t romfs_flush_file(romfs_file *file)
 
 uint32_t romfs_close_file(romfs_file *file)
 {
-    return romfs_flush_file(file);
+    if (!file) {
+        return ROMFS_ERR_OPERATION;
+    }
+    if (!romfs_file_is_open(file)) {
+        return ROMFS_NOERR;
+    }
+    uint32_t err = romfs_flush_file(file);
+    romfs_unregister_file(file);
+    return err;
 }
 
 uint32_t romfs_truncate_file(romfs_file *file, uint32_t size)
 {
-    if (!file || file->op != ROMFS_OP_WRITE) {
+    if (!file || !romfs_file_is_open(file) || file->op != ROMFS_OP_WRITE) {
         return file ? (file->err = ROMFS_ERR_OPERATION) : ROMFS_ERR_OPERATION;
     }
 
@@ -1038,6 +1145,9 @@ uint32_t romfs_truncate_file(romfs_file *file, uint32_t size)
     }
     if (!romfs_validate_write_file(file)) {
         return (file->err = ROMFS_ERR_OPERATION);
+    }
+    if (romfs_slot_busy(file->nentry, file, false)) {
+        return (file->err = ROMFS_ERR_BUSY);
     }
 
     uint32_t status = ROMFS_NOERR;
@@ -1130,7 +1240,7 @@ uint32_t romfs_read_map_table(uint16_t *map_buffer, uint32_t map_size, romfs_fil
     if (!file) {
         return 0;
     }
-    if (file->op != ROMFS_OP_READ || (map_size && !map_buffer) ||
+    if (!romfs_file_is_open(file) || file->op != ROMFS_OP_READ || (map_size && !map_buffer) ||
             map_size > UINT32_MAX / sizeof(uint16_t) ||
             !romfs_validate_chain(&file->entry, 0, NULL)) {
         file->err = ROMFS_ERR_OPERATION;
@@ -1161,7 +1271,7 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
     if (!file) {
         return 0;
     }
-    if (file->op != ROMFS_OP_READ || (size && !buffer)) {
+    if (!romfs_file_is_open(file) || file->op != ROMFS_OP_READ || (size && !buffer)) {
         file->err = ROMFS_ERR_OPERATION;
         return 0;
     }
@@ -1222,7 +1332,7 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
 
 uint32_t romfs_tell_file(romfs_file *file, uint32_t *position)
 {
-    if (!file || !position) {
+    if (!file || !position || !romfs_file_is_open(file)) {
         if (file) {
             file->err = ROMFS_ERR_OPERATION;
         }
@@ -1245,6 +1355,9 @@ uint32_t romfs_seek_file(romfs_file *file, int32_t offset, int whence)
 {
     if (!file) {
         return ROMFS_ERR_OPERATION;
+    }
+    if (!romfs_file_is_open(file)) {
+        return (file->err = ROMFS_ERR_OPERATION);
     }
 
     int64_t target64 = 0;
@@ -1329,6 +1442,26 @@ static uint32_t romfs_resolve_parent(const char *path, bool create_dirs, romfs_d
         return ROMFS_ERR_DIR_INVALID;
     }
 
+    /* Validate every component before create_dirs can change the filesystem. */
+    const char *part = path;
+    while (*part == '/') {
+        part++;
+    }
+    for (const char *end = part; *part; end++) {
+        if (*end == '/' || *end == '\0') {
+            if (!romfs_valid_entry_name(part, (size_t) (end - part))) {
+                return ROMFS_ERR_FILE_DATA_TOO_BIG;
+            }
+            if (*end == '\0') {
+                break;
+            }
+            part = end + 1;
+            if (*part == '\0') {
+                return ROMFS_ERR_FILE_DATA_TOO_BIG;
+            }
+        }
+    }
+
     romfs_dir current;
     uint32_t err = romfs_dir_root(&current);
     if (err != ROMFS_NOERR) {
@@ -1407,6 +1540,7 @@ uint32_t romfs_dir_root(romfs_dir *dir)
 
     dir->id = ROMFS_ROOT_DIR_ID;
     dir->entry_index = ROMFS_INVALID_ENTRY_ID;
+    dir->generation = romfs_dir_generation[ROMFS_ROOT_DIR_ID];
     return ROMFS_NOERR;
 }
 
@@ -1416,12 +1550,12 @@ uint32_t romfs_dir_open(const romfs_dir *parent, const char *name, romfs_dir *ou
         return ROMFS_ERR_DIR_INVALID;
     }
 
-    if (!romfs_dir_id_valid(parent->id)) {
+    if (!romfs_dir_valid(parent)) {
         return ROMFS_ERR_DIR_INVALID;
     }
 
     size_t name_len = strlen(name);
-    if (name_len == 0 || name_len >= ROMFS_MAX_NAME_LEN) {
+    if (!romfs_valid_entry_name(name, name_len)) {
         return ROMFS_ERR_FILE_DATA_TOO_BIG;
     }
 
@@ -1435,12 +1569,13 @@ uint32_t romfs_dir_open(const romfs_dir *parent, const char *name, romfs_dir *ou
         return ROMFS_ERR_DIR_INVALID;
     }
 
-    out->id = file.entry.attr.names.current;
-    out->entry_index = file.nentry;
-    if (out->id < ROMFS_MAX_DIRS) {
-        romfs_dir_entry_index[out->id] = file.nentry;
-        romfs_dir_used_mask |= (1u << out->id);
+    uint8_t id = file.entry.attr.names.current;
+    if (id == ROMFS_ROOT_DIR_ID || !romfs_dir_id_valid(id) || romfs_dir_entry_index[id] != file.nentry) {
+        return ROMFS_ERR_DIR_INVALID;
     }
+    out->id = id;
+    out->entry_index = file.nentry;
+    out->generation = romfs_dir_generation[id];
 
     return ROMFS_NOERR;
 }
@@ -1451,13 +1586,16 @@ uint32_t romfs_dir_create(const romfs_dir *parent, const char *name, romfs_dir *
         return ROMFS_ERR_DIR_INVALID;
     }
 
-    if (!romfs_dir_id_valid(parent->id)) {
+    if (!romfs_dir_valid(parent)) {
         return ROMFS_ERR_DIR_INVALID;
     }
 
     size_t name_len = strlen(name);
-    if (name_len == 0 || name_len >= ROMFS_MAX_NAME_LEN) {
+    if (!romfs_valid_entry_name(name, name_len)) {
         return ROMFS_ERR_FILE_DATA_TOO_BIG;
+    }
+    if (romfs_name_pending(parent->id, name)) {
+        return ROMFS_ERR_FILE_EXISTS;
     }
 
     romfs_file file = {0};
@@ -1466,11 +1604,8 @@ uint32_t romfs_dir_create(const romfs_dir *parent, const char *name, romfs_dir *
         if (file.entry.attr.names.type != ROMFS_TYPE_DIR) {
             return ROMFS_ERR_FILE_EXISTS;
         }
-        if (out) {
-            out->id = file.entry.attr.names.current;
-            out->entry_index = file.nentry;
-        }
-        return ROMFS_NOERR;
+        romfs_dir found;
+        return romfs_dir_open(parent, name, out ? out : &found);
     } else if (res != ROMFS_ERR_NO_ENTRY) {
         return res;
     }
@@ -1514,6 +1649,7 @@ uint32_t romfs_dir_create(const romfs_dir *parent, const char *name, romfs_dir *
     if (out) {
         out->id = (uint8_t) new_id;
         out->entry_index = entry_index;
+        out->generation = romfs_dir_generation[new_id];
     }
 
     return ROMFS_NOERR;
@@ -1525,7 +1661,7 @@ uint32_t romfs_dir_remove(const romfs_dir *dir)
         return ROMFS_ERR_DIR_INVALID;
     }
 
-    if (!romfs_dir_id_valid(dir->id)) {
+    if (!romfs_dir_valid(dir)) {
         return ROMFS_ERR_DIR_INVALID;
     }
 
@@ -1552,7 +1688,7 @@ uint32_t romfs_dir_remove(const romfs_dir *dir)
 
 uint32_t romfs_list_dir(romfs_file *entry, bool first, const romfs_dir *dir, bool include_dirs)
 {
-    if (!dir || !romfs_dir_id_valid(dir->id)) {
+    if (!dir || !romfs_dir_valid(dir)) {
         return ROMFS_ERR_DIR_INVALID;
     }
 
@@ -1567,6 +1703,9 @@ uint32_t romfs_list_dir(romfs_file *entry, bool first, const romfs_dir *dir, boo
 uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t mode,
                                   uint16_t type, uint8_t *io_buffer)
 {
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
     if (!file || !dir || !name) {
         return ROMFS_ERR_DIR_INVALID;
     }
@@ -1575,23 +1714,26 @@ uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_
         return (file->err = ROMFS_ERR_NO_IO_BUFFER);
     }
 
-    if (!romfs_dir_id_valid(dir->id)) {
+    if (!romfs_dir_valid(dir)) {
         return (file->err = ROMFS_ERR_DIR_INVALID);
     }
 
     size_t name_len = strlen(name);
-    if (name_len == 0 || name_len >= ROMFS_MAX_NAME_LEN) {
+    if (!romfs_valid_entry_name(name, name_len)) {
         return (file->err = ROMFS_ERR_FILE_DATA_TOO_BIG);
     }
 
-    if (romfs_type_is_service(type) ||
+    if (romfs_type_is_service(type) || (type & 0x1f) == ROMFS_TYPE_DIR ||
             (mode & (ROMFS_MODE_SYSTEM | ROMFS_MODE_RESERVED)) != 0) {
         return (file->err = ROMFS_ERR_OPERATION);
     }
 
     file->op = ROMFS_OP_WRITE;
 
-    uint32_t res = romfs_find_file_internal(file, name, dir->id, false);
+    if (romfs_name_pending(dir->id, name)) {
+        return (file->err = ROMFS_ERR_FILE_EXISTS);
+    }
+    uint32_t res = romfs_find_file_internal(file, name, dir->id, true);
     if (res == ROMFS_NOERR) {
         return (file->err = ROMFS_ERR_FILE_EXISTS);
     } else if (res != ROMFS_ERR_NO_ENTRY) {
@@ -1624,12 +1766,17 @@ uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_
     file->write_offset = 0;
     file->buffer_from_flash = false;
     file->buffer_dirty = false;
+    file->entry_pending = true;
+    romfs_register_file(file);
 
     return (file->err = ROMFS_NOERR);
 }
 
 uint32_t romfs_open_file_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint8_t *io_buffer)
 {
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
     if (!file || !dir || !name) {
         return ROMFS_ERR_DIR_INVALID;
     }
@@ -1638,15 +1785,21 @@ uint32_t romfs_open_file_in_dir(const romfs_dir *dir, const char *name, romfs_fi
         return (file->err = ROMFS_ERR_NO_IO_BUFFER);
     }
 
-    if (!romfs_dir_id_valid(dir->id)) {
+    if (!romfs_dir_valid(dir)) {
         return (file->err = ROMFS_ERR_DIR_INVALID);
     }
 
     file->op = ROMFS_OP_READ;
+    if (romfs_name_pending(dir->id, name)) {
+        return (file->err = ROMFS_ERR_BUSY);
+    }
     uint32_t res = romfs_find_file_internal(file, name, dir->id, false);
     if (res == ROMFS_NOERR) {
         if (!romfs_validate_chain(&file->entry, 0, NULL)) {
             return (file->err = ROMFS_ERR_OPERATION);
+        }
+        if (romfs_slot_busy(file->nentry, NULL, true)) {
+            return (file->err = ROMFS_ERR_BUSY);
         }
         file->pos = file->entry.start;
         file->offset = 0;
@@ -1656,15 +1809,48 @@ uint32_t romfs_open_file_in_dir(const romfs_dir *dir, const char *name, romfs_fi
         file->write_offset = 0;
         file->buffer_from_flash = false;
         file->buffer_dirty = false;
+        file->entry_pending = false;
+        romfs_register_file(file);
         return file->err;
     }
 
     return (file->err = res);
 }
 
+uint32_t romfs_open_read_view(romfs_file *writer, romfs_file *reader, uint8_t *io_buffer)
+{
+    if (romfs_file_is_open(reader)) {
+        return ROMFS_ERR_BUSY;
+    }
+    if (!reader || !romfs_file_is_open(writer) || writer->op != ROMFS_OP_WRITE) {
+        return ROMFS_ERR_OPERATION;
+    }
+    if (!io_buffer) {
+        return (reader->err = ROMFS_ERR_NO_IO_BUFFER);
+    }
+    uint32_t err = romfs_flush_file(writer);
+    if (err != ROMFS_NOERR) {
+        return (reader->err = err);
+    }
+    *reader = (romfs_file) {
+        .op = ROMFS_OP_READ,
+        .entry = writer->entry,
+        .nentry = writer->nentry,
+        .pos = writer->entry.start,
+        .io_buffer = io_buffer,
+        .parent_dir_id = writer->parent_dir_id,
+        .buffer_base = ROMFS_BUFFER_NONE,
+    };
+    romfs_register_file(reader);
+    return ROMFS_NOERR;
+}
+
 uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type,
                                   uint8_t *io_buffer)
 {
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
     if (!file || !dir || !name) {
         return ROMFS_ERR_DIR_INVALID;
     }
@@ -1673,7 +1859,7 @@ uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_
         return (file->err = ROMFS_ERR_NO_IO_BUFFER);
     }
 
-    if (!romfs_dir_id_valid(dir->id)) {
+    if (!romfs_dir_valid(dir)) {
         return (file->err = ROMFS_ERR_DIR_INVALID);
     }
 
@@ -1684,7 +1870,10 @@ uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_
     file->buffer_from_flash = false;
     file->buffer_dirty = false;
 
-    uint32_t res = romfs_find_file_internal(file, name, dir->id, false);
+    if (romfs_name_pending(dir->id, name)) {
+        return (file->err = ROMFS_ERR_BUSY);
+    }
+    uint32_t res = romfs_find_file_internal(file, name, dir->id, true);
     if (res == ROMFS_NOERR) {
         if (file->entry.attr.names.type == ROMFS_TYPE_DIR) {
             return (file->err = ROMFS_ERR_OPERATION);
@@ -1697,7 +1886,15 @@ uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_
             return (file->err = ROMFS_ERR_OPERATION);
         }
 
-        return romfs_prepare_write_state(file, file->entry.size);
+        if (romfs_slot_busy(file->nentry, NULL, false)) {
+            return (file->err = ROMFS_ERR_BUSY);
+        }
+        res = romfs_prepare_write_state(file, file->entry.size);
+        if (res == ROMFS_NOERR) {
+            file->entry_pending = false;
+            romfs_register_file(file);
+        }
+        return res;
     }
 
     if (res != ROMFS_ERR_NO_ENTRY) {
@@ -1727,8 +1924,11 @@ uint32_t romfs_delete_in_dir(const romfs_dir *dir, const char *name)
         return ROMFS_ERR_DIR_INVALID;
     }
 
-    if (!romfs_dir_id_valid(dir->id)) {
+    if (!romfs_dir_valid(dir)) {
         return ROMFS_ERR_DIR_INVALID;
+    }
+    if (romfs_name_pending(dir->id, name)) {
+        return ROMFS_ERR_BUSY;
     }
 
     romfs_file file = {0};
@@ -1749,6 +1949,9 @@ uint32_t romfs_delete_in_dir(const romfs_dir *dir, const char *name)
     } else if (!romfs_validate_chain(&file.entry, 0, NULL)) {
         return ROMFS_ERR_OPERATION;
     }
+    if (romfs_slot_busy(file.nentry, NULL, false)) {
+        return ROMFS_ERR_BUSY;
+    }
 
     romfs_operation_enter();
     ((romfs_entry *) flash_list_int)[file.nentry].name[0] = ROMFS_DELETED_ENTRY;
@@ -1765,7 +1968,7 @@ uint32_t romfs_rename_in_dir(const romfs_dir *src_dir, const char *src_name,
         return ROMFS_ERR_DIR_INVALID;
     }
 
-    if (!romfs_dir_id_valid(src_dir->id) || !romfs_dir_id_valid(dst_dir->id)) {
+    if (!romfs_dir_valid(src_dir) || !romfs_dir_valid(dst_dir)) {
         return ROMFS_ERR_DIR_INVALID;
     }
 
@@ -1775,15 +1978,23 @@ uint32_t romfs_rename_in_dir(const romfs_dir *src_dir, const char *src_name,
         return ROMFS_ERR_FILE_DATA_TOO_BIG;
     }
 
-    if (src_dir->id == dst_dir->id &&
-            strncmp(src_name, dst_name, ROMFS_MAX_NAME_LEN) == 0) {
-        return ROMFS_NOERR;
+    if (romfs_name_pending(src_dir->id, src_name)) {
+        return ROMFS_ERR_BUSY;
+    }
+    if (romfs_name_pending(dst_dir->id, dst_name)) {
+        return ROMFS_ERR_FILE_EXISTS;
     }
 
     romfs_file src = {0};
     uint32_t res = romfs_find_file_internal(&src, src_name, src_dir->id, true);
     if (res != ROMFS_NOERR) {
         return res;
+    }
+    if (src_dir->id == dst_dir->id && strcmp(src_name, dst_name) == 0) {
+        return ROMFS_NOERR;
+    }
+    if (romfs_slot_busy(src.nentry, NULL, false)) {
+        return ROMFS_ERR_BUSY;
     }
 
     if (romfs_entry_is_protected(&src.entry)) {
@@ -1804,6 +2015,15 @@ uint32_t romfs_rename_in_dir(const romfs_dir *src_dir, const char *src_name,
 
     if (is_dir) {
         moving_dir_id = src.entry.attr.names.current;
+        for (romfs_file *file = romfs_open_files; file; file = file->next_open) {
+            int parent = file->entry.attr.names.parent;
+            for (uint32_t depth = 0; parent > ROMFS_ROOT_DIR_ID && depth < ROMFS_MAX_DIRS; depth++) {
+                if (parent == moving_dir_id) {
+                    return ROMFS_ERR_BUSY;
+                }
+                parent = romfs_dir_parent_id((uint8_t) parent);
+            }
+        }
         if (dst_dir->id == moving_dir_id) {
             return ROMFS_ERR_DIR_INVALID;
         }
@@ -1856,6 +2076,9 @@ uint32_t romfs_rename(const char *src_name, const char *dst_name)
 
 uint32_t romfs_open_path(const char *path, romfs_file *file, uint8_t *io_buffer)
 {
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
     char leaf[ROMFS_MAX_NAME_LEN];
     romfs_dir parent;
     uint32_t err = romfs_resolve_parent(path, false, &parent, leaf, sizeof(leaf));
@@ -1894,6 +2117,9 @@ uint32_t romfs_rename_path(const char *src_path, const char *dst_path, bool crea
 
 uint32_t romfs_open_append_path(const char *path, romfs_file *file, uint16_t type, uint8_t *io_buffer, bool create_dirs)
 {
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
     char leaf[ROMFS_MAX_NAME_LEN];
     romfs_dir parent;
     uint32_t err = romfs_resolve_parent(path, create_dirs, &parent, leaf, sizeof(leaf));
@@ -1910,6 +2136,9 @@ uint32_t romfs_open_append_path(const char *path, romfs_file *file, uint16_t typ
 uint32_t romfs_create_path(const char *path, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer,
                            bool create_dirs)
 {
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
     char leaf[ROMFS_MAX_NAME_LEN];
     romfs_dir parent;
     uint32_t err = romfs_resolve_parent(path, create_dirs, &parent, leaf, sizeof(leaf));
@@ -1929,7 +2158,7 @@ uint32_t romfs_get_entry_in_dir(const romfs_dir *dir, const char *name, romfs_en
         return ROMFS_ERR_DIR_INVALID;
     }
 
-    if (!romfs_dir_id_valid(dir->id)) {
+    if (!romfs_dir_valid(dir)) {
         return ROMFS_ERR_DIR_INVALID;
     }
 

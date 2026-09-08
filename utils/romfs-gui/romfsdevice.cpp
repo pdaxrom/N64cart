@@ -192,6 +192,7 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
             qint64 read = in.read(chunk.data(), chunk.size());
             if (read < 0) {
                 setError(QStringLiteral("Cannot read %1").arg(localPath), err);
+                romfs_close_file(&romFile);
                 return false;
             }
             if (read == 0) {
@@ -210,16 +211,19 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
                             romType = 2; // V64
                         } else {
                             setError(QStringLiteral("Unknown ROM byte order"), err);
+                            romfs_close_file(&romFile);
                             return false;
                         }
                     } else {
                         setError(QStringLiteral("ROM file is too small"), err);
+                        romfs_close_file(&romFile);
                         return false;
                     }
                 }
 
                 if (read % 4 != 0) {
                     setError(QStringLiteral("Unaligned ROM data chunk"), err);
+                    romfs_close_file(&romFile);
                     return false;
                 }
 
@@ -244,6 +248,7 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
                     fixPiFreq = false;
                 } else {
                     setError(QStringLiteral("PI bus fix requires Z64 byte order"), err);
+                    romfs_close_file(&romFile);
                     return false;
                 }
             }

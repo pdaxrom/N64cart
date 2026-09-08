@@ -224,6 +224,7 @@ int main(void)
     romfs_file file;
     if (romfs_open_file("n64cart-manager.z64", &file, romfs_flash_buffer) == ROMFS_NOERR) {
         romfs_read_map_table(pi_rom_lookup, 16384, &file);
+        romfs_close_file(&file);
 
         backup_rom_lookup();
     } else {

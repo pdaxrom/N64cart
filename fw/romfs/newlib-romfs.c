@@ -97,6 +97,8 @@ static int errno_from_romfs(uint32_t err)
         return ENOTEMPTY;
     case ROMFS_ERR_OPERATION:
         return EINVAL;
+    case ROMFS_ERR_BUSY:
+        return EBUSY;
     default:
         return EIO;
     }
@@ -145,14 +147,9 @@ static int romfs_prepare_read_file(romfs_handle_t *handle, uint32_t *position)
         return -1;
     }
 
-    uint32_t err = romfs_flush_file(&handle->file);
-    if (err != ROMFS_NOERR) {
-        errno = errno_from_romfs(err);
-        return -1;
-    }
-
+    romfs_close_file(&handle->read_file);
     memset(&handle->read_file, 0, sizeof(handle->read_file));
-    err = romfs_open_path(handle->path, &handle->read_file, handle->read_io_buffer);
+    uint32_t err = romfs_open_read_view(&handle->file, &handle->read_file, handle->read_io_buffer);
     if (err != ROMFS_NOERR) {
         errno = errno_from_romfs(err);
         return -1;
@@ -167,6 +164,7 @@ static int romfs_prepare_read_file(romfs_handle_t *handle, uint32_t *position)
     }
 
     if (pos > INT32_MAX || romfs_seek_file(&handle->read_file, (int32_t)pos, SEEK_SET) != ROMFS_NOERR) {
+        romfs_close_file(&handle->read_file);
         errno = EINVAL;
         return -1;
     }
@@ -327,6 +325,8 @@ static void *romfs_fs_open(char *name, int flags)
     }
 
     if (err != ROMFS_NOERR) {
+        romfs_close_file(&handle->read_file);
+        romfs_close_file(&handle->file);
         free(handle->read_io_buffer);
         free(handle->io_buffer);
         free(handle);
@@ -347,8 +347,8 @@ static int romfs_fs_close(void *file)
         return -1;
     }
 
-    uint32_t err = romfs_close_file(&handle->file);
     romfs_close_file(&handle->read_file);
+    uint32_t err = romfs_close_file(&handle->file);
     free(handle->read_io_buffer);
     free(handle->io_buffer);
     free(handle);
@@ -387,6 +387,7 @@ static int romfs_fs_read(void *file, uint8_t *ptr, int len)
             return -1;
         }
         if (position >= handle->read_file.entry.size) {
+            romfs_close_file(&handle->read_file);
             return 0;
         }
         read_file = &handle->read_file;
@@ -397,13 +398,18 @@ static int romfs_fs_read(void *file, uint8_t *ptr, int len)
 
     int ret = (int)romfs_read_file(ptr, (uint32_t)len, read_file);
     if (ret < 0 || (read_file->err != ROMFS_NOERR && read_file->err != ROMFS_ERR_EOF)) {
+        if (read_from_shadow) {
+            romfs_close_file(&handle->read_file);
+        }
         errno = EIO;
         return -1;
     }
 
     if (read_from_shadow) {
         uint32_t new_position = 0;
-        if (romfs_tell_file(read_file, &new_position) != ROMFS_NOERR ||
+        uint32_t tell_err = romfs_tell_file(read_file, &new_position);
+        romfs_close_file(read_file);
+        if (tell_err != ROMFS_NOERR ||
                 new_position > INT32_MAX ||
                 romfs_seek_file(&handle->file, (int32_t)new_position, SEEK_SET) != ROMFS_NOERR) {
             errno = EINVAL;

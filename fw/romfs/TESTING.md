@@ -9,8 +9,9 @@ make -C fw/romfs check
 
 The default build uses AddressSanitizer and UndefinedBehaviorSanitizer, with
 sanitizer recovery disabled. Executables, objects and logs go to the ignored
-`build-romfs-tests/` directory. `make check` runs the flash emulator, geometry, chain corruption,
-platform callback/USB, and process-level runner checks, including the full ROMFS suite. It requires
+`build-romfs-tests/` directory. `make check` runs the flash emulator, geometry,
+chain corruption, handle ownership, newlib bridge, platform callback/USB, and
+process-level runner checks, including the full ROMFS suite. It requires
 Python 3 and Bash in addition to the C compiler.
 
 `BUILD_DIR` overrides the output directory; choose a top-level `build-*`
@@ -115,7 +116,66 @@ It currently adds a full chain walk to each read/write/seek call, so small I/O
 calls on large files cost more. Caching with correct invalidation belongs to
 the planned performance work. This checks each chain's structure and range,
 not ownership of sectors shared by otherwise structurally valid files.
-Open-handle ownership, general I/O failures and partial writes are separate work.
+General I/O failures and partial writes remain separate work.
+
+## Handle ownership and names
+
+```sh
+build-romfs-tests/test_ownership
+build-romfs-tests/test_newlib
+```
+
+Successful create/open registers the descriptor at its address. The caller must
+keep it alive and stationary until close, and close it on every error path before
+leaving scope or freeing it. Copying a descriptor does not create another usable
+handle. Reopening or listing into an active descriptor returns `ROMFS_ERR_BUSY`
+without overwriting it. No heap allocation or fixed handle-count limit is added
+to the core; the registry is an intrusive list. Calls still require external
+serialization; this does not make the filesystem thread safe.
+
+New files reserve a catalog slot and name before their first flush/close, so two
+unflushed creates cannot claim the same slot. Multiple ordinary readers may
+coexist, but a writer excludes other ordinary opens of that file. Delete and
+rename reject open files with `ROMFS_ERR_BUSY`. Pending children prevent directory
+removal, and open descendants prevent directory rename. File and directory names
+share a namespace; invalid components are rejected before automatic parent
+creation. Names must have 1–53 bytes, contain no slash, differ from `.` and `..`,
+and not start with the empty/deleted markers. This does not repair old images
+that already contain duplicate or invalid names.
+
+`romfs_open_read_view` flushes a writer and opens a temporary read-only view.
+The writer cannot write/flush/truncate until the view closes. Newlib uses this
+for `O_RDWR`, closes the view after each read (including EOF/error), then updates
+the owning writer's position. Ordinary conflicts map to `EBUSY`. Closing a file
+unregisters it even if flush returns an error; flush itself retains ownership.
+A closed descriptor must be reopened before further I/O. Repeated close is a
+no-op. Partial-write recovery and flash callback error propagation are not yet
+covered by this contract and remain the next correction stage.
+
+Directory IDs are released only at deletion; GC must not release an ID now owned
+by another directory. Directory handles carry a runtime generation and catalog
+index, preventing stale handles/cursors from accessing a replacement even when
+both ID and slot are reused. Successful mount/format invalidates previous file
+handles and non-root directory handles; a geometry-rejected mount preserves them.
+The in-memory `romfs_file` and `romfs_dir` ABI changed, so clients must be rebuilt.
+The on-flash `romfs_entry` layout, map and sentinel values are unchanged.
+
+Ownership tests exercise reverse-order close/remount of two pending writers,
+shared readers, stale copies, directory ID/slot reuse through actual catalog GC,
+all reserved catalog slots, invalid names, mount invalidation and read views.
+Failed opens/closes use invalid buffers/operations; injected flash I/O failures
+belong to the next stage. Rejected operations compare the entire image, map and
+catalog and check that no flash callback ran. Corruption tests use actual open
+descriptors for live damage, closing each before opening a conflicting writer.
+
+The newlib harness compiles the production `newlib-romfs.c` with minimal libdragon
+callback declarations in `test_newlib_stubs/`; it does not copy bridge logic.
+Host-only symbol renaming keeps its `rename`/`rmdir` away from host libc calls.
+Tests cover alternating `O_RDWR` reads/writes/seeks across sectors, EOF, read
+errors, truncate, conflicting opens, preservation of both rename endpoints,
+failed-close cleanup and stale directory cursors. Full MIPS builds separately
+check the real libdragon headers; no MIPS runtime is emulated here. Known flag
+semantics (`O_CREAT`, `O_TRUNC`, `O_APPEND`) remain a later stage.
 
 ## Flash emulator and fault injection
 
