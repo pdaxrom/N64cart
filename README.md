@@ -1,7 +1,6 @@
 # N64cart - N64 flash cartridge
 
 * [Intro](#intro)
-* [Contributor Guide](#contributor-guide)
 * [Concept](#concept)
   * [Project files](#project-files)
   * [Features](#features)
@@ -10,76 +9,69 @@
   * [Order notes](#order-notes)
   * [Assembly notes](#assembly-notes)
 * [Build firmware](#build-firmware)
-* [Cartrigde utility](#cartrigde-utility)
+* [Build ROM Manager](#build-rom-manager)
+* [Cartridge utility](#cartridge-utility)
   * [Build](#build)
   * [How to use](#how-to-use)
-  * [Remote access to cartridge](#remote-access-to-cartridge)
+  * [Remote access to the cartridge](#remote-access-to-the-cartridge)
 * [ROMFS Manager](#romfs-manager)
-* [Total cartridge cost (32MB version)](#total-cartridge-cost-32mb-version)
-* [Photos version 2](#photos-version-2)
-* [BOM list for version 3](#bom-list-for-version-3)
-* [Photos version 3](#photos-version-3)
+* [Total cartridge cost (32 MB version)](#total-cartridge-cost-32-mb-version)
+* [Photos of version 2](#photos-of-version-2)
+* [Bill of materials for version 3](#bill-of-materials-for-version-3)
+* [Photos of version 3](#photos-of-version-3)
+* [Remote access from an SGI Indy](#remote-access-from-an-sgi-indy)
 
 ## Intro
 
-Existing N64 flash cartridges are quite expensive, but thanks to Konrad Beckmann, who first used a raspberry pi pico as a memory controller, he managed to create a cheap version that can be built at home.
+N64cart is an inexpensive N64 flash cartridge you can build at home. The hardware and firmware started as a fork of Konrad Beckmann's [PicoCart64](https://github.com/kbeckmann/PicoCart64), which uses a Raspberry Pi Pico as a memory controller.
 
-Hardware and firmware initially are forked from Konrad Beckmann [PicoCart64](https://github.com/kbeckmann/PicoCart64)
+The N64 cartridge connector footprint for Eagle CAD comes from [SummerCart64](https://github.com/Polprzewodnikowy/SummerCollection).
 
-N64 cartridge connector footprint for Eagle CAD from [SummerCart64](https://github.com/Polprzewodnikowy/SummerCollection)
-
-N64 ROM boot code derived from [N64FlashcartMenu](https://github.com/Polprzewodnikowy/N64FlashcartMenu) and [N64 DreamOS ROM](https://github.com/khill25/Dreamdrive64/tree/main/sw/n64)
-
-## Contributor Guide
-
-Refer to the contributor playbook in [AGENTS.md](AGENTS.md) for coding standards, build/test workflows, and review expectations before opening a pull request.
+The N64 ROM boot code is derived from [N64FlashcartMenu](https://github.com/Polprzewodnikowy/N64FlashcartMenu) and [N64 DreamOS ROM](https://github.com/khill25/Dreamdrive64/tree/main/sw/n64).
 
 ## Concept
 
-The main idea is to make the cartridge as simple and cheap as possible. Contrary to Konrad's idea of multiplexed PSRAM chips and two RP2040, I decided to use one SPI flash memory chip and one RP2040. Modern flash chips allow to erase and flash data more than 100,000 times, which is more than enough for home use for many years. Since the RP2040 does not support SPI flash chips larger than 16MB, it was decided to use page mode with page switching through the Extended Address register (EA register). Unfortunately, this method has a problem with long switching of 16MB pages, because need to disable the XIP mode, enable the SPI mode to change the page and enable the XIP back. Therefore, it was decided to use QSPI with 32-bit addressing mode without XIP.
-To effectively work with cartridge flash chip, a special version of the filesystem was created - [romfs](fw/romfs), which allows to map sectors of saved files as a continuous data area, to which the N64 has access via the PI bus. The maximum memory size depends on the cartridge board version - 64 MB for version 2 with a soic-8/wson-8 8x6 flash chip package, 128 MB for version 3 with a soic-16 flash chip package.
+To keep the cartridge simple and inexpensive, I used one SPI flash chip and one RP2040. Konrad's design used multiplexed PSRAM chips and two RP2040s. Flash chips rated for more than 100,000 erase/program cycles should last for many years of home use.
+
+The RP2040's XIP interface directly addresses up to 16 MB of flash. The early design used the Extended Address (EA) register to switch between 16 MB banks on larger chips. This was slow: each bank switch required disabling XIP, switching to SPI mode to update the register, and then re-enabling XIP. N64cart now uses QSPI with 32-bit addressing, without XIP, to avoid bank switching.
+
+The [romfs](fw/romfs) filesystem maps the sectors of stored files into a contiguous address space that the N64 accesses through the PI bus. Maximum flash capacity depends on the board version: 64 MB for version 2 with a SOIC-8 or 8 × 6 mm WSON-8 package, and 128 MB for version 3 with a SOIC-16 package.
 
 ### Project files
 
-#### Cartridge board version 2 (soic-8/wson-8 8x6 - 64MB max)
+#### Cartridge board version 2 (SOIC-8 / WSON-8, 8 × 6 mm; 64 MB maximum)
 
-[Schematic pdf](hw/n64cart-v2-soic-8.pdf)
+[Schematic (PDF)](hw/n64cart-v2-soic-8.pdf)
 
-[Schematic eagle cad](hw/n64cart-v2-soic-8.sch)
+[Schematic (Eagle CAD)](hw/n64cart-v2-soic-8.sch)
 
-[PCB eagle cad](hw/n64cart-v2-soic-8.brd)
+[PCB (Eagle CAD)](hw/n64cart-v2-soic-8.brd)
 
 [Gerber files](hw/n64cart-v2-soic-8_2024-08-11.zip)
 
-#### Cartridge board version 3 (soic-16 - 128MB max)
+#### Cartridge board version 3 (SOIC-16; 128 MB maximum)
 
-[Schematic pdf](hw/n64cart-v3-soic-16.pdf)
+[Schematic (PDF)](hw/n64cart-v3-soic-16.pdf)
 
-[Schematic eagle cad](hw/n64cart-v3-soic-16.sch)
+[Schematic (Eagle CAD)](hw/n64cart-v3-soic-16.sch)
 
-[PCB eagle cad](hw/n64cart-v3-soic-16.brd)
+[PCB (Eagle CAD)](hw/n64cart-v3-soic-16.brd)
 
 [Gerber files](hw/n64cart-v3-soic-16_2024-08-11.zip)
 
 ### Features
 
-- One user controllable LED, accessible from N64 side, RGB WS2812 for PCB version 3 (all except PicoCart64-lite)
-
-- UART port, accessible from N64 side (all except PicoCart64-lite)
-
-- USB passthrough to N64 side
-
-- Emulation for EEPROM 4/16Kbit
-
-- Emulation for SRAM 256Kbit/1MBit
-
-- Emulation for Flash RAM 1Mbit (29L1100)
-
-- USB utility to access to the cartridge flash chip as filesystem.
+- One LED controlled by the N64, with WS2812 RGB support on PCB version 3 (not available on PicoCart64-lite)
+- A UART port accessible from the N64 (not available on PicoCart64-lite)
+- USB passthrough to the N64
+- Emulation of 4/16 Kbit EEPROM
+- Emulation of 256 Kbit / 1 Mbit SRAM
+- Emulation of 1 Mbit FlashRAM (29L1100)
+- A USB utility for accessing files on the cartridge's flash chip
 
 ### Memory mapping
 
-#### Registers:
+#### Registers
 
 Register|Address|Mode
 --------|-------|----
@@ -91,27 +83,27 @@ SSI_SR|0x1fd01010|RW
 SSI_DR0|0x1fd01014|RW
 FW_SIZE|0x1fd01018|R-
 
-#### UART_CTRL bits:
+#### UART_CTRL bits
 
 Function|Bit mask|Mode
 --------|--------|----
 UART_RX_AVAIL|0x01|R-
 UART_TX_FREE|0x02|R-
 
-#### UART_RXTX bits:
+#### UART_RXTX bits
 
 Function|Bit mask|Mode
 --------|--------|----
 DATA|0xFF|RW
 
-#### LED control bits:
+#### LED control bits
 
 Function|Bit mask|Mode|Note
 --------|--------|----|---
 LED_ONOFF|0x01|-W|PCB v2 or PCB v3 without WS2812
 LED_RGB|0x00ffffff|-W|PCB v3 only
 
-#### SYS_CTRL bits:
+#### SYS_CTRL bits
 
 Function|Bit mask|Mode
 --------|--------|----
@@ -121,14 +113,14 @@ SRAM_UNLOCK|0x100|RW
 FLASH_MODE_QUAD|0x10|RW
 FLASH_CS_HIGH|0x01|RW
 
-#### SSI_SR bits:
+#### SSI_SR bits
 
 Function|Bit mask|Mode
 --------|--------|----
 SSI_SR_TFNF_BITS|0x01|R-
 SSI_SR_RFNE_BITS|0x02|R-
 
-#### SSI_DR0 bits:
+#### SSI_DR0 bits
 
 Function|Bit mask|Mode
 --------|--------|----
@@ -138,174 +130,180 @@ DATA|0xff|RW
 
 ### Order notes
 
-The thickness of the PCB is 1.2 mm.
+Use a PCB thickness of 1.2 mm.
 
-Ordering a stencil will make it easier to apply solder paste, but will increase the cost of the order.
+A stencil makes it easier to apply solder paste, but adds to the order cost.
 
 ### Assembly notes
 
-After soldering, if you have used a flux when soldering a processor or a flash chip, wash it well from the board, otherwise unstable work with memory is possible or it will not work at all.
+After soldering the processor and flash chip, thoroughly remove flux residue from the board. Residue can cause unstable memory operation or prevent the cartridge from working.
 
-#### for PCB version 2
+#### PCB version 2
 
-Do not solder Q1 if D2 is soldered. Use either D2 or Q1.
+Populate either D2 or Q1, but not both.
 
-Do not solder R1 and R6.
+Leave R1 and R6 unpopulated.
 
-#### for PCB version 3
+#### PCB version 3
 
-Do not solder R1 and D2 if LED3 is soldered.
+If LED3 is populated, leave R1 and D2 unpopulated.
 
 ## Build firmware
 
-To build, you will need an installed Pico SDK.
+Install the Pico SDK before building the firmware.
 
-By default, the firmware is compiled for cartridge version 3 and NTSC. Add to cmake ```-DBOARD=v2``` to build it for version 2 (flash chip 32/64 MB). Add to cmake ```-DBOARD=pico``` to build it for generic pico cartridge (flash chip 16 MB or less) without SI_DAT, SI_CLK, NMI, INT lines.
- Add to cmake ```-DBOARD=pico-lite``` to build it for PicoCart64-lite cartridge (flash chip 16 MB or less) with SI_DAT, SI_CLK, NMI, INT lines.
+The default configuration is `BOARD=v3` and `REGION=ntsc`. Pass one of these options to CMake to select a different board:
 
-Add to cmake ```-DREGION=pal``` to build it for PAL.
+- `-DBOARD=v2`: cartridge version 2 with 32/64 MB flash.
+- `-DBOARD=pico`: a generic Pico cartridge with up to 16 MB of flash, without the `SI_DAT`, `SI_CLK`, `NMI`, and `INT` signals.
+- `-DBOARD=pico-lite`: a PicoCart64-lite cartridge with up to 16 MB of flash, with the `SI_DAT`, `SI_CLK`, `NMI`, and `INT` signals.
 
-Steps to build:
-```
+Select the firmware region according to the console:
+
+| Console | CMake option | ROM Manager video mode |
+|---|---|---|
+| NTSC | `-DREGION=ntsc` (default) | NTSC |
+| PAL | `-DREGION=pal` | PAL |
+| PAL-M / MPAL (Brazil) | `-DREGION=ntsc` (default) | MPAL |
+
+`REGION` selects the cartridge's CIC security protocol. PAL-M consoles use the same protocol as NTSC consoles, so choose the NTSC firmware build for PAL-M too. ROM Manager gets the console's TV type from libdragon and selects the video mode automatically. No separate PAL-M build is needed, though it still needs testing on a real PAL-M console.
+
+From the repository root, build the default configuration:
+
+```sh
 cd fw
-
-mkdir build
-
+mkdir -p build
 cd build
-
 cmake ..
-
 make -j
 ```
 
-Press the cartridge button, connect the cartridge to USB and upload 'n64cart.uf2' to the RPI-RP2 disk.
+For example, use `cmake .. -DBOARD=v2 -DREGION=pal` to build for a version 2 cartridge and a PAL console.
 
-## Build rom manager
+Hold the cartridge's bootloader button while connecting it via USB, then copy `fw/build/n64cart.uf2` to the `RPI-RP2` drive.
 
-To build, you will need an installed N64 toolchain with [libdragon](https://github.com/DragonMinded/libdragon), compiled in opengl branch.
+## Build ROM Manager
 
-Add to make ```BOARD=pico``` to build it for generic pico (flash chip 16 MB and less). Add to make ```BOARD=pico-lite``` to build it for PicoCart64-lite (flash chip 16 MB and less).
+Install an N64 toolchain with [libdragon](https://github.com/DragonMinded/libdragon) built from the `opengl` branch.
 
-Steps to build:
+Pass `BOARD=pico` to `make` for a generic Pico cartridge, or `BOARD=pico-lite` for a PicoCart64-lite cartridge. Both configurations support flash chips of up to 16 MB. No `REGION` option is needed: video mode selection is automatic for NTSC, PAL, and PAL-M consoles.
 
-```
-cd ../../rom
+From the repository root:
 
+```sh
+cd rom
 make
 ```
 
-## Cartrigde utility
+## Cartridge utility
 
-The utility is used to format cartridge memory, write and read files from cartridge memory. You can upload new roms, change the background pictures with utility.
+The utility formats cartridge memory and reads and writes files. Use it to upload ROMs or change the background image.
 
 ### Build
 
-To build for linux and Mac OS, you need to install the libusb development files.
+For Linux and macOS, install the libusb development files. From the repository root:
 
-```
-cd ../utils
-
+```sh
+cd utils
 make
 ```
 
-For windows, install mingw toolchain.
+To build for Windows, install the MinGW toolchain. From the repository root:
 
-```
-cd ../utils
-  
+```sh
+cd utils
 make SYSTEM=Windows
 ```
 
 ### How to use
 
-The first time you use a cartridge, you must format it and write a file manager:
+Run the following commands from the `utils` directory. Before using a new cartridge, format it and upload ROM Manager:
 
-```
+```sh
 ./usb-romfs format
-
 ./usb-romfs push ../rom/n64cart-manager.z64
 ```
 
-Upload some other roms, for example:
+Upload a ROM, for example:
 
-```
-./usb-romfs push rodfsdemo.z64
+```sh
+./usb-romfs push game.z64
 ```
 
-Change background image:
+To change the background image:
 
-```
+```sh
 ./usb-romfs push picture.jpg background.jpg
 ```
 
-Full list of the utility commands:
+Available commands (angle brackets indicate placeholders; square brackets indicate optional arguments):
 
-```
+```text
 ./usb-romfs help
 ./usb-romfs bootloader
 ./usb-romfs reboot
 ./usb-romfs format
-./usb-romfs list
-./usb-romfs delete <remote filename>
+./usb-romfs list [-h] [path]
+./usb-romfs delete <remote path>
 ./usb-romfs mkdir <remote path>
 ./usb-romfs rmdir <remote path>
 ./usb-romfs rename <source> <destination> [--create-dirs]
-./usb-romfs push [--fix-rom][--fix-pi-bus-speed[=12..FF]] <local filename>[ <remote filename>]
-./usb-romfs pull <remote filename>[ <local filename>]
+./usb-romfs push [--fix-rom] [--fix-pi-bus-speed[=12..FF]] <local filename> [<remote path>]
+./usb-romfs pull <remote path> [<local filename>]
 ./usb-romfs free
 ```
 
-### Remote access to cartridge
+### Remote access to the cartridge
 
-If your computer does not allow you to connect to the cartridge (for example, it is an old Silicon Graphics that does not have USB), you can use proxy access through another computer. To do this, build utilities for remote access:
+If your computer cannot connect to the cartridge directly, you can access it through a USB-connected proxy computer. This is useful for older systems without USB, such as an SGI Indy. Build the remote-access utilities from the `utils` directory:
 
-```
+```sh
 make remote
 ```
 
-If the working computer and the proxy computer are different systems, compile the remote utility for the working computer with the cross compiler specified:
+If the client and proxy use different architectures or operating systems, cross-compile `remote-romfs` for the client by specifying the compiler:
 
-```
+```sh
 make CC="mips-sgi-irix6o32-gcc" remote-romfs
 ```
 
-Copy ```remote-romfs``` to the working machine. On the proxy machine, connect the USB cable of the cartridge and start the proxy:
+Copy `remote-romfs` to the client. On the proxy computer, connect the cartridge via USB and start the proxy:
 
-```
+```sh
 ./proxy-romfs
 ```
 
-Use remote-romfs on the working machine the same way as usb-romfs but specify the proxy address:
+On the client, `remote-romfs` takes the same commands as `usb-romfs`. Add the proxy's IP address before the command:
 
-```
+```text
 ./remote-romfs <proxy IP address> <command ...>
 ```
 
-[Photos of remote access to the cartridge](#photos-of-remote-access-to-the-cartridge-from-sgi-indy)
+[Photos of remote access from an SGI Indy](#remote-access-from-an-sgi-indy)
 
 ## ROMFS Manager
 
-[ROMFS Manager](utils/romfs-gui) is Qt-based desktop application. It lets you browse, upload, and download files on the N64cart over USB or the remote proxy.
+[ROMFS Manager](utils/romfs-gui) is a desktop application built with Qt. You can use it to browse, upload, and download files on N64cart over USB or through a remote proxy.
 
 <img src="pics/romfs-manager.png" width="480" />
 
-## Total cartridge cost (32MB version)
+## Total cartridge cost (32 MB version)
 
-The price of components for an online order of one or two pieces may be lower
-than the cost of delivery. When ordering in several pieces, sometimes there
-may even be free shipping.
+The following is an example cost breakdown for the 32 MB version. Shipping can
+cost more than the components when ordering only one or two of each item.
+Larger orders may qualify for free shipping.
 
 Seller|Delivery cost|Components
 ------|-------------|---
 [Chicago Electronic Distributors](https://chicagodist.com/)|$6-$11|RP2040
-[Arrow](https://www.arrow.com/)|Free for orders > $50|spi flash,resistors,capacitors,etc
-[jlpcb](https://jlcpcb.com/)|$22.4|PCB
+[Arrow](https://www.arrow.com/)|Free for orders > $50|SPI flash, resistors, capacitors, etc.
+[JLCPCB](https://jlcpcb.com/)|$22.40|PCB
 
-The price for 5 PCB is $2 ($4 for non first in order position).
+In this example, five PCBs cost $2 for the first PCB design in an order, or $4 for each additional design.
 
 The most expensive components:
 
-Component|qty|Price
+Component|Quantity|Price
 ---------|---|-----
 RP2040|1|$1
 W25Q256JVEIQ|1|$4.24
@@ -314,11 +312,11 @@ UJ2-MIBH-G-SMT-TR|1|$0.45
 LDI1117-3.3U|1|$0.34
 BAT60AE6327HTSA1|2|$0.93
 
-All other components (LEDs, resistors, capacitors) from home stock, total cost less than $1.
+The remaining components (LEDs, resistors, and capacitors) came from existing stock and cost less than $1 in total.
 
-So, the total cost of the pcb and components is approximately $9.
+The estimated total cost of the PCB and components is approximately $9, excluding shipping.
 
-## Photos version 2
+## Photos of version 2
 
 <img src="pics/jlpcb-order.png" width="480" />
 
@@ -336,7 +334,7 @@ So, the total cost of the pcb and components is approximately $9.
 
 <img src="pics/IMG_20240225_124908.jpg" width="480" />
 
-## BOM list for version 3
+## Bill of materials for version 3
 
 Part|Value|Device|Package
 ----|-----|------|-------
@@ -375,7 +373,7 @@ U2||USB|USB-MICRO-SMD
 U4|MX66L1G45GMI-08G|MX66L1G45GMI-08G|SOP_16
 XTAL1|ABLS-12.000MHZ-B4-T|ABLS-12.000MHZ-B4-T|XTAL_ABLS_ABR
 
-## Photos version 3
+## Photos of version 3
 
 <img src="pics/IMG_20240805_201003.jpg" width="480" />
 
@@ -385,7 +383,7 @@ XTAL1|ABLS-12.000MHZ-B4-T|ABLS-12.000MHZ-B4-T|XTAL_ABLS_ABR
 
 <img src="pics/IMG_20240811_110152.jpg" width="480" />
 
-## Photos of remote access to the cartridge from SGI Indy
+## Remote access from an SGI Indy
 
 <img src="pics/20250705_142513.jpg" width="480" />
 
