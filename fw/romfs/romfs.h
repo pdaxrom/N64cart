@@ -172,6 +172,8 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_tell_file(romfs_file *file, uint32_t *position);
 uint32_t romfs_seek_file(romfs_file *file, int32_t offset, int whence);
 uint32_t romfs_truncate_file(romfs_file *file, uint32_t size);
+/* Open an existing file for writing at offset zero; never create file/parents. */
+uint32_t romfs_open_write_path(const char *path, romfs_file *file, uint8_t *io_buffer);
 uint32_t romfs_open_append(const char *name, romfs_file *file, uint16_t type, uint8_t *io_buffer);
 uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type,
                                   uint8_t *io_buffer);

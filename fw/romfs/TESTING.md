@@ -48,8 +48,8 @@ also runs standalone suites for 2/4/8 MiB. The geometry regression executable
 covers 2/4/8/16/32/64/128/256 MiB. Existing randomized capacity tests accept documented
 `NO_SPACE` / `NO_FREE_ENTRIES` outcomes and require successful close after ENOSPC.
 The I/O and CLI tests additionally require readback of the accepted prefix and
-reclamation of every sector after deletion. Remaining flag/performance review
-items have separate coverage requirements.
+reclamation of every sector after deletion. Remaining performance review items
+have separate coverage requirements.
 
 ## Geometry and platform guards
 
@@ -175,8 +175,40 @@ Host-only symbol renaming keeps its `rename`/`rmdir` away from host libc calls.
 Tests cover alternating `O_RDWR` reads/writes/seeks across sectors, EOF, read
 errors, truncate, conflicting opens, preservation of both rename endpoints,
 failed-close cleanup and stale directory cursors. Full MIPS builds separately
-check the real libdragon headers; no MIPS runtime is emulated here. Known flag
-semantics (`O_CREAT`, `O_TRUNC`, `O_APPEND`) remain a later stage.
+check the real libdragon headers; no MIPS runtime is emulated here.
+
+## Newlib open flags
+
+The bridge creates files only with `O_CREAT`, including `O_RDONLY | O_CREAT`.
+Without it, a missing file or parent returns `ENOENT`. With it, the existing
+automatic parent-creation behavior is preserved. `O_CREAT | O_EXCL` rejects both
+published and pending names with `EEXIST`, in all three access modes. `O_EXCL`
+without `O_CREAT` is ignored. An invalid access mode or read-only `O_TRUNC`
+returns `EINVAL` before any filesystem changes.
+
+Existing writable files open through `romfs_open_write_path`, which never creates
+a file or parent and starts at offset zero. The low-level `romfs_open_append*`
+APIs retain their create-if-missing behavior and initial EOF position. Newlib
+handles start at zero, including `O_APPEND`: append seeks to the current EOF
+before every write, even after reads, seeks or truncate.
+
+`O_TRUNC` acquires the writer and calls `romfs_truncate_file(..., 0)`, preserving
+the catalog slot, name, parent and attributes. `O_APPEND | O_TRUNC` truncates
+first. Write opens of read-only/system/reserved or service files return `EACCES`;
+directory opens return `EISDIR`. Exclusive creation of an occupied name takes
+precedence over these errors. Busy files return `EBUSY` before truncation.
+
+The bridge tests cover 192 flag combinations across existing files, missing
+files with an existing parent, and missing parents. They check sizes, contents,
+offsets, access failures, slot/attribute preservation and remount readback.
+Additional cases cover append after read/seek/truncate, pending exclusive
+creation, busy truncation, protected entries and directories. Rejected flag,
+access and ownership checks require an unchanged image/map/catalog and zero
+flash callbacks. Fault injection checks both metadata sectors for read-only
+creation and truncation: failures return `EIO`, preserve that errno during
+cleanup, and release handles. These I/O failures can leave creation/truncation
+applied in RAM; synchronization and close recovery still follow the I/O contract
+below, without rollback or power-loss guarantees.
 
 ## I/O errors and partial transfers
 

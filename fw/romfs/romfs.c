@@ -1966,8 +1966,8 @@ uint32_t romfs_open_read_view(romfs_file *writer, romfs_file *reader, uint8_t *i
     return ROMFS_NOERR;
 }
 
-uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type,
-                                  uint8_t *io_buffer)
+static uint32_t romfs_open_write_in_dir(const romfs_dir *dir, const char *name, romfs_file *file,
+                                       uint8_t *io_buffer, bool append)
 {
     if (romfs_file_is_open(file)) {
         return ROMFS_ERR_BUSY;
@@ -2010,7 +2010,7 @@ uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_
         if (romfs_slot_busy(file->nentry, NULL, false)) {
             return (file->err = ROMFS_ERR_BUSY);
         }
-        res = romfs_prepare_write_state(file, file->entry.size);
+        res = romfs_prepare_write_state(file, append ? file->entry.size : 0);
         if (res == ROMFS_NOERR) {
             file->entry_pending = false;
             romfs_register_file(file);
@@ -2018,12 +2018,17 @@ uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_
         return res;
     }
 
-    if (res != ROMFS_ERR_NO_ENTRY) {
-        return (file->err = res);
-    }
+    return (file->err = res);
+}
 
-    uint32_t create_res = romfs_create_file_in_dir(dir, name, file, ROMFS_MODE_READWRITE, type, io_buffer);
-    return create_res;
+uint32_t romfs_open_append_in_dir(const romfs_dir *dir, const char *name, romfs_file *file, uint16_t type,
+                                  uint8_t *io_buffer)
+{
+    uint32_t err = romfs_open_write_in_dir(dir, name, file, io_buffer, true);
+    if (err == ROMFS_ERR_NO_ENTRY) {
+        return romfs_create_file_in_dir(dir, name, file, ROMFS_MODE_READWRITE, type, io_buffer);
+    }
+    return err;
 }
 
 uint32_t romfs_open_append(const char *name, romfs_file *file, uint16_t type, uint8_t *io_buffer)
@@ -2230,6 +2235,23 @@ uint32_t romfs_rename_path(const char *src_path, const char *dst_path, bool crea
     }
 
     return romfs_rename_in_dir(&src_parent, src_leaf, &dst_parent, dst_leaf);
+}
+
+uint32_t romfs_open_write_path(const char *path, romfs_file *file, uint8_t *io_buffer)
+{
+    if (romfs_file_is_open(file)) {
+        return ROMFS_ERR_BUSY;
+    }
+    romfs_dir parent;
+    char leaf[ROMFS_MAX_NAME_LEN];
+    uint32_t err = romfs_resolve_parent(path, false, &parent, leaf, sizeof(leaf));
+    if (err != ROMFS_NOERR) {
+        if (file) {
+            file->err = err;
+        }
+        return err;
+    }
+    return romfs_open_write_in_dir(&parent, leaf, file, io_buffer, false);
 }
 
 uint32_t romfs_open_append_path(const char *path, romfs_file *file, uint16_t type, uint8_t *io_buffer, bool create_dirs)

@@ -246,6 +246,11 @@ static void *romfs_fs_open(char *name, int flags)
     bool append = (flags & O_APPEND) != 0;
     bool trunc = (flags & O_TRUNC) != 0;
 
+    if ((!readable && !writable) || (trunc && !writable)) {
+        errno = EINVAL;
+        return NULL;
+    }
+
     romfs_handle_t *handle = calloc(1, sizeof(*handle));
     if (!handle) {
         errno = ENOMEM;
@@ -272,69 +277,68 @@ static void *romfs_fs_open(char *name, int flags)
     strncpy(handle->path, abs_path, sizeof(handle->path) - 1);
     handle->path[sizeof(handle->path) - 1] = '\0';
 
-    errno = 0;
     uint32_t err = ROMFS_NOERR;
+    int open_errno = 0;
+    bool created = false;
 
     handle->readable = readable;
     handle->writable = writable;
     handle->append = append;
 
-    if (writable && create && (flags & O_EXCL)) {
-        romfs_entry existing;
-        uint32_t exists_err = romfs_get_entry_path(abs_path, &existing);
-        if (exists_err == ROMFS_NOERR) {
-            errno = EEXIST;
+    romfs_entry existing;
+    bool exists = romfs_get_entry_path(abs_path, &existing) == ROMFS_NOERR;
+    if (exists) {
+        if (create && (flags & O_EXCL)) {
             err = ROMFS_ERR_FILE_EXISTS;
-        } else if (exists_err != ROMFS_ERR_NO_ENTRY) {
-            err = exists_err;
+        } else if (existing.attr.names.type == ROMFS_TYPE_DIR) {
+            open_errno = EISDIR;
+        } else if (writable &&
+                   (existing.attr.names.mode != ROMFS_MODE_READWRITE ||
+                    existing.attr.names.type <= ROMFS_TYPE_FLASHMAP)) {
+            open_errno = EACCES;
+        }
+        if (open_errno != 0) {
+            err = ROMFS_ERR_OPERATION;
+        }
+    } else if (create) {
+        /* Create also checks names reserved by unpublished writers. */
+        err = romfs_create_path(abs_path, &handle->file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
+                                handle->io_buffer, true);
+        created = err == ROMFS_NOERR;
+        if (err == ROMFS_ERR_FILE_EXISTS && !(flags & O_EXCL)) {
+            err = ROMFS_NOERR;
         }
     }
 
-    if (err == ROMFS_NOERR) {
-        if (!writable) {
-            if (trunc) {
-                errno = EINVAL;
-                err = ROMFS_ERR_OPERATION;
-            } else {
-                err = romfs_open_path(abs_path, &handle->file, handle->io_buffer);
-            }
-        } else if (append) {
-            err = romfs_open_append_path(abs_path, &handle->file, ROMFS_TYPE_MISC, handle->io_buffer, create);
-        } else if (trunc) {
-            uint32_t del_err = romfs_delete_path(abs_path);
-            if (del_err != ROMFS_NOERR && del_err != ROMFS_ERR_NO_ENTRY) {
-                err = del_err;
-            } else if (del_err == ROMFS_ERR_NO_ENTRY && !create) {
-                err = ROMFS_ERR_NO_ENTRY;
-            } else {
-                err = romfs_create_path(abs_path, &handle->file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
-                                        handle->io_buffer, true);
-            }
-        } else if (create) {
-            err = romfs_create_path(abs_path, &handle->file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, handle->io_buffer, true);
-            if (err == ROMFS_ERR_FILE_EXISTS) {
-                err = romfs_open_append_path(abs_path, &handle->file, ROMFS_TYPE_MISC, handle->io_buffer, false);
-                if (err == ROMFS_NOERR && !append) {
-                    err = romfs_seek_file(&handle->file, 0, SEEK_SET);
-                }
-            }
+    if (err == ROMFS_NOERR && !created) {
+        if (writable) {
+            err = romfs_open_write_path(abs_path, &handle->file, handle->io_buffer);
         } else {
-            err = romfs_open_append_path(abs_path, &handle->file, ROMFS_TYPE_MISC, handle->io_buffer, false);
-            if (err == ROMFS_NOERR && !append) {
-                err = romfs_seek_file(&handle->file, 0, SEEK_SET);
-            }
+            err = romfs_open_path(abs_path, &handle->file, handle->io_buffer);
         }
+    }
+
+    if (err == ROMFS_NOERR && created && !writable) {
+        /* Publish the empty file and release the writer before opening a reader. */
+        err = romfs_close_file(&handle->file);
+        if (err == ROMFS_NOERR) {
+            err = romfs_open_path(abs_path, &handle->file, handle->io_buffer);
+        }
+    }
+    if (err == ROMFS_NOERR && trunc) {
+        err = romfs_truncate_file(&handle->file, 0);
     }
 
     if (err != ROMFS_NOERR) {
+        if (open_errno == 0) {
+            open_errno = errno_from_romfs(err);
+        }
         romfs_close_file(&handle->read_file);
         romfs_close_file(&handle->file);
         free(handle->read_io_buffer);
         free(handle->io_buffer);
         free(handle);
-        if (errno == 0) {
-            errno = errno_from_romfs(err);
-        }
+        errno = open_errno;
         return NULL;
     }
 
