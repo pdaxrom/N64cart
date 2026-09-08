@@ -99,6 +99,8 @@ static int errno_from_romfs(uint32_t err)
         return EINVAL;
     case ROMFS_ERR_BUSY:
         return EBUSY;
+    case ROMFS_ERR_IO:
+        return EIO;
     default:
         return EIO;
     }
@@ -397,11 +399,12 @@ static int romfs_fs_read(void *file, uint8_t *ptr, int len)
     }
 
     int ret = (int)romfs_read_file(ptr, (uint32_t)len, read_file);
-    if (ret < 0 || (read_file->err != ROMFS_NOERR && read_file->err != ROMFS_ERR_EOF)) {
+    uint32_t read_err = read_file->err;
+    if (ret == 0 && read_err != ROMFS_NOERR && read_err != ROMFS_ERR_EOF) {
         if (read_from_shadow) {
             romfs_close_file(&handle->read_file);
         }
-        errno = EIO;
+        errno = errno_from_romfs(read_err);
         return -1;
     }
 
@@ -417,6 +420,9 @@ static int romfs_fs_read(void *file, uint8_t *ptr, int len)
         }
     }
 
+    if (read_err != ROMFS_NOERR && read_err != ROMFS_ERR_EOF) {
+        errno = errno_from_romfs(read_err);
+    }
     return ret;
 }
 
@@ -441,9 +447,9 @@ static int romfs_fs_write(void *file, uint8_t *ptr, int len)
     }
 
     int ret = (int)romfs_write_file(ptr, (uint32_t)len, &handle->file);
-    if ((ret == 0 && len > 0) || handle->file.err != ROMFS_NOERR) {
-        errno = EIO;
-        return -1;
+    if (handle->file.err != ROMFS_NOERR) {
+        errno = errno_from_romfs(handle->file.err);
+        return ret > 0 ? ret : -1;
     }
 
     return ret;
@@ -513,8 +519,9 @@ static int romfs_fs_stat(char *name, struct stat *st)
     }
 
     romfs_entry entry;
-    if (romfs_get_entry_path(abs_path, &entry) != ROMFS_NOERR) {
-        errno = ENOENT;
+    uint32_t err = romfs_get_entry_path(abs_path, &entry);
+    if (err != ROMFS_NOERR) {
+        errno = errno_from_romfs(err);
         return -1;
     }
 

@@ -1202,7 +1202,18 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
                         }
                         rbytes += (int)read;
                     }
-                    fclose(save_file);
+                    bool read_error = ferror(save_file) || rbytes != save_file_size;
+                    if (fclose(save_file) != 0) {
+                        read_error = true;
+                    }
+                    if (read_error) {
+                        syslog(LOG_ERR, "save read failed (%d/%d bytes), abort ROM launch", rbytes, save_file_size);
+                        n64cart_sram_unlock();
+                        io_write(N64CART_RMRAM, 0);
+                        io_write(N64CART_RMRAM + 4, 0);
+                        n64cart_sram_lock();
+                        return;
+                    }
 
                     syslog(LOG_INFO, "read %d bytes", rbytes);
 
@@ -1241,6 +1252,14 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
                         io_write(pi_addr + i, *((uint32_t *) & save_data[i]));
                     }
                 } else {
+                    if (errno != ENOENT) {
+                        syslog(LOG_ERR, "save open failed (errno %d), abort ROM launch", errno);
+                        n64cart_sram_unlock();
+                        io_write(N64CART_RMRAM, 0);
+                        io_write(N64CART_RMRAM + 4, 0);
+                        n64cart_sram_lock();
+                        return;
+                    }
                     syslog(LOG_INFO, "No valid eeprom dump, clean eeprom data");
                     memset(save_data, erase_byte, sizeof(save_data));
 
@@ -1556,11 +1575,15 @@ int main(void)
                                 error = true;
                             }
 
-                            fclose(save_file);
+                            if (fclose(save_file) != 0) {
+                                error = true;
+                            }
 
                             if (error) {
                                 syslog(LOG_ERR, "error write save file, delete");
                                 remove(save_full_path);
+                            } else {
+                                syslog(LOG_INFO, "save file created");
                             }
                         } else {
                             syslog(LOG_ERR, "unable to open %s for writing (errno %d)", save_full_path, errno);
@@ -1568,8 +1591,6 @@ int main(void)
                     } else {
                         syslog(LOG_ERR, "unable to create parent directories for %s", save_name);
                     }
-                    syslog(LOG_INFO, "save file created");
-
                     refresh_file_list();
                 }
 

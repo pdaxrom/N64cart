@@ -676,8 +676,14 @@ int main(int argc, char *argv[])
                 int file_size = ftell(inf);
                 fseek(inf, 0, SEEK_SET);
                 int total = 0;
+                bool transfer_ok = true;
                 printf("\n");
                 while ((ret = fread(buffer, 1, sizeof(buffer), inf)) > 0) {
+                    if ((fix_endian || fix_pi_freq) && ret < 4) {
+                        fprintf(stderr, "ROM header is too short\n");
+                        transfer_ok = false;
+                        break;
+                    }
                     if (fix_endian) {
                         if (rom_type == -1) {
                             fprintf(stderr, "Detected ROM type: ");
@@ -692,12 +698,14 @@ int main(int argc, char *argv[])
                                 fprintf(stderr, "V64\n");
                             } else {
                                 fprintf(stderr, "Unknown\n\nError!\n");
+                                transfer_ok = false;
                                 break;
                             }
                         }
 
                         if (ret % 4 != 0) {
                             fprintf(stderr, "Unaligned read from local file, error!\n");
+                            transfer_ok = false;
                             break;
                         }
 
@@ -729,32 +737,36 @@ int main(int argc, char *argv[])
                             buffer[2] = pi_freq;
                         } else {
                             fprintf(stderr, "Rom type is not Z64, use --fix-rom to convert to Z64 type!\n");
+                            transfer_ok = false;
                             break;
                         }
                         fix_pi_freq = false;
                     }
 
-                    if (romfs_write_file(buffer, ret, &file) == 0) {
+                    uint32_t written = romfs_write_file(buffer, (uint32_t) ret, &file);
+                    total += (int) written;
+                    if (written != (uint32_t) ret || file.err != ROMFS_NOERR) {
+                        fprintf(stderr, "romfs write error: %u/%d bytes, %s\n", written, ret, romfs_strerror(file.err));
+                        transfer_ok = false;
                         break;
                     }
-                    total += ret;
                     printf("\rWrite %.1f%%", (double)total / (double)file_size * 100.);
                     fflush(stdout);
                 }
                 printf("\n");
 
-                if (file.err == ROMFS_NOERR) {
-                    if (romfs_close_file(&file) != ROMFS_NOERR) {
-                        fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
-                    } else {
-                        retval = 0;
-                    }
-                } else {
-                    fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
-                    romfs_close_file(&file);
+                if (ferror(inf)) {
+                    fprintf(stderr, "Cannot read local file %s\n", local_path);
+                    transfer_ok = false;
                 }
-
-                fclose(inf);
+                if (romfs_close_file(&file) != ROMFS_NOERR) {
+                    fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
+                    transfer_ok = false;
+                }
+                if (fclose(inf) != 0) {
+                    transfer_ok = false;
+                }
+                retval = transfer_ok ? 0 : 1;
                 free(remote_path);
             } else if (!strcmp(argv[1], "pull")) {
                 if (argc < 3) {
@@ -769,9 +781,17 @@ int main(int argc, char *argv[])
                     if (outf) {
                         uint8_t buffer[4096];
                         int ret;
+                        bool transfer_ok = true;
                         printf("\n");
                         while ((ret = romfs_read_file(buffer, sizeof(buffer), &file)) > 0) {
-                            fwrite(buffer, 1, ret, outf);
+                            if (fwrite(buffer, 1, ret, outf) != (size_t) ret) {
+                                fprintf(stderr, "Cannot write local file %s\n", local_path);
+                                transfer_ok = false;
+                                break;
+                            }
+                            if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
+                                break;
+                            }
                             printf("\rRead %.1f%%", (double)file.read_offset / (double)file.entry.size * 100.);
                             fflush(stdout);
                         }
@@ -779,10 +799,13 @@ int main(int argc, char *argv[])
 
                         if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
                             fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
-                        } else {
-                            retval = 0;
+                            transfer_ok = false;
                         }
-                        fclose(outf);
+                        if (fclose(outf) != 0) {
+                            fprintf(stderr, "Cannot close local file %s\n", local_path);
+                            transfer_ok = false;
+                        }
+                        retval = transfer_ok ? 0 : 1;
                     } else {
                         fprintf(stderr, "Cannot open file %s\n", local_path);
                     }

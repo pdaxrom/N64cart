@@ -84,7 +84,7 @@ static void mixed_read_write(void)
         CHECK(fs->read(handle, actual, 0) == 0);
     }
     CHECK(fs->lseek(handle, 0, SEEK_SET) == 0);
-    CHECK(fs->read(handle, NULL, 1) == -1 && errno == EIO);
+    CHECK(fs->read(handle, NULL, 1) == -1 && errno == EINVAL);
     CHECK(fs->write(handle, expected, 1) == 1);
     CHECK(fs->ftruncate(handle, 7) == 0);
     CHECK(fs->lseek(handle, 0, SEEK_SET) == 0);
@@ -151,12 +151,12 @@ static void pending_and_failed_handles(void)
     for (unsigned i = 0; i < 32; i++) {
         void *bad = fs->open("first", O_WRONLY);
         CHECK(bad != NULL);
-        CHECK(fs->write(bad, NULL, 1) == -1 && errno == EIO);
+        CHECK(fs->write(bad, NULL, 1) == -1 && errno == EINVAL);
         CHECK(fs->close(bad) == -1 && errno == EINVAL);
         check_contents("first", "one");
         bad = fs->open("failed", O_CREAT | O_WRONLY);
         CHECK(bad != NULL);
-        CHECK(fs->write(bad, NULL, 1) == -1 && errno == EIO);
+        CHECK(fs->write(bad, NULL, 1) == -1 && errno == EINVAL);
         CHECK(fs->close(bad) == -1 && errno == EINVAL);
     }
     create("failed", "recovered");
@@ -181,12 +181,71 @@ static void stale_directory_cookie(void)
     puts("PASS newlib directory cursor rejects a removed directory after ID reuse");
 }
 
+static void io_errors_and_partial_transfers(void)
+{
+    setup("newlib partial read and EOF");
+    void *handle = fs->open("data", O_CREAT | O_RDWR);
+    CHECK(handle != NULL);
+    uint8_t data[8 * ROMFS_FLASH_SECTOR], output[sizeof(data)];
+    for (unsigned i = 0; i < sizeof(data); i++) {
+        data[i] = (uint8_t) (i * 17 + i / ROMFS_FLASH_SECTOR);
+    }
+    CHECK(fs->write(handle, data, sizeof(data)) == sizeof(data));
+    CHECK(fs->lseek(handle, 0, SEEK_SET) == 0);
+    CHECK(test_flash_fail_on(TEST_FLASH_READ, 2));
+    CHECK(fs->read(handle, output, sizeof(output)) == ROMFS_FLASH_SECTOR && errno == EIO);
+    CHECK(fs->lseek(handle, 0, SEEK_CUR) == ROMFS_FLASH_SECTOR);
+    CHECK(test_flash_fail_on(TEST_FLASH_READ, 1));
+    CHECK(fs->read(handle, output + ROMFS_FLASH_SECTOR, sizeof(output) - ROMFS_FLASH_SECTOR) == -1 && errno == EIO);
+    CHECK(fs->lseek(handle, 0, SEEK_CUR) == ROMFS_FLASH_SECTOR);
+    CHECK(fs->read(handle, output + ROMFS_FLASH_SECTOR, sizeof(output) - ROMFS_FLASH_SECTOR) == sizeof(output) - ROMFS_FLASH_SECTOR);
+    CHECK(memcmp(data, output, sizeof(data)) == 0);
+    CHECK(fs->close(handle) == 0);
+
+    setup("newlib write and metadata close failures");
+    handle = fs->open("data", O_CREAT | O_RDWR);
+    CHECK(handle != NULL);
+    CHECK(test_flash_fail_on(TEST_FLASH_WRITE, 2));
+    CHECK(fs->write(handle, data, sizeof(data)) == ROMFS_FLASH_SECTOR && errno == EIO);
+    CHECK(fs->close(handle) == 0); /* Retry the retained dirty buffer. */
+    handle = fs->open("data", O_RDWR);
+    CHECK(handle != NULL);
+    CHECK(fs->write(handle, data, 17) == 17);
+    CHECK(test_flash_fail_on(TEST_FLASH_WRITE, 2)); /* Data succeeds, catalog fails. */
+    CHECK(fs->close(handle) == -1 && errno == EIO);
+    CHECK(romfs_sync() == ROMFS_NOERR);
+    handle = fs->open("data", O_RDONLY);
+    CHECK(handle != NULL);
+    CHECK(fs->read(handle, output, sizeof(output)) == ROMFS_FLASH_SECTOR);
+    CHECK(memcmp(data, output, ROMFS_FLASH_SECTOR) == 0);
+    CHECK(fs->close(handle) == 0);
+
+    setup("newlib ENOSPC retains prefix after close and remount");
+    CHECK(test_flash_init(sizeof(data)));
+    CHECK(romfs_start(0, sizeof(data), map, list));
+    CHECK(romfs_format());
+    uint32_t capacity = romfs_free();
+    handle = fs->open("data", O_CREAT | O_RDWR);
+    CHECK(handle != NULL);
+    CHECK(fs->write(handle, data, sizeof(data)) == (int) capacity && errno == ENOSPC);
+    CHECK(fs->write(handle, data, 1) == -1 && errno == ENOSPC);
+    CHECK(fs->close(handle) == 0);
+    CHECK(romfs_start(0, sizeof(data), map, list));
+    handle = fs->open("data", O_RDONLY);
+    CHECK(handle != NULL);
+    CHECK(fs->read(handle, output, sizeof(output)) == (int) capacity);
+    CHECK(memcmp(data, output, capacity) == 0);
+    CHECK(fs->close(handle) == 0);
+    puts("PASS newlib short read/write counts, EIO/ENOSPC, close errors and partial-file persistence");
+}
+
 int main(void)
 {
     mixed_read_write();
     busy_handles();
     pending_and_failed_handles();
     stale_directory_cookie();
+    io_errors_and_partial_transfers();
     test_flash_destroy();
     return 0;
 }

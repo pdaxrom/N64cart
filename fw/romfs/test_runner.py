@@ -5,6 +5,8 @@ import argparse
 import os
 from pathlib import Path
 import re
+import resource
+import signal
 import subprocess
 import tempfile
 
@@ -28,11 +30,11 @@ def main():
     logs = build / "logs"
     logs.mkdir(parents=True, exist_ok=True)
 
-    def run(label, command, expected=0, env=None, cwd=None):
+    def run(label, command, expected=0, env=None, cwd=None, preexec_fn=None):
         try:
             result = subprocess.run(
                 list(map(str, command)), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, env=env, cwd=cwd, timeout=300,
+                text=True, env=env, cwd=cwd, timeout=300, preexec_fn=preexec_fn,
             )
         except subprocess.TimeoutExpired as error:
             (logs / (label + ".log")).write_bytes(error.stdout or b"")
@@ -153,7 +155,57 @@ if [[ ${CORRUPT_PULL:-0} == 1 && $2 == pull ]]; then printf 'X' >> "$4"; fi
         require(not list(temp.iterdir()), "argument errors left temporary output")
         for name, content in fixtures.items():
             require((samples / name).read_bytes() == content, f"input fixture changed: {name}")
+
+        cli = build / "romfs-small"
+        image = work / "cli.img"
+        missing = work / "missing.img"
+        for i, options in enumerate([[], [image], [image, "unknown"], [image, "push"], [image, "format", "extra"]]):
+            run(f"cli-args-{i}", [cli, *options], expected=2)
+        run("cli-missing-image", [cli, missing, "list"], expected=1)
+        require(not missing.exists(), "read-only command created a missing image")
+        run("cli-format", [cli, image, "format"])
+        require(image.stat().st_size == 2 * 1024 * 1024, "wrong small CLI image size")
+        run("cli-push", [cli, image, "push", samples / "binary.bin", "data"])
+        before = image.read_bytes(), image.stat().st_mtime_ns
+        local = work / "cli-pull.bin"
+        run("cli-list-root", [cli, image, "list", "/"])
+        run("cli-free", [cli, image, "free"])
+        run("cli-pull", [cli, image, "pull", "data", local])
+        require(local.read_bytes() == fixtures["binary.bin"], "CLI readback differs")
+        run("cli-missing-pull", [cli, image, "pull", "absent", local], expected=1)
+        require(local.read_bytes() == fixtures["binary.bin"], "failed remote open truncated local output")
+        require(before == (image.read_bytes(), image.stat().st_mtime_ns), "read-only CLI changed the image")
+        run("cli-output-error", [cli, image, "pull", "data", samples], expected=1)
+        run("cli-input-error", [cli, image, "push", samples, "bad-input"], expected=1)
+        run("cli-missing-input", [cli, image, "push", missing, "absent"], expected=1)
+        run("cli-missing-delete", [cli, image, "delete", "absent"], expected=1)
+        run("cli-save-error", [cli, work / "missing-dir" / "image", "format"], expected=1)
+        def limit_output_size():
+            signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (1024, 1024))
+
+        run("cli-save-write-error", [cli, work / "limited.img", "format"], expected=1,
+            preexec_fn=limit_output_size)
+        run("cli-pull-close-error", [cli, image, "pull", "data", local], expected=1,
+            preexec_fn=limit_output_size)
+        for size in (0, 17, 2 * 1024 * 1024 + 1):
+            invalid_image = work / "invalid.img"
+            invalid_image.write_bytes(b"x" * size)
+            run(f"cli-invalid-image-{size}", [cli, invalid_image, "format"], expected=1)
+            require(invalid_image.stat().st_size == size, "invalid image was overwritten")
+        run("cli-capacity-format", [cli, image, "format"])
+        capacity_text = run("cli-capacity", [cli, image, "free"])
+        capacity = int(re.search(r"Free space: (\d+) bytes", capacity_text).group(1))
+        large = work / "large.bin"
+        data = (bytes(range(256)) * ((capacity + 256) // 256))[:capacity + 1]
+        large.write_bytes(data)
+        run("cli-enospc", [cli, image, "push", large, "partial"], expected=1)
+        run("cli-partial-pull", [cli, image, "pull", "partial", local])
+        require(local.read_bytes() == data[:capacity], "ENOSPC CLI lost accepted prefix")
+        run("cli-partial-delete", [cli, image, "delete", "partial"])
+        require(run("cli-reclaimed", [cli, image, "free"]) == capacity_text, "ENOSPC CLI leaked sectors")
     print("PASS: shell round-trip, quoting, error propagation and cleanup", flush=True)
+    print("PASS: CLI exit codes, read-only commands, host I/O errors and ENOSPC persistence", flush=True)
     print(f"Runner checks passed. Logs: {logs}")
 
 

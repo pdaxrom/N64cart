@@ -253,10 +253,11 @@ bool RomfsDevice::uploadFile(const QString &localPath, const QString &remotePath
                 }
             }
 
-            if (romfs_write_file(chunk.constData(), static_cast<uint32_t>(read), &romFile) == 0) {
+            uint32_t written = romfs_write_file(chunk.constData(), static_cast<uint32_t>(read), &romFile);
+            total += written;
+            if (written != static_cast<uint32_t>(read) || romFile.err != ROMFS_NOERR) {
                 break;
             }
-            total += read;
             QString description = tr("Uploading %1").arg(info.fileName());
             if (fixRom && romType >= 0 && romType <= 2) {
                 QString romLabel;
@@ -324,6 +325,9 @@ bool RomfsDevice::downloadFile(const QString &remotePath, const QString &localPa
                 romfs_close_file(&romFile);
                 out.cancelWriting();
                 return false;
+            }
+            if (romFile.err != ROMFS_NOERR && romFile.err != ROMFS_ERR_EOF) {
+                break;
             }
             emit operationProgress(tr("Downloading %1").arg(remotePath), romFile.read_offset, romFile.entry.size);
             QCoreApplication::processEvents();

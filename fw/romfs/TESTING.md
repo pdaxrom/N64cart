@@ -10,9 +10,10 @@ make -C fw/romfs check
 The default build uses AddressSanitizer and UndefinedBehaviorSanitizer, with
 sanitizer recovery disabled. Executables, objects and logs go to the ignored
 `build-romfs-tests/` directory. `make check` runs the flash emulator, geometry,
-chain corruption, handle ownership, newlib bridge, platform callback/USB, and
+chain corruption, handle ownership, I/O failures, newlib bridge, platform callback/USB, and
 process-level runner checks, including the full ROMFS suite. It requires
-Python 3 and Bash in addition to the C compiler.
+Python 3 and Bash on a POSIX host in addition to the C compiler. CLI tests use
+`RLIMIT_FSIZE` to exercise real host write/close failures.
 
 `BUILD_DIR` overrides the output directory; choose a top-level `build-*`
 directory. `ROMFS_BIN` overrides the CLI executable used by `test.sh`.
@@ -45,9 +46,10 @@ Exit codes for the C runner:
 The size selector accepts integers from 2 through 256 MiB. The process runner
 also runs standalone suites for 2/4/8 MiB. The geometry regression executable
 covers 2/4/8/16/32/64/128/256 MiB. Existing randomized capacity tests accept documented
-`NO_SPACE` / `NO_FREE_ENTRIES` outcomes; they do not yet require preservation of
-a partial file after ENOSPC. Passing this suite is not proof that the defects
-identified in the ROMFS review have been fixed.
+`NO_SPACE` / `NO_FREE_ENTRIES` outcomes and require successful close after ENOSPC.
+The I/O and CLI tests additionally require readback of the accepted prefix and
+reclamation of every sector after deletion. Remaining flag/performance review
+items have separate coverage requirements.
 
 ## Geometry and platform guards
 
@@ -83,8 +85,8 @@ error ACK conversion, and recovery with a following valid command.
 
 The N64 host harness models big-endian field values with explicit byte swaps;
 it does not emulate MIPS execution or a USB controller. Full ARM/MIPS builds
-and physical USB/PI smoke tests are separate. General core I/O error propagation
-and partial-file preservation remain separate fixes.
+and physical USB/PI smoke tests are separate. Core I/O error propagation and
+partial-file preservation are exercised by `test_io` and the bridge/CLI tests.
 
 ## Corrupted chains
 
@@ -116,7 +118,6 @@ It currently adds a full chain walk to each read/write/seek call, so small I/O
 calls on large files cost more. Caching with correct invalidation belongs to
 the planned performance work. This checks each chain's structure and range,
 not ownership of sectors shared by otherwise structurally valid files.
-General I/O failures and partial writes remain separate work.
 
 ## Handle ownership and names
 
@@ -149,22 +150,22 @@ for `O_RDWR`, closes the view after each read (including EOF/error), then update
 the owning writer's position. Ordinary conflicts map to `EBUSY`. Closing a file
 unregisters it even if flush returns an error; flush itself retains ownership.
 A closed descriptor must be reopened before further I/O. Repeated close is a
-no-op. Partial-write recovery and flash callback error propagation are not yet
-covered by this contract and remain the next correction stage.
+no-op. Partial-write recovery and flash callback errors are described below.
 
 Directory IDs are released only at deletion; GC must not release an ID now owned
 by another directory. Directory handles carry a runtime generation and catalog
 index, preventing stale handles/cursors from accessing a replacement even when
-both ID and slot are reused. Successful mount/format invalidates previous file
-handles and non-root directory handles; a geometry-rejected mount preserves them.
+both ID and slot are reused. Mount with valid geometry and format invalidate
+previous file/non-root directory handles, including on a subsequent I/O failure;
+a geometry-rejected mount preserves them.
 The in-memory `romfs_file` and `romfs_dir` ABI changed, so clients must be rebuilt.
 The on-flash `romfs_entry` layout, map and sentinel values are unchanged.
 
 Ownership tests exercise reverse-order close/remount of two pending writers,
 shared readers, stale copies, directory ID/slot reuse through actual catalog GC,
 all reserved catalog slots, invalid names, mount invalidation and read views.
-Failed opens/closes use invalid buffers/operations; injected flash I/O failures
-belong to the next stage. Rejected operations compare the entire image, map and
+Ownership-specific failed opens/closes use invalid buffers/operations; `test_io`
+injects flash failures. Rejected ownership operations compare the entire image, map and
 catalog and check that no flash callback ran. Corruption tests use actual open
 descriptors for live damage, closing each before opening a conflicting writer.
 
@@ -176,6 +177,72 @@ errors, truncate, conflicting opens, preservation of both rename endpoints,
 failed-close cleanup and stale directory cursors. Full MIPS builds separately
 check the real libdragon headers; no MIPS runtime is emulated here. Known flag
 semantics (`O_CREAT`, `O_TRUNC`, `O_APPEND`) remain a later stage.
+
+## I/O errors and partial transfers
+
+`build-romfs-tests/test_io` injects failures into mount reads, sector allocation,
+data buffer read/erase/write, truncate tail I/O, and both sectors of metadata
+on a 2 MiB image. Metadata operations cover format, mkdir, delete, rmdir, rename,
+file flush and close, including repeated failures before a successful retry.
+
+Each failed flash callback returns `ROMFS_ERR_IO` through the calling operation
+(or false from start/format). An erase failure prevents the corresponding write.
+Dirty buffers remain dirty until erase and program both succeed. A failed load
+invalidates the buffer's cached sector; a failed new-sector initialization does
+not publish its link. Truncate performs tail I/O before releasing chain links.
+
+Read returns only successfully read fragments and advances by that count. A
+failed callback may have touched its destination, so bytes beyond the returned
+count are not valid. Write counts bytes accepted into the file's RAM buffer,
+including a full sector whose later flush failed; inspect `file->err` even when
+the return is nonzero. Successful flush/close confirms callback completion for
+accepted data and metadata. ENOSPC is a short-write condition, not a reason for
+close to discard the accepted file. Close reports its own synchronization result.
+
+Capacity tests use a deterministic 32 KiB image to exercise create, append,
+overwrite, gap extension and truncate at capacity, then remount/read back the
+accepted data, delete the file and reuse all sectors. Zero-filled gap/truncate
+extensions can remain partially applied on failure; failed gap filling returns
+zero caller-data bytes and preserves the caller's requested position.
+
+`romfs_sync()` synchronizes changed open writers before flushing the shared map
+and catalog. A commit must not combine one writer's extended chain with its old
+catalog size. Thus closing one file or changing a directory may also synchronize
+other open writers and can report their errors. Tests remount after closing only
+one of two writers and verify both entries and data. Unchanged writers with an
+active read view need no synchronization and retain their ownership rules.
+
+Failed metadata writes retain the pending state. Directory changes may already
+exist in RAM when the operation returns an I/O error; call `romfs_sync()` before
+remounting to retry them. This is not transaction rollback. Repeated mkdir of an
+existing directory also retries synchronization. A failed mount read disables
+access to the incomplete mount until another successful start; it cannot restore
+old caller-owned buffers that have already been partially overwritten.
+
+Before close, a failed data flush can be retried with the descriptor and its RAM
+buffer intact. Close releases the descriptor even on error: for a valid chain it
+reclaims tail allocations beyond the entry already in the RAM catalog, preserving
+that entry's chain. Catalog/map writes still pending can be retried with
+`romfs_sync()`. Invalid chains are never traversed for speculative cleanup.
+
+Newlib tests verify short read/write results, positions, `EIO`/`ENOSPC`, failed
+close and partial-file readback. Host CLI tests use a separately compiled 2 MiB
+`romfs-small` executable for deterministic capacity tests, input/output failures,
+write/close size limits and preservation of the local destination on remote-open
+failure. Host CLI exit codes are 0 for success, 1 for operation/I/O failure, and 2
+for invalid arguments. Only format may create a missing image; images of the wrong
+size are rejected. `list`, `free`, and `pull` preserve image contents and mtime.
+
+N64 save loading aborts ROM launch on read failure or incomplete save length;
+open failures other than ENOENT also abort. Save writing checks fclose and logs
+success only on successful transfer/flush/close. Its existing policy of deleting
+failed save writes remains. Physical cartridge validation of these paths is still
+required. The USB/remote CLI and GUI detect partial transfers and report errors.
+
+These checks model callback failures, not power-loss atomicity or reliable driver
+detection of every physical flash fault. Failed in-place erase/program can damage
+existing data or metadata. Generation snapshots and data copy-on-write remain
+deferred in `TODO.md`; the on-flash format is unchanged here.
 
 ## Flash emulator and fault injection
 
@@ -201,9 +268,8 @@ build-romfs-tests/test --flash-mb 16 --fail-io write:1
 The three injected suite runs are expected to exit **1**. The selected callback
 fails once at the specified ordinal, counting from image initialization and
 including mount I/O. Any rejection or injected failure fails an ordinary
-suite, even if the core ignores the callback's `false`. A requested injection
-that is never reached also fails the run. Future tests for core error handling
-can use the emulator API directly and explicitly assert expected failures.
+suite. A requested injection that is never reached also fails the run. The
+dedicated core I/O tests use the emulator API and assert expected failures.
 
 The API can arm failures relative to the current callback counts.
 `test_flash_reset_counters()` preserves image contents and disarms failures;
@@ -223,9 +289,8 @@ while the script runs. The temporary pull directory is removed on success,
 failure and handled signals.
 
 A command failure or `cmp` failure produces a nonzero status; cleanup cannot
-turn it into success. The host ROMFS CLI still has known incomplete error exit
-codes, pending the separate CLI/I/O fixes. The script therefore compares every
-pulled file and detects missing outputs even when that CLI returns zero.
+turn it into success. In addition to checking CLI exit codes, the script compares
+every pulled file and detects missing outputs from a misbehaving CLI wrapper.
 
 The checks in `test_runner.py` run against fresh generated fixtures under the
 build directory. They compare repeated seeds, verify all size results, test

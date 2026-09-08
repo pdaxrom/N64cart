@@ -69,6 +69,7 @@ enum {
     ROMFS_ERR_DIR_INVALID,
     ROMFS_ERR_DIR_NOT_EMPTY,
     ROMFS_ERR_BUSY,
+    ROMFS_ERR_IO,
 };
 
 typedef struct __attribute__((packed))
@@ -102,7 +103,8 @@ romfs_entry;
 /* Keep each successfully opened/created descriptor alive at the same address
  * until close, including on error paths. Do not copy it for file operations.
  * Multiple readers may coexist; a writer owns its catalog slot exclusively.
- * Successful start and format invalidate all descriptors from the old mount. */
+ * Start with valid geometry and format invalidate all old descriptors, including
+ * when subsequent I/O fails. A geometry-rejected start preserves the old mount. */
 typedef struct romfs_file {
     uint32_t op;
     romfs_entry entry;
@@ -136,20 +138,29 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t * buffer, uint32_t need);
 
 /* Pure size query. Invalid flash sizes return zero; buffers must have these sizes. */
 void romfs_get_buffers_sizes(uint32_t rom_size, uint32_t * map_size, uint32_t * list_size);
-/* Rejects invalid geometry before I/O or changes to the active mount. */
+/* Rejects invalid geometry before I/O or changes to the active mount.
+ * A read failure returns false and disables the partially loaded mount. */
 bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t * flash_map, uint8_t * flash_list);
 bool romfs_format(void);
+/* Flush changed open writers, then retry pending metadata writes. Shared map
+ * commits can also synchronize other open files. No power-loss atomicity. */
+uint32_t romfs_sync(void);
 uint32_t romfs_free(void);
 uint32_t romfs_list(romfs_file * entry, bool first);
 uint32_t romfs_delete(const char *name);
 uint32_t romfs_create_file(const char *name, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer);
-/* Read/write return byte counts; inspect file->err for errors. Invalid chains
- * are rejected with ROMFS_ERR_OPERATION before data I/O or chain mutation. */
+/* Read/write return byte counts; inspect file->err even on a nonzero return.
+ * Write counts bytes accepted into RAM, not a durability guarantee. Flush/close
+ * can persist an accepted prefix after NO_SPACE or retry failed I/O.
+ * Invalid chains are rejected with ROMFS_ERR_OPERATION before data I/O or
+ * chain mutation. A failed read does not advance past the failed fragment. */
 uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_flush_file(romfs_file * file);
 /* Close releases ownership even when flushing fails. Retry flush before close
  * if needed; after close the descriptor must be opened again. Closing an
- * already closed/unregistered descriptor is a no-op returning ROMFS_NOERR. */
+ * already closed/unregistered descriptor is a no-op returning ROMFS_NOERR.
+ * Unpublished tail allocations are reclaimed after a failed close when the
+ * chain is valid; pending catalog/map writes can be retried with romfs_sync. */
 uint32_t romfs_close_file(romfs_file * file);
 uint32_t romfs_open_file(const char *name, romfs_file * file, uint8_t * io_buffer);
 /* Flush the owning writer and open a temporary read view. Close the view

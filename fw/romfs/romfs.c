@@ -38,6 +38,7 @@ static const char *romfs_errlist[] = {
     "Invalid directory",
     "Directory not empty",
     "File busy",
+    "Flash I/O error",
 };
 
 static uint32_t flash_start = 0;
@@ -49,6 +50,7 @@ static uint32_t flash_data_start = 0;
 
 static uint16_t *flash_map_int;
 static uint8_t *flash_list_int;
+static bool romfs_ready;
 
 static uint32_t romfs_garbage_collect(bool *freed);
 #define ROMFS_DIR_FILTER_ANY 0xff
@@ -76,9 +78,10 @@ static uint32_t romfs_first_data_sector(void);
 static void romfs_link_sector_range(uint32_t start, uint32_t count);
 static void romfs_reserve_service_sectors(void);
 static int romfs_dir_parent_id(uint8_t id);
-static void romfs_flush(void);
+static uint32_t romfs_flush(void);
+static uint32_t romfs_sync_write_file(romfs_file *file);
 static void romfs_operation_enter(void);
-static void romfs_operation_leave(void);
+static uint32_t romfs_operation_leave(uint32_t status);
 static void romfs_request_flush(void);
 
 static uint32_t romfs_flush_depth;
@@ -196,7 +199,7 @@ static bool romfs_dir_id_valid(uint8_t id)
 
 static bool romfs_dir_valid(const romfs_dir *dir)
 {
-    if (!dir || !romfs_dir_id_valid(dir->id)) {
+    if (!romfs_ready || !dir || !romfs_dir_id_valid(dir->id)) {
         return false;
     }
     return dir->id == ROMFS_ROOT_DIR_ID ||
@@ -253,7 +256,7 @@ static bool romfs_validate_chain(const romfs_entry *entry, uint32_t index, uint3
     uint32_t count = romfs_sector_count(entry->size);
     uint32_t type = entry->attr.names.type;
 
-    if (!flash_map_int || limit == 0 || type == ROMFS_TYPE_DIR) {
+    if (!romfs_ready || !flash_map_int || limit == 0 || type == ROMFS_TYPE_DIR) {
         return false;
     }
     if (romfs_type_is_service(type)) {
@@ -373,25 +376,21 @@ static void romfs_operation_enter(void)
     romfs_flush_depth++;
 }
 
-static void romfs_operation_leave(void)
+static uint32_t romfs_operation_leave(uint32_t status)
 {
     if (romfs_flush_depth == 0) {
-        return;
+        return status;
     }
     romfs_flush_depth--;
-    if (romfs_flush_depth == 0 && romfs_flush_pending) {
-        romfs_flush();
-        romfs_flush_pending = false;
+    if (romfs_flush_depth == 0 && status == ROMFS_NOERR) {
+        return romfs_sync();
     }
+    return status;
 }
 
 static void romfs_request_flush(void)
 {
-    if (romfs_flush_depth == 0) {
-        romfs_flush();
-    } else {
-        romfs_flush_pending = true;
-    }
+    romfs_flush_pending = true;
 }
 
 static bool romfs_dir_is_empty_internal(uint8_t dir_id)
@@ -462,7 +461,10 @@ bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t
     }
 
     /* Publish only after validation, so rejected geometry leaves the mount intact. */
+    romfs_ready = false;
     romfs_open_files = NULL;
+    romfs_flush_depth = 0;
+    romfs_flush_pending = false;
     flash_start = aligned_start;
     flash_map_size = map_bytes;
     flash_list_size = list_bytes;
@@ -474,33 +476,81 @@ bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t
     romfs_dir_index_reset();
 
     for (uint32_t i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
-        romfs_flash_sector_read(flash_start + i, &flash_list_int[i], ROMFS_FLASH_SECTOR);
+        if (!romfs_flash_sector_read(flash_start + i, &flash_list_int[i], ROMFS_FLASH_SECTOR)) {
+            return false;
+        }
     }
     for (uint32_t i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
-        romfs_flash_sector_read(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i], ROMFS_FLASH_SECTOR);
+        if (!romfs_flash_sector_read(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i], ROMFS_FLASH_SECTOR)) {
+            return false;
+        }
     }
     romfs_dir_index_rebuild();
     romfs_reserve_service_sectors();
+    romfs_ready = true;
     return true;
 }
 
-static void romfs_flush(void)
+static uint32_t romfs_flush(void)
 {
     romfs_reserve_service_sectors();
 
     for (uint32_t i = 0; i < flash_list_size; i += ROMFS_FLASH_SECTOR) {
-        romfs_flash_sector_erase(flash_start + i);
-        romfs_flash_sector_write(flash_start + i, &flash_list_int[i]);
+        if (!romfs_flash_sector_erase(flash_start + i) ||
+                !romfs_flash_sector_write(flash_start + i, &flash_list_int[i])) {
+            return ROMFS_ERR_IO;
+        }
     }
 
     for (uint32_t i = 0; i < flash_map_size; i += ROMFS_FLASH_SECTOR) {
-        romfs_flash_sector_erase(flash_start + flash_list_size + i);
-        romfs_flash_sector_write(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i]);
+        if (!romfs_flash_sector_erase(flash_start + flash_list_size + i) ||
+                !romfs_flash_sector_write(flash_start + flash_list_size + i, &((uint8_t *) flash_map_int)[i])) {
+            return ROMFS_ERR_IO;
+        }
     }
+    return ROMFS_NOERR;
+}
+
+uint32_t romfs_sync(void)
+{
+    if (!romfs_ready) {
+        return ROMFS_ERR_OPERATION;
+    }
+    /* The map is shared: publishing it with another writer's old catalog size
+     * would persist an invalid chain. First bring every changed writer in sync. */
+    for (romfs_file *file = romfs_open_files; file; file = file->next_open) {
+        if (file->op != ROMFS_OP_WRITE) {
+            continue;
+        }
+        if (file->nentry >= flash_list_size / sizeof(romfs_entry)) {
+            return ROMFS_ERR_OPERATION;
+        }
+        romfs_entry stored = ((romfs_entry *) flash_list_int)[file->nentry];
+        stored.attr.raw = from_lsb16(stored.attr.raw);
+        stored.start = from_lsb32(stored.start);
+        stored.size = from_lsb32(stored.size);
+        if (file->entry_pending || file->buffer_dirty || memcmp(&stored, &file->entry, sizeof(stored)) != 0) {
+            uint32_t status = romfs_sync_write_file(file);
+            if (status != ROMFS_NOERR) {
+                return status;
+            }
+        }
+    }
+    if (!romfs_flush_pending) {
+        return ROMFS_NOERR;
+    }
+    uint32_t status = romfs_flush();
+    if (status == ROMFS_NOERR) {
+        romfs_flush_pending = false;
+    }
+    return status;
 }
 
 bool romfs_format(void)
 {
+    if (!romfs_ready) {
+        return false;
+    }
     romfs_open_files = NULL;
     romfs_operation_enter();
     memset(flash_list_int, 0xff, flash_list_size);
@@ -542,14 +592,17 @@ bool romfs_format(void)
     romfs_reserve_service_sectors();
 
     romfs_request_flush();
-    romfs_operation_leave();
+    uint32_t status = romfs_operation_leave(ROMFS_NOERR);
     romfs_dir_index_rebuild();
 
-    return true;
+    return status == ROMFS_NOERR;
 }
 
 uint32_t romfs_free(void)
 {
+    if (!romfs_ready) {
+        return 0;
+    }
     uint32_t free_sectors = 0;
     uint32_t reclaimable = 0;
     uint32_t first_data_sector = romfs_first_data_sector();
@@ -587,7 +640,7 @@ uint32_t romfs_free(void)
 static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_deleted, uint8_t parent_filter,
                                     uint8_t include_mask)
 {
-    if (!file) {
+    if (!romfs_ready || !file) {
         return ROMFS_ERR_OPERATION;
     }
     if (romfs_file_is_open(file)) {
@@ -708,6 +761,7 @@ static void romfs_store_file_entry(romfs_file *file)
     _entry->start = to_lsb32(file->entry.start);
     _entry->size = to_lsb32(file->entry.size);
     file->entry_pending = false;
+    romfs_request_flush();
 }
 
 static uint32_t romfs_prepare_write_state(romfs_file *file, uint32_t offset)
@@ -736,6 +790,9 @@ uint32_t romfs_list(romfs_file *file, bool first)
 /* Call only after validating the complete chain, before changing its links. */
 static void romfs_unallocate_sectors_from(uint32_t sector, uint32_t count)
 {
+    if (count) {
+        romfs_request_flush();
+    }
     for (uint32_t i = 0; i < count && sector != 0xffff; i++) {
         uint32_t next = from_lsb16(flash_map_int[sector]);
         flash_map_int[sector] = 0xffff;
@@ -749,7 +806,10 @@ static void romfs_unallocate_sectors_from(uint32_t sector, uint32_t count)
 uint32_t romfs_delete(const char *name)
 {
     romfs_dir root;
-    romfs_dir_root(&root);
+    uint32_t err = romfs_dir_root(&root);
+    if (err != ROMFS_NOERR) {
+        return err;
+    }
     return romfs_delete_in_dir(&root, name);
 }
 
@@ -791,6 +851,7 @@ static uint32_t romfs_garbage_collect(bool *freed)
             }
 
             entries[i].name[0] = ROMFS_EMPTY_ENTRY;
+            romfs_request_flush();
             *freed = true;
         }
     }
@@ -854,15 +915,18 @@ static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sect
         return (file->err = err);
     }
 
+    /* Do not publish an allocation whose physical preparation failed. */
+    if (!romfs_flash_sector_erase(sector * ROMFS_FLASH_SECTOR) ||
+            !romfs_flash_sector_write(sector * ROMFS_FLASH_SECTOR, (uint8_t *) buffer)) {
+        return (file->err = ROMFS_ERR_IO);
+    }
     if (prev_sector == 0xffff) {
         file->entry.start = sector;
     } else {
         flash_map_int[prev_sector] = to_lsb16(sector);
     }
     flash_map_int[sector] = to_lsb16(sector);
-
-    romfs_flash_sector_erase(sector * ROMFS_FLASH_SECTOR);
-    romfs_flash_sector_write(sector * ROMFS_FLASH_SECTOR, (uint8_t *) buffer);
+    romfs_request_flush();
 
     if (sector_out) {
         *sector_out = sector;
@@ -918,7 +982,10 @@ static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, b
 uint32_t romfs_create_file(const char *name, romfs_file *file, uint16_t mode, uint16_t type, uint8_t *io_buffer)
 {
     romfs_dir root;
-    romfs_dir_root(&root);
+    uint32_t err = romfs_dir_root(&root);
+    if (err != ROMFS_NOERR) {
+        return file ? (file->err = err) : err;
+    }
     return romfs_create_file_in_dir(&root, name, file, mode, type, io_buffer);
 }
 
@@ -933,8 +1000,10 @@ static uint32_t romfs_flush_write_buffer(romfs_file *file)
         return (file->err = ROMFS_ERR_OPERATION);
     }
 
-    romfs_flash_sector_erase(file->pos * ROMFS_FLASH_SECTOR);
-    romfs_flash_sector_write(file->pos * ROMFS_FLASH_SECTOR, file->io_buffer);
+    if (!romfs_flash_sector_erase(file->pos * ROMFS_FLASH_SECTOR) ||
+            !romfs_flash_sector_write(file->pos * ROMFS_FLASH_SECTOR, file->io_buffer)) {
+        return (file->err = ROMFS_ERR_IO);
+    }
     file->buffer_dirty = false;
     file->buffer_from_flash = true;
     return (file->err = ROMFS_NOERR);
@@ -952,6 +1021,10 @@ static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offse
         return err;
     }
 
+    /* Loading another sector may overwrite the buffer even on a failed read. */
+    file->buffer_base = ROMFS_BUFFER_NONE;
+    file->pos = 0xffff;
+    file->buffer_from_flash = false;
     uint32_t sector = 0xffff;
     uint32_t sector_index = sector_base / ROMFS_FLASH_SECTOR;
     bool existing_sector = sector_base < file->entry.size;
@@ -961,7 +1034,9 @@ static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offse
     }
 
     if (existing_sector) {
-        romfs_flash_sector_read(sector * ROMFS_FLASH_SECTOR, file->io_buffer, ROMFS_FLASH_SECTOR);
+        if (!romfs_flash_sector_read(sector * ROMFS_FLASH_SECTOR, file->io_buffer, ROMFS_FLASH_SECTOR)) {
+            return (file->err = ROMFS_ERR_IO);
+        }
     } else {
         memset(file->io_buffer, 0, ROMFS_FLASH_SECTOR);
     }
@@ -1022,7 +1097,7 @@ static uint32_t romfs_zero_extend_to(romfs_file *file, uint32_t size)
         file->write_offset = file->entry.size;
         uint32_t remaining = size - file->entry.size;
         uint32_t chunk = remaining < sizeof(zeros) ? remaining : sizeof(zeros);
-        if (romfs_write_file_no_gap(zeros, chunk, file) != chunk) {
+        if (romfs_write_file_no_gap(zeros, chunk, file) != chunk || file->err != ROMFS_NOERR) {
             return file->err;
         }
     }
@@ -1058,29 +1133,25 @@ uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file *file)
     uint32_t target = file->write_offset;
     if (target > file->entry.size) {
         uint32_t err = romfs_zero_extend_to(file, target);
+        file->write_offset = target;
+        file->offset = target % ROMFS_FLASH_SECTOR;
         if (err != ROMFS_NOERR) {
             return 0;
         }
-        file->write_offset = target;
     }
 
-    uint32_t written = romfs_write_file_no_gap(buffer, size, file);
-    if (written != size) {
-        return 0;
-    }
-
-    return size;
+    return romfs_write_file_no_gap(buffer, size, file);
 }
 
 static uint32_t romfs_sync_write_file(romfs_file *file)
 {
-    if (!romfs_file_is_open(file)) {
+    if (!romfs_file_is_open(file) || file->nentry >= flash_list_size / sizeof(romfs_entry)) {
         return (file->err = ROMFS_ERR_OPERATION);
     }
     if (romfs_slot_busy(file->nentry, file, false)) {
         return (file->err = ROMFS_ERR_BUSY);
     }
-    if (file->err == ROMFS_ERR_BUSY) {
+    if (file->err == ROMFS_ERR_BUSY || file->err == ROMFS_ERR_NO_SPACE || file->err == ROMFS_ERR_IO) {
         file->err = ROMFS_NOERR;
     }
     if (file->err != ROMFS_NOERR) {
@@ -1113,12 +1184,45 @@ uint32_t romfs_flush_file(romfs_file *file)
         if (status == ROMFS_NOERR) {
             romfs_request_flush();
         }
-        romfs_operation_leave();
-
-        return status;
+        return (file->err = romfs_operation_leave(status));
     }
 
     return ROMFS_NOERR;
+}
+
+/* Close consumes the descriptor even on failure. Reclaim unpublished tail
+ * allocations before its buffer disappears; published metadata stays retryable
+ * through romfs_sync(). This cannot undo an in-place physical write failure. */
+static void romfs_discard_unpublished_tail(romfs_file *file)
+{
+    if (!romfs_validate_write_file(file) || file->nentry >= flash_list_size / sizeof(romfs_entry)) {
+        return;
+    }
+    uint32_t count = romfs_sector_count(file->entry.size);
+    uint32_t keep = 0;
+    if (!file->entry_pending) {
+        romfs_entry published = ((romfs_entry *) flash_list_int)[file->nentry];
+        published.start = from_lsb32(published.start);
+        published.size = from_lsb32(published.size);
+        keep = romfs_sector_count(published.size);
+        if (published.name[0] == ROMFS_EMPTY_ENTRY || published.name[0] == ROMFS_DELETED_ENTRY ||
+                keep > count || (keep && published.start != file->entry.start)) {
+            return;
+        }
+    }
+    if (keep == count) {
+        return;
+    }
+    uint32_t first_free = file->entry.start;
+    if (keep) {
+        uint32_t last_kept;
+        if (!romfs_validate_chain(&file->entry, keep - 1, &last_kept)) {
+            return;
+        }
+        first_free = from_lsb16(flash_map_int[last_kept]);
+        flash_map_int[last_kept] = to_lsb16(last_kept);
+    }
+    romfs_unallocate_sectors_from(first_free, count - keep);
 }
 
 uint32_t romfs_close_file(romfs_file *file)
@@ -1130,6 +1234,9 @@ uint32_t romfs_close_file(romfs_file *file)
         return ROMFS_NOERR;
     }
     uint32_t err = romfs_flush_file(file);
+    if (err != ROMFS_NOERR && file->op == ROMFS_OP_WRITE) {
+        romfs_discard_unpublished_tail(file);
+    }
     romfs_unregister_file(file);
     return err;
 }
@@ -1193,18 +1300,28 @@ uint32_t romfs_truncate_file(romfs_file *file, uint32_t size)
             last_kept = sector;
         }
 
+        uint32_t tail = size % ROMFS_FLASH_SECTOR;
+        if (tail != 0) {
+            file->buffer_base = ROMFS_BUFFER_NONE;
+            file->pos = 0xffff;
+            file->buffer_from_flash = false;
+            if (!romfs_flash_sector_read(last_kept * ROMFS_FLASH_SECTOR, file->io_buffer, ROMFS_FLASH_SECTOR)) {
+                status = ROMFS_ERR_IO;
+                goto out;
+            }
+            memset(&file->io_buffer[tail], 0, ROMFS_FLASH_SECTOR - tail);
+            file->buffer_base = size - tail;
+            file->pos = last_kept;
+            file->buffer_dirty = true;
+            status = romfs_flush_write_buffer(file);
+            if (status != ROMFS_NOERR) {
+                goto out;
+            }
+        }
         if (keep_sectors < old_sectors) {
             uint32_t first_free = from_lsb16(flash_map_int[last_kept]);
             flash_map_int[last_kept] = to_lsb16(last_kept);
             romfs_unallocate_sectors_from(first_free, old_sectors - keep_sectors);
-        }
-
-        uint32_t tail = size % ROMFS_FLASH_SECTOR;
-        if (tail != 0) {
-            romfs_flash_sector_read(last_kept * ROMFS_FLASH_SECTOR, file->io_buffer, ROMFS_FLASH_SECTOR);
-            memset(&file->io_buffer[tail], 0, ROMFS_FLASH_SECTOR - tail);
-            romfs_flash_sector_erase(last_kept * ROMFS_FLASH_SECTOR);
-            romfs_flash_sector_write(last_kept * ROMFS_FLASH_SECTOR, file->io_buffer);
         }
     }
 
@@ -1223,15 +1340,18 @@ out_store:
     }
 
 out:
-    romfs_operation_leave();
-    file->err = status;
-    return status;
+    file->write_offset = saved_offset;
+    file->offset = saved_offset % ROMFS_FLASH_SECTOR;
+    return (file->err = romfs_operation_leave(status));
 }
 
 uint32_t romfs_open_file(const char *name, romfs_file *file, uint8_t *io_buffer)
 {
     romfs_dir root;
-    romfs_dir_root(&root);
+    uint32_t err = romfs_dir_root(&root);
+    if (err != ROMFS_NOERR) {
+        return file ? (file->err = err) : err;
+    }
     return romfs_open_file_in_dir(&root, name, file, io_buffer);
 }
 
@@ -1307,7 +1427,10 @@ uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file *file)
         uint32_t space = ROMFS_FLASH_SECTOR - file->offset;
         uint32_t chunk = readable < space ? readable : space;
 
-        romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR + file->offset, &dst[total_read], chunk);
+        if (!romfs_flash_sector_read(file->pos * ROMFS_FLASH_SECTOR + file->offset, &dst[total_read], chunk)) {
+            file->err = ROMFS_ERR_IO;
+            return total_read;
+        }
 
         file->offset += chunk;
         file->read_offset += chunk;
@@ -1534,7 +1657,7 @@ static uint32_t romfs_resolve_parent(const char *path, bool create_dirs, romfs_d
 
 uint32_t romfs_dir_root(romfs_dir *dir)
 {
-    if (!dir) {
+    if (!romfs_ready || !dir) {
         return ROMFS_ERR_DIR_INVALID;
     }
 
@@ -1605,7 +1728,8 @@ uint32_t romfs_dir_create(const romfs_dir *parent, const char *name, romfs_dir *
             return ROMFS_ERR_FILE_EXISTS;
         }
         romfs_dir found;
-        return romfs_dir_open(parent, name, out ? out : &found);
+        res = romfs_dir_open(parent, name, out ? out : &found);
+        return res == ROMFS_NOERR ? romfs_sync() : res;
     } else if (res != ROMFS_ERR_NO_ENTRY) {
         return res;
     }
@@ -1644,7 +1768,6 @@ uint32_t romfs_dir_create(const romfs_dir *parent, const char *name, romfs_dir *
 
     romfs_dir_entry_index[new_id] = entry_index;
     romfs_request_flush();
-    romfs_operation_leave();
 
     if (out) {
         out->id = (uint8_t) new_id;
@@ -1652,7 +1775,7 @@ uint32_t romfs_dir_create(const romfs_dir *parent, const char *name, romfs_dir *
         out->generation = romfs_dir_generation[new_id];
     }
 
-    return ROMFS_NOERR;
+    return romfs_operation_leave(ROMFS_NOERR);
 }
 
 uint32_t romfs_dir_remove(const romfs_dir *dir)
@@ -1681,9 +1804,7 @@ uint32_t romfs_dir_remove(const romfs_dir *dir)
     romfs_dir_release_id(dir->id);
 
     romfs_request_flush();
-    romfs_operation_leave();
-
-    return ROMFS_NOERR;
+    return romfs_operation_leave(ROMFS_NOERR);
 }
 
 uint32_t romfs_list_dir(romfs_file *entry, bool first, const romfs_dir *dir, bool include_dirs)
@@ -1956,9 +2077,7 @@ uint32_t romfs_delete_in_dir(const romfs_dir *dir, const char *name)
     romfs_operation_enter();
     ((romfs_entry *) flash_list_int)[file.nentry].name[0] = ROMFS_DELETED_ENTRY;
     romfs_request_flush();
-    romfs_operation_leave();
-
-    return file.err;
+    return romfs_operation_leave(ROMFS_NOERR);
 }
 
 uint32_t romfs_rename_in_dir(const romfs_dir *src_dir, const char *src_name,
@@ -2059,9 +2178,7 @@ uint32_t romfs_rename_in_dir(const romfs_dir *src_dir, const char *src_name,
     entry->attr.raw = to_lsb16(attr_union.raw);
 
     romfs_request_flush();
-    romfs_operation_leave();
-
-    return ROMFS_NOERR;
+    return romfs_operation_leave(ROMFS_NOERR);
 }
 
 uint32_t romfs_rename(const char *src_name, const char *dst_name)
@@ -2194,7 +2311,7 @@ uint32_t romfs_get_entry(const char *name, romfs_entry *out_entry)
 
 uint32_t romfs_get_entry_path(const char *path, romfs_entry *out_entry)
 {
-    if (!path || !out_entry) {
+    if (!romfs_ready || !path || !out_entry) {
         return ROMFS_ERR_DIR_INVALID;
     }
 

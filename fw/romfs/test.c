@@ -281,7 +281,7 @@ static int fill_drive(const char *prefix, int max_chunks_per_file, int chunk_siz
             }
         }
         uint32_t close_err = romfs_close_file(&file);
-        if (close_err != ROMFS_NOERR && !(no_space && close_err == ROMFS_ERR_NO_SPACE)) {
+        if (close_err != ROMFS_NOERR) {
             fprintf(stderr, "Close failed for %s: %s\n", filename, romfs_strerror(close_err));
             break;
         }
@@ -289,10 +289,9 @@ static int fill_drive(const char *prefix, int max_chunks_per_file, int chunk_siz
             if (!no_space) {
                 break;
             }
-            /* A partial file is outside this complete-file verification set.
-             * Current ROMFS may not publish it at all after ENOSPC. */
+            /* This set verifies complete files; test_io checks partial data. */
             err = romfs_delete(filename);
-            if (err != ROMFS_NOERR && err != ROMFS_ERR_NO_ENTRY) {
+            if (err != ROMFS_NOERR) {
                 fprintf(stderr, "Failed to discard %s: %s\n", filename, romfs_strerror(err));
                 break;
             }
@@ -1548,7 +1547,7 @@ static bool test_random_fill_to_capacity(void)
         }
 
         uint32_t close_err = romfs_close_file(&file);
-        if (close_err != ROMFS_NOERR && !(no_space && close_err == ROMFS_ERR_NO_SPACE)) {
+        if (close_err != ROMFS_NOERR) {
             fprintf(stderr, ANSI_COLOR_RED "Close error on %s: %s\n" ANSI_COLOR_RESET, filename, romfs_strerror(close_err));
             write_ok = false;
             success = false;

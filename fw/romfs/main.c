@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -44,203 +45,204 @@ bool romfs_flash_sector_read(uint32_t offset, uint8_t *buffer, uint32_t need)
     return true;
 }
 
-void save_romfs(char *name, uint8_t *mem, size_t len)
+static bool save_romfs(const char *name, const uint8_t *mem, size_t len)
 {
     FILE *out = fopen(name, "wb");
-    if (out) {
-        if (fwrite(mem, 1, len, out) != len) {
-            fprintf(stderr, "Error write file!\n");
-        }
-        fclose(out);
+    if (!out) {
+        perror(name);
+        return false;
     }
+    bool ok = fwrite(mem, 1, len, out) == len;
+    if (fclose(out) != 0) {
+        ok = false;
+    }
+    if (!ok) {
+        fprintf(stderr, "Cannot save image %s\n", name);
+    }
+    return ok;
 }
 
-bool load_romfs(char *name, uint8_t *mem, size_t len, size_t *read_len)
+static bool load_romfs(const char *name, uint8_t *mem, size_t len, size_t *read_len, bool *missing)
 {
-    bool ret = true;
-    FILE *out = fopen(name, "rb");
-    if (out) {
-        size_t rlen;
-        if ((rlen = fread(mem, 1, len, out)) != len) {
-            ret = false;
-        }
-        if (read_len) {
-            *read_len = rlen;
-        }
-        fclose(out);
-        return ret;
+    *read_len = 0;
+    *missing = false;
+    FILE *in = fopen(name, "rb");
+    if (!in) {
+        *missing = errno == ENOENT;
+        return false;
     }
-
-    if (read_len) {
-        *read_len = 0;
+    *read_len = fread(mem, 1, len, in);
+    bool ok = *read_len == len && fgetc(in) == EOF && !ferror(in);
+    if (fclose(in) != 0) {
+        ok = false;
     }
+    return ok;
+}
 
-    return false;
+static bool transfer_file(const char *local_path, const char *remote_path, bool upload, uint8_t *io_buffer)
+{
+    FILE *local = upload ? fopen(local_path, "rb") : NULL;
+    if (upload && !local) {
+        perror(local_path);
+        return false;
+    }
+    romfs_file file;
+    uint32_t err = upload ? romfs_create_path(remote_path, &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, io_buffer, true)
+                          : romfs_open_path(remote_path, &file, io_buffer);
+    bool ok = err == ROMFS_NOERR;
+    if (!ok) {
+        fprintf(stderr, "ROMFS open %s: %s\n", remote_path, romfs_strerror(err));
+    } else {
+        if (!upload) {
+            local = fopen(local_path, "wb");
+            if (!local) {
+                perror(local_path);
+                romfs_close_file(&file);
+                return false;
+            }
+        }
+        uint8_t buffer[ROMFS_FLASH_SECTOR];
+        if (upload) {
+            size_t count;
+            while ((count = fread(buffer, 1, ROMFS_IO_CHUNK_SIZE, local)) > 0) {
+                uint32_t written = romfs_write_file(buffer, (uint32_t) count, &file);
+                if (written != count || file.err != ROMFS_NOERR) {
+                    fprintf(stderr, "ROMFS write: %u/%zu bytes, %s\n", written, count, romfs_strerror(file.err));
+                    ok = false;
+                    break;
+                }
+            }
+            if (ferror(local)) {
+                fprintf(stderr, "Cannot read local file %s\n", local_path);
+                ok = false;
+            }
+        } else {
+            while (true) {
+                uint32_t count = romfs_read_file(buffer, sizeof(buffer), &file);
+                if (count && fwrite(buffer, 1, count, local) != count) {
+                    fprintf(stderr, "Cannot write local file %s\n", local_path);
+                    ok = false;
+                    break;
+                }
+                if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
+                    fprintf(stderr, "ROMFS read: %s\n", romfs_strerror(file.err));
+                    ok = false;
+                    break;
+                }
+                if (!count || file.err == ROMFS_ERR_EOF) {
+                    break;
+                }
+            }
+        }
+        err = romfs_close_file(&file);
+        if (err != ROMFS_NOERR) {
+            fprintf(stderr, "ROMFS close: %s\n", romfs_strerror(err));
+            ok = false;
+        }
+    }
+    if (local && fclose(local) != 0) {
+        fprintf(stderr, "Cannot close local file %s\n", local_path);
+        ok = false;
+    }
+    return ok;
 }
 
 int main(int argc, char *argv[])
 {
-    if (argc <= 1) {
-        fprintf(stderr, "No rom file defined!\n");
-        return -1;
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <image> <format|list|free|push|pull|delete|mkdir|rmdir> [arguments]\n", argv[0]);
+        return 2;
+    }
+    const char *command = argv[2];
+    bool format = strcmp(command, "format") == 0;
+    bool list = strcmp(command, "list") == 0;
+    bool free_space = strcmp(command, "free") == 0;
+    bool upload = strcmp(command, "push") == 0;
+    bool download = strcmp(command, "pull") == 0;
+    bool delete = strcmp(command, "delete") == 0;
+    bool mkdir = strcmp(command, "mkdir") == 0;
+    bool rmdir = strcmp(command, "rmdir") == 0;
+    if ((!format && !list && !free_space && !upload && !download && !delete && !mkdir && !rmdir) ||
+            ((upload || download) && argc != 5) ||
+            ((delete || mkdir || rmdir) && argc != 4) ||
+            ((format || free_space) && argc != 3) || (list && argc > 4)) {
+        fprintf(stderr, "Invalid command or arguments: %s\n", command);
+        return 2;
     }
 
-    size_t read_len;
-    if (!load_romfs(argv[1], memory, sizeof(memory), &read_len)) {
-        if (read_len) {
-            fprintf(stderr, "Cannot read %s, wrong rom image size (%zu)\n", argv[1], read_len);
-            goto err;
-        } else {
-            fprintf(stderr, "Cannot open %s, create new image\n", argv[1]);
+    size_t read_len = 0;
+    bool missing;
+    if (!load_romfs(argv[1], memory, sizeof(memory), &read_len, &missing)) {
+        if (!format || !missing) {
+            fprintf(stderr, "Cannot read image %s (expected %zu bytes, read %zu)\n", argv[1], sizeof(memory), read_len);
+            return 1;
         }
+        memset(memory, 0xff, sizeof(memory));
     }
-
     flash_base = memory;
-
-    uint32_t map_size = 0;
-    uint32_t list_size = 0;
-
+    uint32_t map_size, list_size;
     romfs_get_buffers_sizes(sizeof(memory), &map_size, &list_size);
-
     uint16_t *flash_map = alloca(map_size);
     uint8_t *flash_list = alloca(list_size);
-
     if (!romfs_start(0x10000, sizeof(memory), flash_map, flash_list)) {
-        printf("Cannot start romfs!\n");
-        goto err;
+        fprintf(stderr, "Cannot start ROMFS\n");
+        return 1;
     }
-
-    uint8_t *romfs_io_buffer = alloca(ROMFS_FLASH_SECTOR);
-
-    if (argc > 2) {
-        if (!strcmp(argv[2], "format")) {
-            romfs_format();
-        } else if (!strcmp(argv[2], "list")) {
-            romfs_dir target_dir;
-            uint32_t err = ROMFS_NOERR;
-            if (argc > 3) {
-                err = romfs_dir_open_path(argv[3], &target_dir);
-            } else {
-                err = romfs_dir_root(&target_dir);
+    uint8_t io_buffer[ROMFS_FLASH_SECTOR];
+    bool ok = true;
+    uint32_t err = ROMFS_NOERR;
+    if (format) {
+        ok = romfs_format();
+        if (!ok) {
+            fprintf(stderr, "ROMFS format failed\n");
+        }
+    } else if (list) {
+        romfs_dir dir;
+        err = argc > 3 && strcmp(argv[3], "/") != 0 ? romfs_dir_open_path(argv[3], &dir) : romfs_dir_root(&dir);
+        if (err == ROMFS_NOERR) {
+            romfs_file entry = {0};
+            err = romfs_list_dir(&entry, true, &dir, true);
+            if (err == ROMFS_ERR_NO_FREE_ENTRIES) {
+                puts("(empty)");
             }
-
-            if (err != ROMFS_NOERR) {
-                fprintf(stderr, "Error: [%s] %s!\n", (argc > 3) ? argv[3] : "/", romfs_strerror(err));
-            } else {
-                romfs_file file = {0};
-                uint32_t list_err = romfs_list_dir(&file, true, &target_dir, true);
-                if (list_err == ROMFS_ERR_NO_FREE_ENTRIES) {
-                    printf("(empty)\n");
-                } else if (list_err != ROMFS_NOERR) {
-                    fprintf(stderr, "Error listing directory: %s\n", romfs_strerror(list_err));
-                } else {
-                    do {
-                        bool is_dir = (file.entry.attr.names.type == ROMFS_TYPE_DIR);
-                        printf("%s%s\t%u\t%02X %02X\n",
-                               file.entry.name,
-                               is_dir ? "/" : "",
-                               is_dir ? 0u : file.entry.size,
-                               file.entry.attr.names.mode,
-                               file.entry.attr.names.type);
-                    } while (romfs_list_dir(&file, false, &target_dir, true) == ROMFS_NOERR);
-                }
+            while (err == ROMFS_NOERR) {
+                bool is_dir = entry.entry.attr.names.type == ROMFS_TYPE_DIR;
+                printf("%s%s\t%u\t%02X %02X\n", entry.entry.name, is_dir ? "/" : "",
+                       is_dir ? 0u : entry.entry.size, entry.entry.attr.names.mode, entry.entry.attr.names.type);
+                err = romfs_list_dir(&entry, false, &dir, true);
             }
-        } else if (!strcmp(argv[2], "delete")) {
-            if (argc < 4) {
-                fprintf(stderr, "Usage: %s delete <path>\n", argv[0]);
-                goto err;
+            if (err == ROMFS_ERR_NO_FREE_ENTRIES) {
+                err = ROMFS_NOERR;
             }
-            uint32_t err;
-            if ((err = romfs_delete_path(argv[3])) != ROMFS_NOERR) {
-                fprintf(stderr, "Error: [%s] %s!\n", argv[3], romfs_strerror(err));
-            }
-        } else if (!strcmp(argv[2], "push")) {
-            if (argc < 5) {
-                fprintf(stderr, "Usage: %s push <host_file> <romfs_path>\n", argv[0]);
-                goto err;
-            }
-            FILE *inf = fopen(argv[3], "rb");
-            if (inf) {
-                uint8_t buffer[ROMFS_FLASH_SECTOR];
-                int ret;
-                romfs_file file;
-                if (romfs_create_path(argv[4], &file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC, romfs_io_buffer, true) != ROMFS_NOERR) {
-                    fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
-                } else {
-                    while ((ret = fread(buffer, 1, ROMFS_IO_CHUNK_SIZE, inf)) > 0) {
-                        if (romfs_write_file(buffer, ret, &file) == 0) {
-                            break;
-                        }
-                    }
-
-                    if (file.err == ROMFS_NOERR) {
-                        if (romfs_close_file(&file) != ROMFS_NOERR) {
-                            fprintf(stderr, "romfs close error %s\n", romfs_strerror(file.err));
-                        }
-                    } else {
-                        fprintf(stderr, "romfs write error %s\n", romfs_strerror(file.err));
-                        romfs_close_file(&file);
-                    }
-                }
-                fclose(inf);
-            } else {
-                fprintf(stderr, "Cannot open file %s\n", argv[3]);
-            }
-        } else if (!strcmp(argv[2], "pull")) {
-            if (argc < 5) {
-                fprintf(stderr, "Usage: %s pull <romfs_path> <host_file>\n", argv[0]);
-                goto err;
-            }
-            romfs_file file;
-            if (romfs_open_path(argv[3], &file, romfs_io_buffer) == ROMFS_NOERR) {
-                FILE *outf = fopen(argv[4], "wb");
-                if (outf) {
-                    uint8_t buffer[ROMFS_FLASH_SECTOR];
-                    int ret;
-                    while ((ret = romfs_read_file(buffer, ROMFS_FLASH_SECTOR, &file)) > 0) {
-                        fwrite(buffer, 1, ret, outf);
-                    }
-
-                    if (file.err != ROMFS_NOERR && file.err != ROMFS_ERR_EOF) {
-                        fprintf(stderr, "romfs read error %s\n", romfs_strerror(file.err));
-                    }
-                    fclose(outf);
-                } else {
-                    fprintf(stderr, "Cannot open file %s\n", argv[3]);
-                }
-                romfs_close_file(&file);
-            } else {
-                fprintf(stderr, "romfs error: %s\n", romfs_strerror(file.err));
-            }
-        } else if (!strcmp(argv[2], "mkdir")) {
-            if (argc < 4) {
-                fprintf(stderr, "Usage: %s mkdir <path>\n", argv[0]);
-                goto err;
-            }
-            romfs_dir created;
-            uint32_t err = romfs_mkdir_path(argv[3], true, &created);
-            if (err != ROMFS_NOERR) {
-                fprintf(stderr, "Error creating directory [%s]: %s\n", argv[3], romfs_strerror(err));
-            }
-        } else if (!strcmp(argv[2], "rmdir")) {
-            if (argc < 4) {
-                fprintf(stderr, "Usage: %s rmdir <path>\n", argv[0]);
-                goto err;
-            }
-            uint32_t err = romfs_rmdir_path(argv[3]);
-            if (err != ROMFS_NOERR) {
-                fprintf(stderr, "Error removing directory [%s]: %s\n", argv[3], romfs_strerror(err));
-            }
-        } else if (!strcmp(argv[2], "free")) {
-            printf("Free space: %u bytes\n", romfs_free());
-        } else {
-            fprintf(stderr, "Error: Unknown command '%s'\n", argv[2]);
+        }
+    } else if (free_space) {
+        printf("Free space: %u bytes\n", romfs_free());
+    } else if (upload || download) {
+        ok = transfer_file(upload ? argv[3] : argv[4], upload ? argv[4] : argv[3], upload, io_buffer);
+    } else if (delete) {
+        err = romfs_delete_path(argv[3]);
+    } else if (mkdir) {
+        err = romfs_mkdir_path(argv[3], true, NULL);
+    } else if (rmdir) {
+        err = romfs_rmdir_path(argv[3]);
+    }
+    if (err != ROMFS_NOERR) {
+        fprintf(stderr, "ROMFS %s: %s\n", command, romfs_strerror(err));
+        ok = false;
+    }
+    if (format || upload || delete || mkdir || rmdir) {
+        err = romfs_sync();
+        if (err != ROMFS_NOERR) {
+            fprintf(stderr, "ROMFS sync: %s\n", romfs_strerror(err));
+            return 1;
+        }
+        /* Preserve an accepted partial upload even when the transfer failed. */
+        if (!save_romfs(argv[1], memory, sizeof(memory))) {
+            ok = false;
         }
     }
-
-    save_romfs(argv[1], memory, sizeof(memory));
-
-err:
-
-    return 0;
+    if (fflush(stdout) != 0) {
+        ok = false;
+    }
+    return ok ? 0 : 1;
 }

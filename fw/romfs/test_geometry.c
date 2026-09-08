@@ -99,7 +99,7 @@ static void check_capacity(uint32_t mb, uint32_t expected_map, uint32_t expected
     CHECK(romfs_create_file("full", &full, 0, ROMFS_TYPE_MISC, io) == ROMFS_NOERR);
     CHECK(romfs_write_file(data, sizeof(data), &full) == 0);
     CHECK(full.err == ROMFS_ERR_NO_SPACE);
-    CHECK(romfs_close_file(&full) == ROMFS_ERR_NO_SPACE);
+    CHECK(romfs_close_file(&full) == ROMFS_NOERR);
     CHECK(romfs_delete("old") == ROMFS_NOERR);
     CHECK(romfs_start(raw_start, size, map, list));
     CHECK(romfs_free() == ROMFS_FLASH_SECTOR);
