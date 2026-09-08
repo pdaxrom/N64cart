@@ -246,10 +246,19 @@ static uint32_t romfs_sector_count(uint32_t size)
     return size / ROMFS_FLASH_SECTOR + (size % ROMFS_FLASH_SECTOR != 0);
 }
 
+/* A position used only during one public write/truncate operation. Never cache
+ * validation across calls: the caller owns the RAM map and can change it. */
+typedef struct {
+    uint32_t index;
+    uint32_t sector;
+} romfs_write_cursor;
+
 /* Validate the entire chain before exposing data or changing any of its links.
  * Exactly count links, with a self-link only at the end, also rejects cycles.
- * Optionally locate one sector during the same bounded walk. */
-static bool romfs_validate_chain(const romfs_entry *entry, uint32_t index, uint32_t *sector_out)
+ * Also locate the buffer's sector and an optional write position in this walk.
+ * A write beyond EOF starts its cursor at the last existing sector. */
+static bool romfs_validate_chain_with_cursor(const romfs_entry *entry, uint32_t index, uint32_t *sector_out,
+                                              romfs_write_cursor *cursor)
 {
     uint32_t first = flash_data_start;
     uint32_t limit = flash_sector_limit;
@@ -276,7 +285,13 @@ static bool romfs_validate_chain(const romfs_entry *entry, uint32_t index, uint3
             return false;
         }
     } else if (count == 0) {
-        return entry->start == 0xffff && !sector_out;
+        if (entry->start != 0xffff || sector_out) {
+            return false;
+        }
+        if (cursor) {
+            *cursor = (romfs_write_cursor) {0, 0xffff};
+        }
+        return true;
     }
     if (count > limit - first || (sector_out && index >= count)) {
         return false;
@@ -284,6 +299,8 @@ static bool romfs_validate_chain(const romfs_entry *entry, uint32_t index, uint3
 
     uint32_t sector = entry->start;
     uint32_t selected = 0xffff;
+    uint32_t cursor_index = cursor && count ? (cursor->index < count ? cursor->index : count - 1) : 0;
+    uint32_t cursor_sector = 0xffff;
     for (uint32_t i = 0; i < count; i++) {
         if (sector < first || sector >= limit) {
             return false;
@@ -299,29 +316,40 @@ static bool romfs_validate_chain(const romfs_entry *entry, uint32_t index, uint3
         if (i == index) {
             selected = sector;
         }
+        if (cursor && i == cursor_index) {
+            cursor_sector = sector;
+        }
         sector = next;
     }
     if (sector_out) {
         *sector_out = selected;
     }
+    if (cursor) {
+        *cursor = (romfs_write_cursor) {cursor_index, cursor_sector};
+    }
     return true;
 }
 
-static bool romfs_validate_write_file(const romfs_file *file)
+static bool romfs_validate_chain(const romfs_entry *entry, uint32_t index, uint32_t *sector_out)
+{
+    return romfs_validate_chain_with_cursor(entry, index, sector_out, NULL);
+}
+
+static bool romfs_validate_write_file(const romfs_file *file, romfs_write_cursor *cursor)
 {
     if (romfs_entry_is_protected(&file->entry) ||
             (file->entry.attr.names.mode & ROMFS_MODE_READONLY) != 0) {
         return false;
     }
     if (file->buffer_base == ROMFS_BUFFER_NONE) {
-        return !file->buffer_dirty && romfs_validate_chain(&file->entry, 0, NULL);
+        return !file->buffer_dirty && romfs_validate_chain_with_cursor(&file->entry, 0, NULL, cursor);
     }
     if (!file->io_buffer || file->buffer_base >= file->entry.size ||
             file->buffer_base % ROMFS_FLASH_SECTOR != 0) {
         return false;
     }
     uint32_t sector;
-    return romfs_validate_chain(&file->entry, file->buffer_base / ROMFS_FLASH_SECTOR, &sector) &&
+    return romfs_validate_chain_with_cursor(&file->entry, file->buffer_base / ROMFS_FLASH_SECTOR, &sector, cursor) &&
            file->pos == sector;
 }
 
@@ -931,17 +959,18 @@ static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sect
     return (file->err = ROMFS_NOERR);
 }
 
-static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, bool allocate, uint32_t *sector_out)
+static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, romfs_write_cursor *cursor,
+                                      uint32_t *sector_out)
 {
-    if (!file || !sector_out) {
-        return ROMFS_ERR_OPERATION;
+    if (!file || !cursor || !sector_out || sector_index < cursor->index) {
+        return file ? (file->err = ROMFS_ERR_OPERATION) : ROMFS_ERR_OPERATION;
     }
 
-    uint32_t sector = file->entry.start;
+    uint32_t sector = cursor->sector;
     uint32_t first_data_sector = romfs_first_data_sector();
     if (sector == 0xffff) {
-        if (!allocate) {
-            return (file->err = ROMFS_ERR_NO_ENTRY);
+        if (sector_index != 0) {
+            return (file->err = ROMFS_ERR_OPERATION);
         }
         uint32_t err = romfs_allocate_sector_after(file, 0xffff, &sector);
         if (err != ROMFS_NOERR) {
@@ -949,19 +978,16 @@ static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, b
         }
     }
 
-    if (sector >= flash_sector_limit || (allocate && sector < first_data_sector)) {
+    if (sector >= flash_sector_limit || sector < first_data_sector) {
         return (file->err = ROMFS_ERR_OPERATION);
     }
 
-    for (uint32_t i = 0; i < sector_index; i++) {
+    for (uint32_t i = cursor->index; i < sector_index; i++) {
         uint32_t next = from_lsb16(flash_map_int[sector]);
-        if (next >= flash_sector_limit || (allocate && next < first_data_sector)) {
+        if (next >= flash_sector_limit || next < first_data_sector) {
             return (file->err = ROMFS_ERR_OPERATION);
         }
         if (next == sector) {
-            if (!allocate) {
-                return (file->err = ROMFS_ERR_OPERATION);
-            }
             uint32_t err = romfs_allocate_sector_after(file, sector, &next);
             if (err != ROMFS_NOERR) {
                 return err;
@@ -970,6 +996,7 @@ static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, b
         sector = next;
     }
 
+    *cursor = (romfs_write_cursor) {sector_index, sector};
     *sector_out = sector;
     return (file->err = ROMFS_NOERR);
 }
@@ -1004,7 +1031,7 @@ static uint32_t romfs_flush_write_buffer(romfs_file *file)
     return (file->err = ROMFS_NOERR);
 }
 
-static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offset)
+static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offset, romfs_write_cursor *cursor)
 {
     uint32_t sector_base = logical_offset & ~(ROMFS_FLASH_SECTOR - 1);
     if (file->buffer_base == sector_base) {
@@ -1023,7 +1050,7 @@ static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offse
     uint32_t sector = 0xffff;
     uint32_t sector_index = sector_base / ROMFS_FLASH_SECTOR;
     bool existing_sector = sector_base < file->entry.size;
-    err = romfs_sector_at_index(file, sector_index, true, &sector);
+    err = romfs_sector_at_index(file, sector_index, cursor, &sector);
     if (err != ROMFS_NOERR) {
         return err;
     }
@@ -1044,14 +1071,14 @@ static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offse
     return (file->err = ROMFS_NOERR);
 }
 
-static uint32_t romfs_write_file_no_gap(const void *buffer, uint32_t size, romfs_file *file)
+static uint32_t romfs_write_file_no_gap(const void *buffer, uint32_t size, romfs_file *file, romfs_write_cursor *cursor)
 {
     const uint8_t *src = (const uint8_t *) buffer;
     uint32_t remaining = size;
     uint32_t total = 0;
 
     while (remaining > 0) {
-        uint32_t err = romfs_load_write_buffer(file, file->write_offset);
+        uint32_t err = romfs_load_write_buffer(file, file->write_offset, cursor);
         if (err != ROMFS_NOERR) {
             return total;
         }
@@ -1085,7 +1112,7 @@ static uint32_t romfs_write_file_no_gap(const void *buffer, uint32_t size, romfs
     return total;
 }
 
-static uint32_t romfs_zero_extend_to(romfs_file *file, uint32_t size)
+static uint32_t romfs_zero_extend_to(romfs_file *file, uint32_t size, romfs_write_cursor *cursor)
 {
     uint8_t zeros[256] = {0};
 
@@ -1093,7 +1120,7 @@ static uint32_t romfs_zero_extend_to(romfs_file *file, uint32_t size)
         file->write_offset = file->entry.size;
         uint32_t remaining = size - file->entry.size;
         uint32_t chunk = remaining < sizeof(zeros) ? remaining : sizeof(zeros);
-        if (romfs_write_file_no_gap(zeros, chunk, file) != chunk || file->err != ROMFS_NOERR) {
+        if (romfs_write_file_no_gap(zeros, chunk, file, cursor) != chunk || file->err != ROMFS_NOERR) {
             return file->err;
         }
     }
@@ -1106,8 +1133,12 @@ uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file *file)
     if (!file) {
         return 0;
     }
-    if (!romfs_file_is_open(file) || file->op != ROMFS_OP_WRITE || !file->io_buffer || (size && !buffer) ||
-            !romfs_validate_write_file(file)) {
+    if (!romfs_file_is_open(file) || file->op != ROMFS_OP_WRITE || !file->io_buffer || (size && !buffer)) {
+        file->err = ROMFS_ERR_OPERATION;
+        return 0;
+    }
+    romfs_write_cursor cursor = {.index = file->write_offset / ROMFS_FLASH_SECTOR};
+    if (!romfs_validate_write_file(file, &cursor)) {
         file->err = ROMFS_ERR_OPERATION;
         return 0;
     }
@@ -1128,7 +1159,7 @@ uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file *file)
 
     uint32_t target = file->write_offset;
     if (target > file->entry.size) {
-        uint32_t err = romfs_zero_extend_to(file, target);
+        uint32_t err = romfs_zero_extend_to(file, target, &cursor);
         file->write_offset = target;
         file->offset = target % ROMFS_FLASH_SECTOR;
         if (err != ROMFS_NOERR) {
@@ -1136,7 +1167,7 @@ uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file *file)
         }
     }
 
-    return romfs_write_file_no_gap(buffer, size, file);
+    return romfs_write_file_no_gap(buffer, size, file, &cursor);
 }
 
 static uint32_t romfs_sync_write_file(romfs_file *file)
@@ -1153,7 +1184,7 @@ static uint32_t romfs_sync_write_file(romfs_file *file)
     if (file->err != ROMFS_NOERR) {
         return file->err;
     }
-    if (!romfs_validate_write_file(file)) {
+    if (!romfs_validate_write_file(file, NULL)) {
         return (file->err = ROMFS_ERR_OPERATION);
     }
 
@@ -1191,7 +1222,7 @@ uint32_t romfs_flush_file(romfs_file *file)
  * through romfs_sync(). This cannot undo an in-place physical write failure. */
 static void romfs_discard_unpublished_tail(romfs_file *file)
 {
-    if (!romfs_validate_write_file(file) || file->nentry >= flash_list_size / sizeof(romfs_entry)) {
+    if (!romfs_validate_write_file(file, NULL) || file->nentry >= flash_list_size / sizeof(romfs_entry)) {
         return;
     }
     uint32_t count = romfs_sector_count(file->entry.size);
@@ -1246,7 +1277,8 @@ uint32_t romfs_truncate_file(romfs_file *file, uint32_t size)
     if (!file->io_buffer) {
         return (file->err = ROMFS_ERR_NO_IO_BUFFER);
     }
-    if (!romfs_validate_write_file(file)) {
+    romfs_write_cursor cursor = {.index = file->entry.size / ROMFS_FLASH_SECTOR};
+    if (!romfs_validate_write_file(file, &cursor)) {
         return (file->err = ROMFS_ERR_OPERATION);
     }
     if (romfs_slot_busy(file->nentry, file, false)) {
@@ -1269,7 +1301,7 @@ uint32_t romfs_truncate_file(romfs_file *file, uint32_t size)
 
     if (size > old_size) {
         file->write_offset = old_size;
-        status = romfs_zero_extend_to(file, size);
+        status = romfs_zero_extend_to(file, size, &cursor);
         if (status != ROMFS_NOERR) {
             goto out;
         }
@@ -1507,7 +1539,7 @@ uint32_t romfs_seek_file(romfs_file *file, int32_t offset, int whence)
     uint32_t target = (uint32_t) target64;
 
     if (file->op == ROMFS_OP_WRITE) {
-        if (!romfs_validate_write_file(file)) {
+        if (!romfs_validate_write_file(file, NULL)) {
             return (file->err = ROMFS_ERR_OPERATION);
         }
         file->write_offset = target;

@@ -10,7 +10,8 @@ make -C fw/romfs check
 The default build uses AddressSanitizer and UndefinedBehaviorSanitizer, with
 sanitizer recovery disabled. Executables, objects and logs go to the ignored
 `build-romfs-tests/` directory. `make check` runs the flash emulator, geometry,
-chain corruption, handle ownership, I/O failures, write counts/ordering, newlib bridge, platform callback/USB, and
+chain corruption, handle ownership, I/O failures, write counts/ordering, chain cursor,
+newlib bridge, platform callback/USB, and
 process-level runner checks, including the full ROMFS suite. It requires
 Python 3 and Bash on a POSIX host in addition to the C compiler. CLI tests use
 `RLIMIT_FSIZE` to exercise real host write/close failures.
@@ -114,9 +115,10 @@ on these rejection paths. They verify that valid GC works after the fixture's
 bad link is repaired; production code does not repair corrupt user chains.
 
 Validation uses a bounded walk and no additional bitmap or heap allocation.
-It currently adds a full chain walk to each read/write/seek call, so small I/O
-calls on large files cost more. Caching with correct invalidation belongs to
-the planned performance work. This checks each chain's structure and range,
+It still adds a full chain walk to read/write/seek operations, so small I/O
+calls on large files cost more. A local write cursor removes repeated position
+searches within an operation, as described below; validation results are not
+cached across public calls. This checks each chain's structure and range,
 not ownership of sectors shared by otherwise structurally valid files.
 
 ## Handle ownership and names
@@ -318,6 +320,56 @@ checks that both data buffers already match flash, including after a failure in
 either writer. Gap/truncate retries inject erase/program failures into an old
 partial sector or a new sector, retaining offsets, the accepted prefix and zeros.
 Existing I/O tests cover ENOSPC and reclamation after a failed close.
+
+## Chain cursor and traversal counts
+
+```sh
+build-romfs-tests/test_cursor
+build-romfs-tests/test_cursor --measure
+```
+
+Each public write initializes a local logical/physical cursor during the full
+chain validation. That same walk checks the cached I/O buffer's physical sector,
+even if a preceding seek placed the write position elsewhere. Forward writes
+follow the cursor instead of starting at the beginning of the file for every
+sector. The cursor survives full-buffer flushes and internal zero-fill calls;
+truncate extension also uses it. It occupies two uint32_t fields on the stack,
+with no persistent handle fields or heap allocation.
+
+The cursor is discarded on return, including failures. Every subsequent public
+write revalidates the complete chain and obtains a fresh position. Direct edits
+to the caller-owned map therefore cannot bypass the existing corruption checks.
+Read/seek validation and dirty-buffer consistency checks remain in place.
+
+`test_instrument.py` generates `build-romfs-tests/romfs-instrumented.c` from the
+production source. It inserts counters at the map link loads in validation and
+sector-position lookup; it requires one matching function and one matching load
+for each counter and fails if the source cannot be identified. No counters or
+conditional instrumentation are added to the production core. `test_cursor`
+links this generated core with the same NOR emulator. `--measure` skips the
+optimized lookup bound so the previous core can be measured with the same test.
+
+Coverage includes 64/256/1024/4096 sectors, contiguous and alternating fragmented
+chains, creation and overwrite, and write sizes of 17 bytes, 4 KiB, 64 KiB or
+the entire file. Fixtures own the intervening sectors through a separate blocker
+file; tests check both files after remount. Existing data differs from replacement
+data, preventing an omitted overwrite from passing readback. Validation counts
+are checked separately against the expected full walks for the given calls.
+
+For a 16 MiB file written in one call, position lookup drops from 8,386,560
+map link loads to 4,095, for both contiguous and fragmented layouts. A full-file
+overwrite still validates 4,096 links before writing. With separate 4 KiB
+overwrite calls, validation still loads 16,777,216 links in total; position lookup
+drops from 8,386,560 to zero. This optimization does not make all small-call I/O
+linear, and these counters do not measure allocator scans or cartridge time.
+
+Further cases cover long gap/truncate extension, fragmented seeks in both
+directions with a dirty buffer, truncate followed by reallocation, and cursor
+restart after read/erase/program failures. A live valid relink between writes
+must be followed correctly; corruption in a later link must be rejected even
+when the next write would hit the current dirty buffer, before flash callbacks.
+The ordinary corruption, I/O, ownership and single-programming tests run alongside
+this harness in `make check`.
 
 ## Flash emulator and fault injection
 
