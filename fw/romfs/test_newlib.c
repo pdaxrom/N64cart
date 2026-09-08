@@ -286,14 +286,16 @@ static void open_io_failure_cleanup(void)
 {
     for (unsigned operation = TEST_FLASH_ERASE; operation <= TEST_FLASH_WRITE; operation++) {
         for (unsigned nth = 1; nth <= 2; nth++) {
-            setup("readonly create metadata failure releases temporary writer");
-            CHECK(test_flash_fail_on(operation, nth));
-            errno = EDOM;
-            CHECK(fs->open("empty", O_RDONLY | O_CREAT | O_EXCL) == NULL && errno == EIO);
-            CHECK(test_flash_get_stats()->injected == 1);
-            CHECK(romfs_sync() == ROMFS_NOERR);
-            check_contents("empty", "");
-            CHECK(fs->unlink("empty") == 0);
+            if (nth == 1) { /* An empty file changes only the catalog. */
+                setup("readonly create metadata failure releases temporary writer");
+                CHECK(test_flash_fail_on(operation, nth));
+                errno = EDOM;
+                CHECK(fs->open("empty", O_RDONLY | O_CREAT | O_EXCL) == NULL && errno == EIO);
+                CHECK(test_flash_get_stats()->injected == 1);
+                CHECK(romfs_sync() == ROMFS_NOERR);
+                check_contents("empty", "");
+                CHECK(fs->unlink("empty") == 0);
+            }
             setup("truncate metadata failure releases writer and preserves errno");
             create("data", "old");
             CHECK(test_flash_fail_on(operation, nth));
@@ -349,6 +351,38 @@ static void mixed_read_write(void)
     CHECK(fs->read(handle, actual, sizeof(actual)) == 7 && memcmp(actual, expected, 7) == 0);
     CHECK(fs->close(handle) == 0);
     puts("PASS newlib O_RDWR alternating read/write/seek, EOF, read error, truncate and remount");
+}
+
+static void clean_read_write_views(void)
+{
+    setup("repeated O_RDWR reads do not rewrite metadata");
+    create("data", "original");
+    void *handle = fs->open("data", O_RDWR);
+    CHECK(handle != NULL);
+    for (unsigned changed = 0; changed < 2; changed++) {
+        if (changed) {
+            CHECK(fs->lseek(handle, 0, SEEK_SET) == 0);
+            CHECK(fs->write(handle, (uint8_t *) "changed!", 8) == 8);
+        }
+        test_flash_reset_counters();
+        uint8_t actual[8];
+        for (unsigned i = 0; i < 16; i++) {
+            CHECK(fs->lseek(handle, 0, SEEK_SET) == 0);
+            CHECK(fs->read(handle, actual, sizeof(actual)) == sizeof(actual));
+            CHECK(memcmp(actual, changed ? "changed!" : "original", sizeof(actual)) == 0);
+        }
+        /* The first read flushes the changed data sector once; its catalog
+         * entry and map are unchanged, as are all subsequent read views. */
+        CHECK(test_flash_get_stats()->calls[TEST_FLASH_ERASE] == changed);
+        CHECK(test_flash_get_stats()->calls[TEST_FLASH_WRITE] == changed);
+    }
+    test_flash_reset_counters();
+    CHECK(fs->close(handle) == 0);
+    CHECK(test_flash_get_stats()->calls[TEST_FLASH_ERASE] == 0);
+    CHECK(test_flash_get_stats()->calls[TEST_FLASH_WRITE] == 0);
+    CHECK(romfs_start(START, IMAGE_SIZE, map, list));
+    check_contents("data", "changed!");
+    puts("PASS repeated O_RDWR reads and clean close issue no metadata erase/program");
 }
 
 static void busy_handles(void)
@@ -459,7 +493,7 @@ static void io_errors_and_partial_transfers(void)
     CHECK(test_flash_fail_on(TEST_FLASH_WRITE, 1));
     CHECK(fs->write(handle, data, sizeof(data)) == ROMFS_FLASH_SECTOR && errno == EIO);
     CHECK(fs->close(handle) == 0); /* Retry the retained dirty buffer. */
-    handle = fs->open("data", O_RDWR);
+    handle = fs->open("data", O_RDWR | O_APPEND);
     CHECK(handle != NULL);
     CHECK(fs->write(handle, data, 17) == 17);
     CHECK(test_flash_fail_on(TEST_FLASH_WRITE, 2)); /* Data succeeds, catalog fails. */
@@ -467,8 +501,9 @@ static void io_errors_and_partial_transfers(void)
     CHECK(romfs_sync() == ROMFS_NOERR);
     handle = fs->open("data", O_RDONLY);
     CHECK(handle != NULL);
-    CHECK(fs->read(handle, output, sizeof(output)) == ROMFS_FLASH_SECTOR);
+    CHECK(fs->read(handle, output, sizeof(output)) == ROMFS_FLASH_SECTOR + 17);
     CHECK(memcmp(data, output, ROMFS_FLASH_SECTOR) == 0);
+    CHECK(memcmp(data, output + ROMFS_FLASH_SECTOR, 17) == 0);
     CHECK(fs->close(handle) == 0);
 
     setup("newlib ENOSPC retains prefix after close and remount");
@@ -498,6 +533,7 @@ int main(void)
     protected_open_flags();
     open_io_failure_cleanup();
     mixed_read_write();
+    clean_read_write_views();
     busy_handles();
     pending_and_failed_handles();
     stale_directory_cookie();

@@ -206,8 +206,8 @@ offsets, access failures, slot/attribute preservation and remount readback.
 Additional cases cover append after read/seek/truncate, pending exclusive
 creation, busy truncation, protected entries and directories. Rejected flag,
 access and ownership checks require an unchanged image/map/catalog and zero
-flash callbacks. Fault injection checks both metadata sectors for read-only
-creation and truncation: failures return `EIO`, preserve that errno during
+flash callbacks. Fault injection checks the catalog sector for empty read-only
+creation and both catalog/map sectors for nonempty truncation: failures return `EIO`, preserve that errno during
 cleanup, and release handles. These I/O failures can leave creation/truncation
 applied in RAM; synchronization and close recovery still follow the I/O contract
 below, without rollback or power-loss guarantees.
@@ -215,9 +215,11 @@ below, without rollback or power-loss guarantees.
 ## I/O errors and partial transfers
 
 `build-romfs-tests/test_io` injects failures into mount reads, data buffer
-read/erase/write (including first writes of new sectors), truncate tail I/O, and both sectors of metadata
-on a 2 MiB image. Metadata operations cover format, mkdir, delete, rmdir, rename,
-file flush and close, including repeated failures before a successful retry.
+read/erase/write (including first writes of new sectors), truncate tail I/O,
+and each changed metadata sector on a 2 MiB image. Format changes both sectors;
+mkdir, delete, rmdir, rename and empty-file flush/close change only the catalog.
+Tests include repeated failures before a successful retry. `test_metadata`
+extends this to every sector of a 256 MiB image and sparse dirty-sector sets.
 
 Each failed flash callback returns `ROMFS_ERR_IO` through the calling operation
 (or false from start/format). An erase failure prevents the corresponding write.
@@ -306,9 +308,10 @@ Measured on a 16 MiB image (numbers are erase/program pairs for file data):
 | Overwrite 17 bytes inside a two-sector file | 1 | 1 |
 | Append 17 bytes to a one-sector file | 2 | 1 |
 
-Each measured operation additionally writes three metadata sectors in both
-versions. Reads remain zero for new sectors; appending to a partial sector and
-partial overwrite each read the existing sector once. Repeated flushes or writes
+Before dirty tracking each measured operation additionally wrote three metadata
+sectors. Currently creation and these appends write two (one catalog and one map
+sector); overwrite changes neither. Reads remain zero for new sectors; appending
+to a partial sector and partial overwrite each read the existing sector once. Repeated flushes or writes
 to the same previously stored sector can still require another erase/program.
 These counts are not elapsed-time measurements on a cartridge.
 
@@ -317,7 +320,7 @@ partial writes, zero-filled gaps and truncate extension. They verify both the
 logical file and physical zero bytes beyond EOF. Two pending writers must reserve
 different sectors without any I/O. Before each metadata erase/program the wrapper
 checks that both data buffers already match flash, including after a failure in
-either writer. Gap/truncate retries inject erase/program failures into an old
+either writer, for ordinary sync and explicit full sync. Gap/truncate retries inject erase/program failures into an old
 partial sector or a new sector, retaining offsets, the accepted prefix and zeros.
 Existing I/O tests cover ENOSPC and reclamation after a failed close.
 
@@ -370,6 +373,63 @@ must be followed correctly; corruption in a later link must be rejected even
 when the next write would hit the current dirty buffer, before flash callbacks.
 The ordinary corruption, I/O, ownership and single-programming tests run alongside
 this harness in `make check`.
+
+## Changed metadata sectors and explicit full sync
+
+The core keeps one uint32_t dirty mask for flashmap and one for flashlist. A
+changed link or catalog entry marks its containing sector; storing an identical
+entry leaves it clean. Allocation, freeing, GC, directory changes and service
+chain repairs participate. Format marks every metadata sector. At 256 MiB the
+map uses all 32 bits and the catalog uses four; sector 65535 remains unavailable.
+
+Synchronization flushes all changed open writers before metadata. It erases and
+programs only marked metadata sectors, in catalog-then-map order. A bit clears
+only after both callbacks succeed. An I/O failure leaves the failed sector and
+unvisited sectors pending; `romfs_sync()` retries them without rewriting earlier
+successful sectors, unless a later API operation changed one again. This is
+retry behavior for reported I/O failures, not an atomic commit on power loss.
+
+Dirty masks track API changes. For intentional direct writes to the caller-owned
+map/list buffers, use `romfs_sync_full()` to mark all metadata and synchronize.
+Ordinary sync/flush/close no longer implicitly persist arbitrary external edits.
+Open writers remain authoritative for their catalog entries; full sync first
+synchronizes their data and entries. Retry a failed full sync with `romfs_sync()`
+to retain progress. The API does not rebuild the runtime directory index after
+raw directory edits; remount after persisting such fixture changes. Production
+clients in this repository modify metadata through the API and need no extra
+calls. Direct-map geometry and live-relink tests explicitly request full sync.
+
+`test_metadata` wraps the NOR callbacks to count data I/O separately and verify
+each metadata address. `--measure` runs identical workloads without optimized
+count assertions; define `ROMFS_METADATA_BASELINE` when linking an older core
+that does not provide `romfs_sync_full()`. Measurements cover 2/4/8/16/32/64/128/256
+MiB images, including creation, overwrite, clean flush/close, append within an
+existing sector, rename/delete, directory operations and GC.
+
+On a 256 MiB image, metadata erase/program pairs change as follows:
+
+| Operation | Before dirty tracking | Current |
+|---|---:|---:|
+| Create 17 bytes | 36 | 2 |
+| Overwrite within the existing size | 36 | 0 |
+| Clean flush or close | 36 | 0 |
+| Append within the existing last sector | 36 | 1 |
+| Rename, delete, mkdir or rmdir | 36 | 1 |
+| GC of a two-sector tombstone, create empty replacement | 36 | 2 |
+
+Boundary tests cover catalog slots 63/64, 127/128, 191/192 and 255 for file and
+directory operations, map links 2047/2048 and 63487/63488, shrink, and remount
+readback. Fault injection covers erase and program of each of 36 metadata sectors
+for both format and full sync. Sparse failures target catalog sector 3 and map
+sectors 30/31; retry after failed close also checks that a subsequent rename
+re-dirties an already successful catalog sector. Further checks cover live and
+mount-time service repairs, external buffer edits, and clearing masks on remount.
+
+The newlib test reads an O_RDWR file 16 times before and after an overwrite:
+clean reads issue zero erase/program operations; after an overwrite only the
+first read writes its dirty data sector. Contents are checked after every read
+and remount. Existing ownership, chain corruption and shared-writer ordering
+checks continue to run. These are callback counts, not cartridge timings.
 
 ## Flash emulator and fault injection
 

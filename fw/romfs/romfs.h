@@ -145,6 +145,12 @@ bool romfs_format(void);
 /* Flush changed open writers, then retry pending metadata writes. Shared map
  * commits can also synchronize other open files. No power-loss atomicity. */
 uint32_t romfs_sync(void);
+/* Explicitly persist all metadata after intentional direct edits to the
+ * caller-owned map/list buffers. Ordinary sync/flush/close track API changes
+ * only. Changed open writers are synchronized first and remain authoritative
+ * for their catalog entries. After I/O failure, retry with romfs_sync() to
+ * avoid rewriting sectors that already succeeded. No power-loss atomicity. */
+uint32_t romfs_sync_full(void);
 uint32_t romfs_free(void);
 uint32_t romfs_list(romfs_file * entry, bool first);
 uint32_t romfs_delete(const char *name);

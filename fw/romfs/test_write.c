@@ -122,6 +122,7 @@ static void measurements(bool measure_only)
     const char *names[] = {"new-1MiB", "new-1MiB+17", "append-partial", "overwrite", "append-aligned"};
     const uint32_t data_writes[] = {256, 257, 2, 1, 1};
     const uint32_t data_reads[] = {0, 0, 1, 1, 0};
+    const uint32_t metadata_writes[] = {2, 2, 2, 0, 2};
     for (unsigned action = 0; action < 5; action++) {
         setup(names[action], false);
         romfs_file file = {0};
@@ -148,7 +149,8 @@ static void measurements(bool measure_only)
             CHECK(calls[1][TEST_FLASH_READ] == data_reads[action]);
             CHECK(calls[1][TEST_FLASH_ERASE] == data_writes[action]);
             CHECK(calls[1][TEST_FLASH_WRITE] == data_writes[action]);
-            CHECK(calls[0][TEST_FLASH_ERASE] == 3 && calls[0][TEST_FLASH_WRITE] == 3);
+            CHECK(calls[0][TEST_FLASH_ERASE] == metadata_writes[action] &&
+                  calls[0][TEST_FLASH_WRITE] == metadata_writes[action]);
         }
         remount();
         readback("data", size);
@@ -197,7 +199,7 @@ static void reused_sectors(void)
     puts("PASS reused sectors are initialized in RAM; partial tails and gap/truncate extensions contain zeros");
 }
 
-static void shared_commit_order(void)
+static void shared_commit_order(bool full_sync)
 {
     for (unsigned operation = TEST_FLASH_ERASE; operation <= TEST_FLASH_WRITE; operation++) {
         for (unsigned fail = 0; fail <= 2; fail++) {
@@ -219,11 +221,11 @@ static void shared_commit_order(void)
             guard_count = 2;
             if (fail) {
                 CHECK(test_flash_fail_on(operation, fail));
-                CHECK(romfs_sync() == ROMFS_ERR_IO);
+                CHECK((full_sync ? romfs_sync_full() : romfs_sync()) == ROMFS_ERR_IO);
                 CHECK(calls[0][TEST_FLASH_ERASE] == 0 && calls[0][TEST_FLASH_WRITE] == 0);
                 CHECK(first.buffer_dirty || second.buffer_dirty);
             }
-            CHECK(romfs_sync() == ROMFS_NOERR);
+            CHECK((full_sync && !fail ? romfs_sync_full() : romfs_sync()) == ROMFS_NOERR);
             CHECK(!first.buffer_dirty && !second.buffer_dirty);
             check_zero_tail(first.entry.start, 17);
             check_zero_tail(second.entry.start, 29);
@@ -301,7 +303,8 @@ int main(int argc, char **argv)
     measurements(measure_only);
     if (!measure_only) {
         reused_sectors();
-        shared_commit_order();
+        shared_commit_order(false);
+        shared_commit_order(true);
         extension_failures();
     }
     test_flash_destroy();

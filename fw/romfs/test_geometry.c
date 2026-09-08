@@ -88,6 +88,7 @@ static void check_capacity(uint32_t mb, uint32_t expected_map, uint32_t expected
         map[i] = le16((uint16_t) ((i + 1 < limit - 1) ? i + 1 : i));
     }
     bulk.entry.size = (limit - 1 - bulk.entry.start) * ROMFS_FLASH_SECTOR;
+    CHECK(romfs_sync_full() == ROMFS_NOERR); /* Persist the directly constructed map. */
     CHECK(romfs_close_file(&bulk) == ROMFS_NOERR);
     CHECK(romfs_start(raw_start, size, map, list));
     CHECK(romfs_free() == ROMFS_FLASH_SECTOR);

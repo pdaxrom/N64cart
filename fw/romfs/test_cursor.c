@@ -279,6 +279,7 @@ static void externally_changed_chain(void)
     }
     map[first_data + 2] = le16(first_data + 2);
     CHECK(romfs_write_file(&patch, 1, &file) == 1 && file.err == ROMFS_NOERR);
+    CHECK(romfs_sync_full() == ROMFS_NOERR); /* Persist intentional direct relinking. */
     CHECK(romfs_close_file(&file) == ROMFS_NOERR);
     CHECK(romfs_start(START, IMAGE_SIZE, map, list));
     readback("data", 4 * SECTOR);

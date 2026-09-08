@@ -86,7 +86,8 @@ static void failed_mounts(void)
         CHECK(romfs_get_entry_path("/", &attempt.entry) != ROMFS_NOERR);
         CHECK(romfs_read_file(actual, 1, &file) == 0 && file.err == ROMFS_ERR_OPERATION);
         CHECK(romfs_close_file(&file) == ROMFS_NOERR);
-        CHECK(romfs_sync() == ROMFS_ERR_OPERATION && !romfs_format() && romfs_free() == 0);
+        CHECK(romfs_sync() == ROMFS_ERR_OPERATION && romfs_sync_full() == ROMFS_ERR_OPERATION &&
+              !romfs_format() && romfs_free() == 0);
         for (unsigned op = 0; op < TEST_FLASH_OPERATION_COUNT; op++) {
             CHECK(test_flash_get_stats()->calls[op] == 0);
         }
@@ -101,7 +102,7 @@ static void metadata_failures(void)
     const char *names[] = {"format", "mkdir", "delete", "rmdir", "rename", "close", "flush"};
     for (unsigned action = 0; action < sizeof(names) / sizeof(names[0]); action++) {
         for (unsigned op = TEST_FLASH_ERASE; op <= TEST_FLASH_WRITE; op++) {
-            for (unsigned nth = 1; nth <= 2; nth++) {
+            for (unsigned nth = 1; nth <= (action == 0 ? 2u : 1u); nth++) {
                 setup(names[action], false);
                 romfs_file file;
                 romfs_dir root, dir;
