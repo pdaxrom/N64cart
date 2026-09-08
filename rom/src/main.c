@@ -1038,12 +1038,11 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
                     int addon_save_type)
 {
     romfs_file file;
-    uint8_t romfs_flash_buffer[ROMFS_FLASH_SECTOR];
 
     const char *rom_name = strrchr(path, '/');
     rom_name = rom_name ? (rom_name + 1) : path;
 
-    if (romfs_open_path(path, &file, romfs_flash_buffer) == ROMFS_NOERR) {
+    if (romfs_open_path(path, &file, NULL) == ROMFS_NOERR) {
         uint16_t rom_lookup[ROMFS_FLASH_SECTOR * 4];
 
         memset(rom_lookup, 0, sizeof(rom_lookup));
@@ -1070,7 +1069,7 @@ static void run_rom(display_context_t disp, const char *path, const char *addon_
             const char *addon_name = strrchr(addon_path, '/');
             addon_name = addon_name ? (addon_name + 1) : addon_path;
 
-            if (romfs_open_path(addon_path, &file, romfs_flash_buffer) == ROMFS_NOERR) {
+            if (romfs_open_path(addon_path, &file, NULL) == ROMFS_NOERR) {
                 memset(rom_lookup, 0, sizeof(rom_lookup));
                 uint32_t map_size = romfs_read_map_table(rom_lookup, sizeof(rom_lookup) / 2, &file);
                 romfs_close_file(&file);

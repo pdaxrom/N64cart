@@ -374,6 +374,70 @@ when the next write would hit the current dirty buffer, before flash callbacks.
 The ordinary corruption, I/O, ownership and single-programming tests run alongside
 this harness in `make check`.
 
+## Read buffers, name lookup and allocation search
+
+Read-only opens and `romfs_open_read_view` accept a NULL `io_buffer`; reads go
+straight to the caller's output buffer. Existing callers may still pass a buffer.
+Writers continue to require their sector buffer. Newlib keeps no sector buffer
+for O_RDONLY and one for O_RDWR instead of two. O_RDONLY|O_CREAT uses a temporary
+writer buffer only when creating a missing file, then frees it before returning
+the read handle. ROM manager `run_rom` also no longer needs a 4096-byte local
+buffer to obtain the file's sector map; shared upload/download buffers in other
+clients remain available for writes.
+
+`test_newlib` links the bridge with renamed malloc/calloc/free functions to count
+actual requested heap bytes and inject ENOMEM at every allocation in five open
+scenarios. It checks cleanup and successful retry; the ordinary bridge tests
+also check that error paths and all completed cases release their allocations.
+`test_newlib --measure` reports heap use while skipping optimized size/count
+bounds, allowing comparison with the prior bridge/core and matching headers.
+On the 64-bit host, O_RDONLY goes from 4616 to 512 live bytes, O_RDWR from 8712
+to 4608; the handle alone shrinks from 520 to 512. On ARM/MIPS its compiled size
+is 492 → 488, in addition to eliminating one 4096-byte buffer for those modes.
+
+The write-only `buffer_from_flash` field has been removed. `romfs_file` remains
+120 bytes on the host and 112 on ARM/MIPS because of padding. The dirty/pending
+flag offsets change, so clients must be rebuilt; the on-flash layout is unchanged.
+The NULL-buffer cases cover data, seek/EOF, map-table reads, service files,
+read views and read callback failures. Non-NULL reader tests retain compatibility
+coverage. Write-buffer load failure still checks the invalidated buffer position
+and absence of dirty data.
+
+Name lookup compares parent/type and the bounded name directly in the catalog,
+then uses the existing listing decoder once for the match. It preserves listing
+order, tombstone filtering and the 53-byte name interpretation, including legacy
+records whose final name byte is not NUL. No persistent name index is created.
+
+A uint32_t allocator hint supplies the first search position for a new chain.
+Appending still searches near the preceding link. Every candidate is checked in
+the current RAM map; both ranges are scanned before ENOSPC. Allocation advances
+the hint, freeing lowers it when appropriate, and mount/format reset it. GC,
+truncate and failed-close cleanup use the same freeing path. The hint cannot
+reserve a sector, authorize service-sector use, or make sector 65535 available.
+External map edits can make it inefficient: finding a newly freed earlier sector
+may require a full scan. Physical placement of new files may differ.
+
+`test_search` uses the generated instrumented core. In addition to the chain
+counters, `test_instrument.py` counts name-copy/entry-decoding operations in
+listing and the two candidate-check sites in allocation. It requires the exact
+number of matching sites and fails if the source no longer matches. Counters
+are excluded from production. `test_search --measure` runs with the prior core
+and matching headers without the new optimization bounds.
+
+On a 256 MiB image, finding the last of 256 catalog entries changes from 256
+entry copies to one; a missing root name changes from 256 to zero. Nested paths
+still decode the parent directory and the final match. Creating 240 small files
+changes allocator checks from 28,920 to 240 on an empty data area, and from
+14,428,920 to 60,240 behind a 60,000-sector occupied prefix. Sequential allocation
+inside one file remains unchanged. These counters do not measure cartridge time.
+
+Coverage includes first/last/missing and nested names, live external name edits,
+long legacy names, public listing, 16/64/240 files, three occupied-prefix lengths,
+contiguous/fragmented chains, separate writers, truncate and failed-close reuse,
+GC, ENOSPC, both scan ranges after a stale hint, format reset and the last usable
+sector. Readback after remount checks file contents. The broader ownership,
+corruption, I/O, geometry and metadata tests run alongside it.
+
 ## Changed metadata sectors and explicit full sync
 
 The core keeps one uint32_t dirty mask for flashmap and one for flashlist. A

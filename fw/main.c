@@ -211,7 +211,6 @@ int main(void)
 
     uint16_t *romfs_flash_map = (uint16_t *) pi_sram;
     uint8_t *romfs_flash_list = &pi_sram[flash_map_size];
-    uint8_t *romfs_flash_buffer = &pi_sram[flash_map_size + flash_list_size];
 
     if (!romfs_start(get_romfs_start_offset(), used_flash_chip->rom_size * 1024 * 1024, romfs_flash_map,
                      romfs_flash_list)) {
@@ -222,7 +221,7 @@ int main(void)
     }
 
     romfs_file file;
-    if (romfs_open_file("n64cart-manager.z64", &file, romfs_flash_buffer) == ROMFS_NOERR) {
+    if (romfs_open_file("n64cart-manager.z64", &file, NULL) == ROMFS_NOERR) {
         romfs_read_map_table(pi_rom_lookup, 16384, &file);
         romfs_close_file(&file);
 

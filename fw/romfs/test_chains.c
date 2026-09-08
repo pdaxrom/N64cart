@@ -274,7 +274,7 @@ static void valid_reads(void)
 {
     case_name = "valid-reads-and-overflow";
     setup();
-    CHECK(romfs_open_file("victim", &reader, read_io) == ROMFS_NOERR);
+    CHECK(romfs_open_file("victim", &reader, NULL) == ROMFS_NOERR);
     CHECK(romfs_seek_file(&reader, 1, SEEK_SET) == ROMFS_NOERR);
     CHECK(romfs_read_file(actual, UINT32_MAX, &reader) == sizeof(payload) - 1);
     CHECK(reader.err == ROMFS_ERR_EOF);
@@ -301,7 +301,7 @@ static void valid_reads(void)
 
     const char *names[] = {"firmware", "flashlist", "flashmap"};
     for (unsigned n = 0; n < 3; n++) {
-        CHECK(romfs_open_file(names[n], &reader, read_io) == ROMFS_NOERR);
+        CHECK(romfs_open_file(names[n], &reader, NULL) == ROMFS_NOERR);
         uint16_t service_map[16];
         uint32_t count = reader.entry.size / ROMFS_FLASH_SECTOR;
         CHECK(romfs_read_map_table(service_map, 16, &reader) == count);

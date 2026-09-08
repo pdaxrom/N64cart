@@ -47,6 +47,8 @@ static uint32_t flash_list_size = 0;
 /* Exclusive upper bound: map padding and the 0xffff sentinel are not data. */
 static uint32_t flash_sector_limit = 0;
 static uint32_t flash_data_start = 0;
+/* Search starting point only: RAM map checks remain authoritative. */
+static uint32_t romfs_alloc_hint;
 
 static uint16_t *flash_map_int;
 static uint8_t *flash_list_int;
@@ -521,6 +523,7 @@ bool romfs_start(uint32_t start, uint32_t rom_size, uint16_t *flash_map, uint8_t
     flash_list_size = list_bytes;
     flash_sector_limit = sector_limit;
     flash_data_start = first_data;
+    romfs_alloc_hint = first_data;
     flash_map_int = flash_map;
     flash_list_int = flash_list;
 
@@ -618,6 +621,7 @@ bool romfs_format(void)
         return false;
     }
     romfs_open_files = NULL;
+    romfs_alloc_hint = flash_data_start;
     romfs_operation_enter();
     memset(flash_list_int, 0xff, flash_list_size);
     romfs_dir_index_reset();
@@ -760,7 +764,6 @@ static uint32_t romfs_list_internal(romfs_file *file, bool first, bool with_dele
         file->dir_id = entry_copy.attr.names.current;
         file->buffer_base = ROMFS_BUFFER_NONE;
         file->write_offset = 0;
-        file->buffer_from_flash = false;
         file->buffer_dirty = false;
 
         return (file->err = ROMFS_NOERR);
@@ -774,22 +777,38 @@ static uint32_t romfs_find_file_internal(romfs_file *file, const char *name, uin
     if (!romfs_valid_entry_name(name, name ? strlen(name) : 0)) {
         return (file->err = ROMFS_ERR_FILE_DATA_TOO_BIG);
     }
+    if (!romfs_ready || romfs_file_is_open(file)) {
+        return (file->err = ROMFS_ERR_NO_ENTRY);
+    }
     uint8_t mask = ROMFS_LIST_INCLUDE_FILES;
     if (include_dirs) {
         mask |= ROMFS_LIST_INCLUDE_DIRS;
     }
 
-    if (romfs_list_internal(file, true, false, parent_dir_id, mask) == ROMFS_NOERR) {
-        do {
-            if (!strncmp(name, file->entry.name, ROMFS_MAX_NAME_LEN)) {
-                file->nentry--;
-                return (file->err = ROMFS_NOERR);
-            }
-        } while (romfs_list_internal(file, false, false, parent_dir_id, mask) == ROMFS_NOERR);
+    romfs_entry *entries = (romfs_entry *) flash_list_int;
+    uint32_t total = flash_list_size / sizeof(romfs_entry);
+    for (file->nentry = 0; file->nentry < total; file->nentry++) {
+        const romfs_entry *entry = &entries[file->nentry];
+        if (entry->name[0] == ROMFS_EMPTY_ENTRY || entry->name[0] == ROMFS_DELETED_ENTRY) {
+            continue;
+        }
+        union {
+            attr_by_names names;
+            uint16_t raw;
+        } attr = {.raw = from_lsb16(entry->attr.raw)};
+        if (attr.names.parent != parent_dir_id || (!include_dirs && attr.names.type == ROMFS_TYPE_DIR)) {
+            continue;
+        }
+        /* Listing terminates byte 53 even in legacy entries with no NUL.
+         * Preserve that bounded name interpretation before decoding a match. */
+        if (strncmp(name, entry->name, ROMFS_MAX_NAME_LEN - 1) == 0 &&
+                romfs_list_internal(file, false, false, parent_dir_id, mask) == ROMFS_NOERR) {
+            file->nentry--;
+            return (file->err = ROMFS_NOERR);
+        }
     }
 
-    file->err = ROMFS_ERR_NO_ENTRY;
-    return file->err;
+    return (file->err = ROMFS_ERR_NO_ENTRY);
 }
 
 static uint32_t romfs_find_entry_internal(uint32_t *entry_index, bool reclaim)
@@ -847,7 +866,6 @@ static uint32_t romfs_prepare_write_state(romfs_file *file, uint32_t offset)
     file->offset = offset % ROMFS_FLASH_SECTOR;
     file->pos = 0xffff;
     file->buffer_base = ROMFS_BUFFER_NONE;
-    file->buffer_from_flash = false;
     file->buffer_dirty = false;
 
     return (file->err = ROMFS_NOERR);
@@ -865,6 +883,9 @@ static void romfs_unallocate_sectors_from(uint32_t sector, uint32_t count)
     for (uint32_t i = 0; i < count && sector != 0xffff; i++) {
         uint32_t next = from_lsb16(flash_map_int[sector]);
         romfs_store_map_link(sector, 0xffff);
+        if (sector < romfs_alloc_hint) {
+            romfs_alloc_hint = sector;
+        }
         if (next == sector) {
             break;
         }
@@ -976,7 +997,7 @@ static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sect
         return (file->err = ROMFS_ERR_OPERATION);
     }
 
-    uint32_t hint = (prev_sector == 0xffff) ? 0 : prev_sector;
+    uint32_t hint = (prev_sector == 0xffff) ? romfs_alloc_hint : prev_sector;
     uint32_t sector;
     uint32_t err = romfs_find_free_sector(hint, true, &sector);
     if (err != ROMFS_NOERR) {
@@ -992,6 +1013,7 @@ static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sect
         romfs_store_map_link(prev_sector, sector);
     }
     romfs_store_map_link(sector, sector);
+    romfs_alloc_hint = sector + 1 < flash_sector_limit ? sector + 1 : flash_data_start;
 
     if (sector_out) {
         *sector_out = sector;
@@ -1067,7 +1089,6 @@ static uint32_t romfs_flush_write_buffer(romfs_file *file)
         return (file->err = ROMFS_ERR_IO);
     }
     file->buffer_dirty = false;
-    file->buffer_from_flash = true;
     return (file->err = ROMFS_NOERR);
 }
 
@@ -1086,7 +1107,6 @@ static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offse
     /* Loading another sector may overwrite the buffer even on a failed read. */
     file->buffer_base = ROMFS_BUFFER_NONE;
     file->pos = 0xffff;
-    file->buffer_from_flash = false;
     uint32_t sector = 0xffff;
     uint32_t sector_index = sector_base / ROMFS_FLASH_SECTOR;
     bool existing_sector = sector_base < file->entry.size;
@@ -1106,7 +1126,6 @@ static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offse
 
     file->pos = sector;
     file->buffer_base = sector_base;
-    file->buffer_from_flash = existing_sector;
     file->buffer_dirty = false;
     return (file->err = ROMFS_NOERR);
 }
@@ -1369,7 +1388,6 @@ uint32_t romfs_truncate_file(romfs_file *file, uint32_t size)
         if (tail != 0) {
             file->buffer_base = ROMFS_BUFFER_NONE;
             file->pos = 0xffff;
-            file->buffer_from_flash = false;
             if (!romfs_flash_sector_read(last_kept * ROMFS_FLASH_SECTOR, file->io_buffer, ROMFS_FLASH_SECTOR)) {
                 status = ROMFS_ERR_IO;
                 goto out;
@@ -1393,7 +1411,6 @@ uint32_t romfs_truncate_file(romfs_file *file, uint32_t size)
     file->entry.size = size;
     file->buffer_base = ROMFS_BUFFER_NONE;
     file->pos = 0xffff;
-    file->buffer_from_flash = false;
     file->buffer_dirty = false;
 
 out_store:
@@ -1949,7 +1966,6 @@ uint32_t romfs_create_file_in_dir(const romfs_dir *dir, const char *name, romfs_
     file->dir_id = 0;
     file->buffer_base = ROMFS_BUFFER_NONE;
     file->write_offset = 0;
-    file->buffer_from_flash = false;
     file->buffer_dirty = false;
     file->entry_pending = true;
     romfs_register_file(file);
@@ -1964,10 +1980,6 @@ uint32_t romfs_open_file_in_dir(const romfs_dir *dir, const char *name, romfs_fi
     }
     if (!file || !dir || !name) {
         return ROMFS_ERR_DIR_INVALID;
-    }
-
-    if (!io_buffer) {
-        return (file->err = ROMFS_ERR_NO_IO_BUFFER);
     }
 
     if (!romfs_dir_valid(dir)) {
@@ -1992,7 +2004,6 @@ uint32_t romfs_open_file_in_dir(const romfs_dir *dir, const char *name, romfs_fi
         file->io_buffer = io_buffer;
         file->buffer_base = ROMFS_BUFFER_NONE;
         file->write_offset = 0;
-        file->buffer_from_flash = false;
         file->buffer_dirty = false;
         file->entry_pending = false;
         romfs_register_file(file);
@@ -2009,9 +2020,6 @@ uint32_t romfs_open_read_view(romfs_file *writer, romfs_file *reader, uint8_t *i
     }
     if (!reader || !romfs_file_is_open(writer) || writer->op != ROMFS_OP_WRITE) {
         return ROMFS_ERR_OPERATION;
-    }
-    if (!io_buffer) {
-        return (reader->err = ROMFS_ERR_NO_IO_BUFFER);
     }
     uint32_t err = romfs_flush_file(writer);
     if (err != ROMFS_NOERR) {
@@ -2052,7 +2060,6 @@ static uint32_t romfs_open_write_in_dir(const romfs_dir *dir, const char *name, 
     file->io_buffer = io_buffer;
     file->read_offset = 0;
     file->buffer_base = ROMFS_BUFFER_NONE;
-    file->buffer_from_flash = false;
     file->buffer_dirty = false;
 
     if (romfs_name_pending(dir->id, name)) {

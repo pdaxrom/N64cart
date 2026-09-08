@@ -118,7 +118,6 @@ typedef struct romfs_file {
     uint8_t dir_id;
     uint32_t buffer_base;
     uint32_t write_offset;
-    bool buffer_from_flash;
     bool buffer_dirty;
     /* Private runtime ownership. An open descriptor must stay at its address. */
     bool entry_pending;
@@ -168,9 +167,12 @@ uint32_t romfs_flush_file(romfs_file * file);
  * Unpublished tail allocations are reclaimed after a failed close when the
  * chain is valid; pending catalog/map writes can be retried with romfs_sync. */
 uint32_t romfs_close_file(romfs_file * file);
+/* Read-only open paths accept a NULL io_buffer: reads go directly to the
+ * caller's output buffer. The argument is retained for source compatibility. */
 uint32_t romfs_open_file(const char *name, romfs_file * file, uint8_t * io_buffer);
 /* Flush the owning writer and open a temporary read view. Close the view
- * before writing/flushing the owner again. Used by the O_RDWR bridge. */
+ * before writing/flushing the owner again. io_buffer may be NULL.
+ * Used by the O_RDWR bridge. */
 uint32_t romfs_open_read_view(romfs_file *writer, romfs_file *reader, uint8_t *io_buffer);
 /* map_size is the capacity in uint16_t entries. Errors leave the buffer intact. */
 uint32_t romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);

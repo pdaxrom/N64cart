@@ -45,7 +45,7 @@ static void remount(void)
 static void readback(const char *name, const uint8_t *data, uint32_t size)
 {
     romfs_file file;
-    CHECK(romfs_open_file(name, &file, io) == ROMFS_NOERR);
+    CHECK(romfs_open_file(name, &file, NULL) == ROMFS_NOERR);
     CHECK(file.entry.size == size);
     memset(actual, 0xa5, sizeof(actual));
     CHECK(romfs_read_file(actual, sizeof(actual), &file) == size);
@@ -74,7 +74,7 @@ static void failed_mounts(void)
         romfs_file file, attempt;
         create(&file, "data", 17);
         CHECK(romfs_close_file(&file) == ROMFS_NOERR);
-        CHECK(romfs_open_file("data", &file, io) == ROMFS_NOERR);
+        CHECK(romfs_open_file("data", &file, NULL) == ROMFS_NOERR);
         test_flash_reset_counters();
         CHECK(test_flash_fail_on(TEST_FLASH_READ, nth));
         CHECK(!romfs_start(start, image_size, map, list));
@@ -202,7 +202,7 @@ static void read_failures(void)
         romfs_file file;
         create(&file, "data", 3 * SECTOR);
         CHECK(romfs_close_file(&file) == ROMFS_NOERR);
-        CHECK(romfs_open_file("data", &file, io) == ROMFS_NOERR);
+        CHECK(romfs_open_file("data", &file, NULL) == ROMFS_NOERR);
         CHECK(test_flash_fail_on(TEST_FLASH_READ, nth));
         uint32_t accepted = (nth - 1) * SECTOR;
         CHECK(romfs_read_file(actual, 3 * SECTOR, &file) == accepted && file.err == ROMFS_ERR_IO);
@@ -221,7 +221,8 @@ static void read_failures(void)
     CHECK(romfs_seek_file(&file, SECTOR + 1, SEEK_SET) == ROMFS_NOERR);
     CHECK(test_flash_fail_on(TEST_FLASH_READ, 1));
     CHECK(romfs_write_file(payload, 1, &file) == 0 && file.err == ROMFS_ERR_IO);
-    CHECK(file.write_offset == SECTOR + 1 && !file.buffer_from_flash && !file.buffer_dirty);
+    CHECK(file.write_offset == SECTOR + 1 && !file.buffer_dirty &&
+          file.buffer_base == UINT32_MAX && file.pos == 0xffff);
     CHECK(romfs_seek_file(&file, 1, SEEK_SET) == ROMFS_NOERR);
     CHECK(romfs_write_file(payload + 1, 1, &file) == 1);
     CHECK(romfs_close_file(&file) == ROMFS_NOERR);

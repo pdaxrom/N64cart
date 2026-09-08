@@ -26,7 +26,6 @@ typedef struct {
     romfs_file file;
     romfs_file read_file;
     uint8_t *io_buffer;
-    uint8_t *read_io_buffer;
     char path[ROMFS_MAX_PATH_LEN];
     bool readable;
     bool writable;
@@ -151,7 +150,7 @@ static int romfs_prepare_read_file(romfs_handle_t *handle, uint32_t *position)
 
     romfs_close_file(&handle->read_file);
     memset(&handle->read_file, 0, sizeof(handle->read_file));
-    uint32_t err = romfs_open_read_view(&handle->file, &handle->read_file, handle->read_io_buffer);
+    uint32_t err = romfs_open_read_view(&handle->file, &handle->read_file, NULL);
     if (err != ROMFS_NOERR) {
         errno = errno_from_romfs(err);
         return -1;
@@ -257,17 +256,9 @@ static void *romfs_fs_open(char *name, int flags)
         return NULL;
     }
 
-    handle->io_buffer = malloc(ROMFS_FLASH_SECTOR);
-    if (!handle->io_buffer) {
-        free(handle);
-        errno = ENOMEM;
-        return NULL;
-    }
-
-    if (readable && writable) {
-        handle->read_io_buffer = malloc(ROMFS_FLASH_SECTOR);
-        if (!handle->read_io_buffer) {
-            free(handle->io_buffer);
+    if (writable) {
+        handle->io_buffer = malloc(ROMFS_FLASH_SECTOR);
+        if (!handle->io_buffer) {
             free(handle);
             errno = ENOMEM;
             return NULL;
@@ -301,9 +292,19 @@ static void *romfs_fs_open(char *name, int flags)
             err = ROMFS_ERR_OPERATION;
         }
     } else if (create) {
-        /* Create also checks names reserved by unpublished writers. */
-        err = romfs_create_path(abs_path, &handle->file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
-                                handle->io_buffer, true);
+        /* A read-only create needs a writer buffer only until publication. */
+        if (!writable) {
+            handle->io_buffer = malloc(ROMFS_FLASH_SECTOR);
+            if (!handle->io_buffer) {
+                open_errno = ENOMEM;
+                err = ROMFS_ERR_OPERATION;
+            }
+        }
+        if (err == ROMFS_NOERR) {
+            /* Create also checks names reserved by unpublished writers. */
+            err = romfs_create_path(abs_path, &handle->file, ROMFS_MODE_READWRITE, ROMFS_TYPE_MISC,
+                                    handle->io_buffer, true);
+        }
         created = err == ROMFS_NOERR;
         if (err == ROMFS_ERR_FILE_EXISTS && !(flags & O_EXCL)) {
             err = ROMFS_NOERR;
@@ -314,7 +315,7 @@ static void *romfs_fs_open(char *name, int flags)
         if (writable) {
             err = romfs_open_write_path(abs_path, &handle->file, handle->io_buffer);
         } else {
-            err = romfs_open_path(abs_path, &handle->file, handle->io_buffer);
+            err = romfs_open_path(abs_path, &handle->file, NULL);
         }
     }
 
@@ -322,7 +323,7 @@ static void *romfs_fs_open(char *name, int flags)
         /* Publish the empty file and release the writer before opening a reader. */
         err = romfs_close_file(&handle->file);
         if (err == ROMFS_NOERR) {
-            err = romfs_open_path(abs_path, &handle->file, handle->io_buffer);
+            err = romfs_open_path(abs_path, &handle->file, NULL);
         }
     }
     if (err == ROMFS_NOERR && trunc) {
@@ -335,13 +336,16 @@ static void *romfs_fs_open(char *name, int flags)
         }
         romfs_close_file(&handle->read_file);
         romfs_close_file(&handle->file);
-        free(handle->read_io_buffer);
         free(handle->io_buffer);
         free(handle);
         errno = open_errno;
         return NULL;
     }
 
+    if (!writable) {
+        free(handle->io_buffer);
+        handle->io_buffer = NULL;
+    }
     return handle;
 }
 
@@ -355,7 +359,6 @@ static int romfs_fs_close(void *file)
 
     romfs_close_file(&handle->read_file);
     uint32_t err = romfs_close_file(&handle->file);
-    free(handle->read_io_buffer);
     free(handle->io_buffer);
     free(handle);
     if (err != ROMFS_NOERR) {
@@ -385,10 +388,6 @@ static int romfs_fs_read(void *file, uint8_t *ptr, int len)
     bool read_from_shadow = handle->file.op == ROMFS_OP_WRITE;
     uint32_t position = 0;
     if (read_from_shadow) {
-        if (!handle->read_io_buffer) {
-            errno = EBADF;
-            return -1;
-        }
         if (romfs_prepare_read_file(handle, &position) != 0) {
             return -1;
         }

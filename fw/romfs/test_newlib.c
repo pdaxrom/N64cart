@@ -23,6 +23,71 @@ static uint8_t list[ROMFS_FLASH_SECTOR];
 static uint8_t saved_image[IMAGE_SIZE], saved_list[sizeof(list)], saved_map[sizeof(map)];
 static filesystem_t *fs;
 
+/* Only the bridge is compiled with renamed allocation functions. Track its
+ * real heap use independently of the emulator and test fixtures. */
+static struct { void *ptr; size_t size; } allocations[128];
+static size_t live_bytes, peak_bytes, handle_bytes;
+static unsigned allocation_calls, fail_allocation;
+static bool measure_only;
+
+static void *allocate(size_t size, bool zero)
+{
+    allocation_calls++;
+    if (fail_allocation && allocation_calls == fail_allocation) {
+        return NULL;
+    }
+    void *ptr = zero ? calloc(1, size) : malloc(size);
+    CHECK(ptr != NULL);
+    for (unsigned i = 0; i < sizeof(allocations) / sizeof(allocations[0]); i++) {
+        if (!allocations[i].ptr) {
+            allocations[i].ptr = ptr;
+            allocations[i].size = size;
+            live_bytes += size;
+            if (live_bytes > peak_bytes) {
+                peak_bytes = live_bytes;
+            }
+            return ptr;
+        }
+    }
+    CHECK(false);
+    return NULL;
+}
+
+void *test_newlib_malloc(size_t size)
+{
+    return allocate(size, false);
+}
+
+void *test_newlib_calloc(size_t count, size_t size)
+{
+    CHECK(!count || size <= SIZE_MAX / count);
+    handle_bytes = count * size;
+    return allocate(handle_bytes, true);
+}
+
+void test_newlib_free(void *ptr)
+{
+    if (!ptr) {
+        return;
+    }
+    for (unsigned i = 0; i < sizeof(allocations) / sizeof(allocations[0]); i++) {
+        if (allocations[i].ptr == ptr) {
+            live_bytes -= allocations[i].size;
+            allocations[i].ptr = NULL;
+            free(ptr);
+            return;
+        }
+    }
+    CHECK(false); /* Double free or an allocation outside the tracked bridge. */
+}
+
+static void reset_heap(void)
+{
+    CHECK(live_bytes == 0);
+    peak_bytes = handle_bytes = 0;
+    allocation_calls = fail_allocation = 0;
+}
+
 int romfs_test_rename(const char *oldpath, const char *newpath);
 int romfs_test_rmdir(const char *path);
 
@@ -36,6 +101,7 @@ int attach_filesystem(const char *const prefix, filesystem_t *filesystem)
 static void setup(const char *name)
 {
     case_name = name;
+    reset_heap();
     CHECK(test_flash_init(IMAGE_SIZE));
     CHECK(romfs_start(START, IMAGE_SIZE, map, list));
     CHECK(romfs_format());
@@ -525,8 +591,62 @@ static void io_errors_and_partial_transfers(void)
     puts("PASS newlib short read/write counts, EIO/ENOSPC, close errors and partial-file persistence");
 }
 
-int main(void)
+static void heap_usage(void)
 {
+    const int flags[] = {O_RDONLY, O_WRONLY, O_RDWR, O_RDONLY | O_CREAT, O_RDONLY | O_CREAT};
+    const char *names[] = {"readonly", "writeonly", "readwrite", "readonly-create", "readonly-create-existing"};
+    for (unsigned action = 0; action < sizeof(flags) / sizeof(flags[0]); action++) {
+        setup(names[action]);
+        bool existing = action != 3;
+        if (existing) {
+            create("data", "contents");
+        }
+        reset_heap();
+        void *handle = fs->open("data", flags[action]);
+        CHECK(handle != NULL);
+        unsigned successful_calls = allocation_calls;
+        printf("heap %s live=%zu peak=%zu allocations=%u handle=%zu\n",
+               names[action], live_bytes, peak_bytes, allocation_calls, handle_bytes);
+        if (!measure_only) {
+            CHECK(live_bytes == handle_bytes + ((action == 1 || action == 2) ? ROMFS_FLASH_SECTOR : 0));
+            CHECK(peak_bytes == handle_bytes + ((action == 1 || action == 2 || action == 3) ? ROMFS_FLASH_SECTOR : 0));
+            CHECK(allocation_calls == ((action == 1 || action == 2 || action == 3) ? 2u : 1u));
+        }
+        if (action != 1) {
+            uint8_t actual[8];
+            CHECK(fs->read(handle, actual, sizeof(actual)) == (existing ? 8 : 0));
+            CHECK(!existing || memcmp(actual, "contents", 8) == 0);
+        }
+        CHECK(fs->close(handle) == 0 && live_bytes == 0);
+        for (unsigned nth = 1; nth <= successful_calls; nth++) {
+            setup(names[action]);
+            if (existing) {
+                create("data", "contents");
+            }
+            snapshot();
+            reset_heap();
+            fail_allocation = nth;
+            errno = EDOM;
+            CHECK(fs->open("data", flags[action]) == NULL && errno == ENOMEM);
+            CHECK(allocation_calls == nth && live_bytes == 0);
+            unchanged();
+            fail_allocation = 0;
+            handle = fs->open("data", flags[action]);
+            CHECK(handle != NULL && fs->close(handle) == 0 && live_bytes == 0);
+        }
+    }
+    puts("PASS bridge heap measurements, ENOMEM cleanup and retry");
+}
+
+int main(int argc, char **argv)
+{
+    CHECK(argc == 1 || (argc == 2 && strcmp(argv[1], "--measure") == 0));
+    measure_only = argc == 2;
+    heap_usage();
+    if (measure_only) {
+        test_flash_destroy();
+        return 0;
+    }
     open_flag_matrix();
     append_after_seek_and_read();
     exclusive_pending_and_truncate_busy();
@@ -538,6 +658,7 @@ int main(void)
     pending_and_failed_handles();
     stale_directory_cookie();
     io_errors_and_partial_transfers();
+    CHECK(live_bytes == 0);
     test_flash_destroy();
     return 0;
 }
