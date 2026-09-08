@@ -456,7 +456,7 @@ static void io_errors_and_partial_transfers(void)
     setup("newlib write and metadata close failures");
     handle = fs->open("data", O_CREAT | O_RDWR);
     CHECK(handle != NULL);
-    CHECK(test_flash_fail_on(TEST_FLASH_WRITE, 2));
+    CHECK(test_flash_fail_on(TEST_FLASH_WRITE, 1));
     CHECK(fs->write(handle, data, sizeof(data)) == ROMFS_FLASH_SECTOR && errno == EIO);
     CHECK(fs->close(handle) == 0); /* Retry the retained dirty buffer. */
     handle = fs->open("data", O_RDWR);

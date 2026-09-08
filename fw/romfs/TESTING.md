@@ -10,7 +10,7 @@ make -C fw/romfs check
 The default build uses AddressSanitizer and UndefinedBehaviorSanitizer, with
 sanitizer recovery disabled. Executables, objects and logs go to the ignored
 `build-romfs-tests/` directory. `make check` runs the flash emulator, geometry,
-chain corruption, handle ownership, I/O failures, newlib bridge, platform callback/USB, and
+chain corruption, handle ownership, I/O failures, write counts/ordering, newlib bridge, platform callback/USB, and
 process-level runner checks, including the full ROMFS suite. It requires
 Python 3 and Bash on a POSIX host in addition to the C compiler. CLI tests use
 `RLIMIT_FSIZE` to exercise real host write/close failures.
@@ -212,16 +212,21 @@ below, without rollback or power-loss guarantees.
 
 ## I/O errors and partial transfers
 
-`build-romfs-tests/test_io` injects failures into mount reads, sector allocation,
-data buffer read/erase/write, truncate tail I/O, and both sectors of metadata
+`build-romfs-tests/test_io` injects failures into mount reads, data buffer
+read/erase/write (including first writes of new sectors), truncate tail I/O, and both sectors of metadata
 on a 2 MiB image. Metadata operations cover format, mkdir, delete, rmdir, rename,
 file flush and close, including repeated failures before a successful retry.
 
 Each failed flash callback returns `ROMFS_ERR_IO` through the calling operation
 (or false from start/format). An erase failure prevents the corresponding write.
 Dirty buffers remain dirty until erase and program both succeed. A failed load
-invalidates the buffer's cached sector; a failed new-sector initialization does
-not publish its link. Truncate performs tail I/O before releasing chain links.
+invalidates the buffer's cached sector. Allocation reserves a sector in the RAM
+map without flash I/O; its buffer is initialized to zero and filled with accepted
+data. The first physical write happens at a full buffer or flush/close. Shared
+sync must write every changed writer's data before publishing metadata. A failed
+new-sector write retains the reservation and dirty buffer for retry; failed close
+reclaims unpublished tail allocations as described below. Truncate performs tail
+I/O before releasing chain links.
 
 Read returns only successfully read fragments and advances by that count. A
 failed callback may have touched its destination, so bytes beyond the returned
@@ -275,6 +280,44 @@ These checks model callback failures, not power-loss atomicity or reliable drive
 detection of every physical flash fault. Failed in-place erase/program can damage
 existing data or metadata. Generation snapshots and data copy-on-write remain
 deferred in `TODO.md`; the on-flash format is unchanged here.
+
+## Single programming of new sectors
+
+```sh
+build-romfs-tests/test_write
+build-romfs-tests/test_write --measure
+```
+
+The write harness links the same NOR emulator with renamed callbacks and wraps
+them to count data and metadata requests separately. `--measure` reports counts
+and verifies round-trip contents without requiring the optimized counts, so it
+can also measure an older core. The ordinary run asserts one erase/program per
+new data sector for sequential creation, including a partial last sector.
+
+Measured on a 16 MiB image (numbers are erase/program pairs for file data):
+
+| Operation | Before deferred allocation | Current |
+|---|---:|---:|
+| Create 1 MiB | 512 | 256 |
+| Create 1 MiB + 17 bytes | 514 | 257 |
+| Append 4096 bytes to a 17-byte file | 3 | 2 |
+| Overwrite 17 bytes inside a two-sector file | 1 | 1 |
+| Append 17 bytes to a one-sector file | 2 | 1 |
+
+Each measured operation additionally writes three metadata sectors in both
+versions. Reads remain zero for new sectors; appending to a partial sector and
+partial overwrite each read the existing sector once. Repeated flushes or writes
+to the same previously stored sector can still require another erase/program.
+These counts are not elapsed-time measurements on a cartridge.
+
+Further tests fill and delete a six-sector file to force GC reuse, then check
+partial writes, zero-filled gaps and truncate extension. They verify both the
+logical file and physical zero bytes beyond EOF. Two pending writers must reserve
+different sectors without any I/O. Before each metadata erase/program the wrapper
+checks that both data buffers already match flash, including after a failure in
+either writer. Gap/truncate retries inject erase/program failures into an old
+partial sector or a new sector, retaining offsets, the accepted prefix and zeros.
+Existing I/O tests cover ENOSPC and reclamation after a failed close.
 
 ## Flash emulator and fault injection
 

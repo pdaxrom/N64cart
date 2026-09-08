@@ -900,8 +900,7 @@ static uint32_t romfs_find_free_sector(uint32_t start, bool reclaim, uint32_t *s
     return ROMFS_ERR_NO_SPACE;
 }
 
-static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sector, const uint8_t *buffer,
-                                            uint32_t *sector_out)
+static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sector, uint32_t *sector_out)
 {
     if (prev_sector != 0xffff &&
             (prev_sector < romfs_first_data_sector() || prev_sector >= flash_sector_limit)) {
@@ -915,11 +914,9 @@ static uint32_t romfs_allocate_sector_after(romfs_file *file, uint32_t prev_sect
         return (file->err = err);
     }
 
-    /* Do not publish an allocation whose physical preparation failed. */
-    if (!romfs_flash_sector_erase(sector * ROMFS_FLASH_SECTOR) ||
-            !romfs_flash_sector_write(sector * ROMFS_FLASH_SECTOR, (uint8_t *) buffer)) {
-        return (file->err = ROMFS_ERR_IO);
-    }
+    /* Reserve in RAM so other writers cannot claim this sector. The caller
+     * initializes its buffer and accepts data before returning; shared sync
+     * flushes every changed writer before publishing the map and catalog. */
     if (prev_sector == 0xffff) {
         file->entry.start = sector;
     } else {
@@ -946,8 +943,7 @@ static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, b
         if (!allocate) {
             return (file->err = ROMFS_ERR_NO_ENTRY);
         }
-        memset(file->io_buffer, 0, ROMFS_FLASH_SECTOR);
-        uint32_t err = romfs_allocate_sector_after(file, 0xffff, file->io_buffer, &sector);
+        uint32_t err = romfs_allocate_sector_after(file, 0xffff, &sector);
         if (err != ROMFS_NOERR) {
             return err;
         }
@@ -966,8 +962,7 @@ static uint32_t romfs_sector_at_index(romfs_file *file, uint32_t sector_index, b
             if (!allocate) {
                 return (file->err = ROMFS_ERR_OPERATION);
             }
-            memset(file->io_buffer, 0, ROMFS_FLASH_SECTOR);
-            uint32_t err = romfs_allocate_sector_after(file, sector, file->io_buffer, &next);
+            uint32_t err = romfs_allocate_sector_after(file, sector, &next);
             if (err != ROMFS_NOERR) {
                 return err;
             }
@@ -1038,6 +1033,7 @@ static uint32_t romfs_load_write_buffer(romfs_file *file, uint32_t logical_offse
             return (file->err = ROMFS_ERR_IO);
         }
     } else {
+        /* New/reclaimed sectors may still contain an old file on flash. */
         memset(file->io_buffer, 0, ROMFS_FLASH_SECTOR);
     }
 

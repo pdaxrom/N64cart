@@ -159,26 +159,21 @@ static void metadata_failures(void)
 static void data_write_failures(void)
 {
     for (unsigned op = TEST_FLASH_ERASE; op <= TEST_FLASH_WRITE; op++) {
-        setup("failed sector allocation", false);
+        setup("RAM sector reservation and failed dirty buffer flush", false);
         romfs_file file;
         create(&file, "data", 0);
         uint32_t available = romfs_free();
-        snapshot_metadata();
         CHECK(test_flash_fail_on((test_flash_operation) op, 1));
-        CHECK(romfs_write_file(payload, 17, &file) == 0 && file.err == ROMFS_ERR_IO);
-        CHECK(file.entry.size == 0 && file.entry.start == 0xffff && romfs_free() == available);
-        metadata_unchanged();
-        CHECK(romfs_write_file(payload, 17, &file) == 17);
-        CHECK(romfs_close_file(&file) == ROMFS_NOERR);
-        remount();
-        readback("data", payload, 17);
-
-        setup("failed dirty buffer flush", false);
-        create(&file, "data", 17);
+        CHECK(romfs_write_file(payload, 17, &file) == 17 && file.err == ROMFS_NOERR);
+        CHECK(file.entry.size == 17 && file.entry.start != 0xffff && romfs_free() == available - SECTOR);
+        for (unsigned operation = 0; operation < TEST_FLASH_OPERATION_COUNT; operation++) {
+            CHECK(test_flash_get_stats()->calls[operation] == 0);
+        }
         snapshot_metadata();
-        CHECK(test_flash_fail_on((test_flash_operation) op, 1));
         CHECK(romfs_flush_file(&file) == ROMFS_ERR_IO && file.err == ROMFS_ERR_IO);
         CHECK(file.buffer_dirty && file.entry_pending && memcmp(io, payload, 17) == 0);
+        CHECK(test_flash_get_stats()->first_failure_offset == file.entry.start * SECTOR);
+        CHECK(test_flash_get_stats()->calls[TEST_FLASH_WRITE] == (op == TEST_FLASH_ERASE ? 0 : 1));
         metadata_unchanged();
         CHECK(romfs_flush_file(&file) == ROMFS_NOERR && !file.buffer_dirty);
         CHECK(romfs_close_file(&file) == ROMFS_NOERR);
@@ -187,7 +182,7 @@ static void data_write_failures(void)
 
         setup("full-sector write returns accepted prefix on flush failure", false);
         create(&file, "data", 0);
-        CHECK(test_flash_fail_on((test_flash_operation) op, 2));
+        CHECK(test_flash_fail_on((test_flash_operation) op, 1));
         CHECK(romfs_write_file(payload, 2 * SECTOR, &file) == SECTOR && file.err == ROMFS_ERR_IO);
         CHECK(file.entry.size == SECTOR && file.write_offset == SECTOR && file.buffer_dirty);
         CHECK(romfs_flush_file(&file) == ROMFS_NOERR);
@@ -196,7 +191,7 @@ static void data_write_failures(void)
         remount();
         readback("data", payload, 2 * SECTOR);
     }
-    puts("PASS failed allocation publishes no links; dirty data and accepted byte counts survive retry");
+    puts("PASS sector reservation performs no I/O; dirty data and accepted byte counts survive flush retry");
 }
 
 static void read_failures(void)
