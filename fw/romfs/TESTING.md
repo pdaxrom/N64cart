@@ -9,7 +9,7 @@ make -C fw/romfs check
 
 The default build uses AddressSanitizer and UndefinedBehaviorSanitizer, with
 sanitizer recovery disabled. Executables, objects and logs go to the ignored
-`build-romfs-tests/` directory. `make check` runs the flash emulator, geometry,
+`build-romfs-tests/` directory. `make check` runs the flash emulator, geometry, chain corruption,
 platform callback/USB, and process-level runner checks, including the full ROMFS suite. It requires
 Python 3 and Bash in addition to the C compiler.
 
@@ -82,8 +82,40 @@ error ACK conversion, and recovery with a following valid command.
 
 The N64 host harness models big-endian field values with explicit byte swaps;
 it does not emulate MIPS execution or a USB controller. Full ARM/MIPS builds
-and physical USB/PI smoke tests are separate. General core I/O error propagation,
-malformed-chain handling and partial-file preservation remain separate fixes.
+and physical USB/PI smoke tests are separate. General core I/O error propagation
+and partial-file preservation remain separate fixes.
+
+## Corrupted chains
+
+`build-romfs-tests/test_chains` arranges deterministic corrupt images, persists
+them and remounts before testing. It also exercises handles opened before the
+corruption, dirty write buffers, and live corruption of service links.
+Coverage includes invalid start/next indices, map padding, links into service
+regions, early termination, missing terminal self-links, cycles, wrong sizes,
+arithmetic overflow, and mismatched buffer/chain sectors.
+
+ROMFS validates a complete chain against its size before open/read/seek/map
+export and file mutations. A normal empty file uses start `0xffff`; a nonempty
+file must have exactly the required number of sectors and a final self-link.
+Service files are readable only with their expected geometry and within their
+own service range. Invalid chains return `ROMFS_ERR_OPERATION`. Read/write
+return byte counts, including zero on rejection, with the error in `file->err`.
+Rejected reads and map exports leave output buffers and positions unchanged.
+
+Truncate validates before syncing a dirty buffer or changing the catalog/map.
+GC preflights every eligible deleted file before freeing any of them, and
+propagates a corrupt-chain error through catalog/sector allocation. If a corrupt
+tombstone blocks GC, `romfs_free()` reports only sectors already marked free.
+The tests compare the entire image, map and catalog and require zero callbacks
+on these rejection paths. They verify that valid GC works after the fixture's
+bad link is repaired; production code does not repair corrupt user chains.
+
+Validation uses a bounded walk and no additional bitmap or heap allocation.
+It currently adds a full chain walk to each read/write/seek call, so small I/O
+calls on large files cost more. Caching with correct invalidation belongs to
+the planned performance work. This checks each chain's structure and range,
+not ownership of sectors shared by otherwise structurally valid files.
+Open-handle ownership, general I/O failures and partial writes are separate work.
 
 ## Flash emulator and fault injection
 

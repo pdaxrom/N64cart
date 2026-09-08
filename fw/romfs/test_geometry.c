@@ -83,10 +83,10 @@ static void check_capacity(uint32_t mb, uint32_t expected_map, uint32_t expected
 
     /* Persist a valid chain up to the penultimate usable sector. Constructing
      * it directly avoids quadratic full-device writes in this boundary test. */
+    CHECK(romfs_open_append("bulk", &bulk, ROMFS_TYPE_MISC, io) == ROMFS_NOERR);
     for (uint32_t i = bulk.entry.start; i < limit - 1; i++) {
         map[i] = le16((uint16_t) ((i + 1 < limit - 1) ? i + 1 : i));
     }
-    CHECK(romfs_open_append("bulk", &bulk, ROMFS_TYPE_MISC, io) == ROMFS_NOERR);
     bulk.entry.size = (limit - 1 - bulk.entry.start) * ROMFS_FLASH_SECTOR;
     CHECK(romfs_close_file(&bulk) == ROMFS_NOERR);
     CHECK(romfs_start(raw_start, size, map, list));

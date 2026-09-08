@@ -133,10 +133,13 @@ uint32_t romfs_free(void);
 uint32_t romfs_list(romfs_file * entry, bool first);
 uint32_t romfs_delete(const char *name);
 uint32_t romfs_create_file(const char *name, romfs_file * file, uint16_t mode, uint16_t type, uint8_t * io_buffer);
+/* Read/write return byte counts; inspect file->err for errors. Invalid chains
+ * are rejected with ROMFS_ERR_OPERATION before data I/O or chain mutation. */
 uint32_t romfs_write_file(const void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_flush_file(romfs_file * file);
 uint32_t romfs_close_file(romfs_file * file);
 uint32_t romfs_open_file(const char *name, romfs_file * file, uint8_t * io_buffer);
+/* map_size is the capacity in uint16_t entries. Errors leave the buffer intact. */
 uint32_t romfs_read_map_table(uint16_t * map_buffer, uint32_t map_size, romfs_file * file);
 uint32_t romfs_read_file(void *buffer, uint32_t size, romfs_file * file);
 uint32_t romfs_tell_file(romfs_file *file, uint32_t *position);
